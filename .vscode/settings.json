@@ -1,21 +1,6 @@
 {
-  "deno.enable": true,
-  "deno.lint": true,
-  "deno.enablePaths": [
-    "./packages/examples",
-    "./packages/example-apps",
-    "./packages/async-framework",
-    "./packages/dev"
-  ],
   "editor.formatOnSave": true,
-  "deno.config": "./deno.jsonc",
   "typescript.enablePromptUseWorkspaceTsdk": true,
-  "[typescript]": {
-    "editor.defaultFormatter": "denoland.vscode-deno"
-  },
-  "[javascript]": {
-    "editor.defaultFormatter": "denoland.vscode-deno"
-  },
   "files.exclude": {
     ".prettierignore": true,
     ".gitignore": true,
@@ -26,13 +11,11 @@
     "**/.hg": true,
     "**/CVS": true,
     "**/.DS_Store": true,
-    "**/Thumbs.db": true,
-    "deno.lock": true
+    "**/Thumbs.db": true
   },
   "search.exclude": {
     "**/node_modules": true,
     "**/bower_components": true,
-    "**/*.code-search": true,
-    "deno.lock": true
+    "**/*.code-search": true
   }
 }

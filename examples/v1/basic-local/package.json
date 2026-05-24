@@ -1,0 +1,11 @@
+{
+  "name": "@async/example-v1-basic-local",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../../scripts/dev-example.mjs"
+  },
+  "dependencies": {
+    "@async/framework-v1": "workspace:*"
+  }
+}

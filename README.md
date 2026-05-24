@@ -278,21 +278,33 @@ Handlers:
 ## Project Structure
 
 ```
+frameworks/
+  current/                 # Canonical @async/framework package, currently backed by v1
+  v0/                      # Framework package for prototype v0
+  v1/                      # Framework package for prototype v1
+examples/
+  v0/                      # Examples that target @async/framework-v0
+  v1/                      # Examples that target @async/framework-v1
+benchmarks/
+  run.ts                   # Common benchmark runner
+  scenarios/               # Shared benchmark scenarios
 packages/
-  examples/                # Example applications
-  async-loader/            # Core async loading functionality
-  dev/                     # Development server
-  custom-element-signals/  # Custom element integration
+  custom-element-signals/  # Related custom element signal package
+  dev/                     # Legacy Deno development server
 ```
 
 ## Getting Started
 
 1. Clone the repository
-2. Install Deno if not already installed
-3. Run example apps:
-   deno task start
+2. Install Node.js 20+ and pnpm
+3. Install dependencies:
+   `pnpm install`
+4. Run WinterCG portability lint:
+   `pnpm lint:wintercg`
+5. Run framework comparison benchmarks:
+   `pnpm benchmark`
 
-Visit http://localhost:8000 to see the examples in action.
+Benchmark reports are saved to `benchmarks/results/`.
 
 # Framework Prompt
 

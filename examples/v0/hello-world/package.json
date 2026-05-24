@@ -1,0 +1,11 @@
+{
+  "name": "@async/example-v0-hello-world",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../../scripts/dev-example.mjs"
+  },
+  "dependencies": {
+    "@async/framework-v0": "workspace:*"
+  }
+}

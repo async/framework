@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Client JSX Example</title>
+    <script src="https://cdn.tailwindcss.com/3.4.5"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "@async/framework-v0/jsx-runtime": "/frameworks/v0/src/jsx-runtime.ts",
+          "@async/framework-v0": "/frameworks/v0/src/index.ts",
+          "custom-element-signals": "/custom-element-signals.js"
+        }
+      }
+    </script>
+    <script type="module" src="/livereload.js"></script>
+    <script type="module">
+      import { render } from "@async/framework-v0";
+      import { App } from "./App.tsx";
+
+      const framework = render(App, {
+        // not required anymore
+        // events: ["update"],
+      });
+      window.framework = framework;
+    </script>
+  </head>
+  <body class="bg-gray-100 min-h-screen">
+    <header class="w-full bg-blue-600 p-4 text-white mb-8">
+      <div class="container mx-auto">
+        <a href="/" class="text-xl font-bold hover:underline"
+        >← Back to Examples</a>
+      </div>
+    </header>
+    <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">
+      jsx client example
+    </h1>
+    <div class="container mx-auto px-4" data-container="root">
+      <!-- App will be rendered here -->
+    </div>
+  </body>
+</html>

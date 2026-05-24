@@ -1,0 +1,13 @@
+{
+  "name": "@async/framework-v1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./signals": "./src/signals-lite.ts"
+  },
+  "types": "./src/index.ts"
+}

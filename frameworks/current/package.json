@@ -1,0 +1,15 @@
+{
+  "name": "@async/framework",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@async/framework-v1": "workspace:*"
+  },
+  "exports": {
+    ".": "./index.ts"
+  },
+  "types": "./index.ts"
+}

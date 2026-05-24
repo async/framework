@@ -26,6 +26,9 @@ coverage
 # nyc test coverage
 .nyc_output
 
+# Benchmark output
+benchmarks/results/
+
 # Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
 .grunt
 
@@ -41,6 +44,7 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+.pnpm-home/
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
