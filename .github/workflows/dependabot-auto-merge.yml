@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   dependabot:
-    name: approve and auto-merge
+    name: approve and merge
     runs-on: ubuntu-latest
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.draft == false
     steps:
@@ -69,8 +69,53 @@ jobs:
             gh pr review --approve "$PR_URL"
           fi
 
-      - name: Enable auto-merge
+      - name: Wait for checks
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash --delete-branch "$PR_URL"
+        run: |
+          set -euo pipefail
+
+          deadline=$((SECONDS + 1800))
+          empty_since=""
+
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            checks_json="$(gh pr checks "$PR_URL" --json name,bucket,workflow 2>/dev/null || true)"
+            relevant_checks="$(jq '[.[] | select(.workflow != "Dependabot auto-merge" and .name != "approve and merge")]' <<<"${checks_json:-[]}")"
+            check_count="$(jq 'length' <<<"$relevant_checks")"
+            failing_count="$(jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' <<<"$relevant_checks")"
+            pending_count="$(jq '[.[] | select(.bucket == "pending")] | length' <<<"$relevant_checks")"
+
+            if [ "$failing_count" -gt 0 ]; then
+              echo "$relevant_checks"
+              echo "::error::At least one check failed or was cancelled."
+              exit 1
+            fi
+
+            if [ "$check_count" -eq 0 ]; then
+              if [ -z "$empty_since" ]; then
+                empty_since="$SECONDS"
+              fi
+
+              if [ $((SECONDS - empty_since)) -ge 90 ]; then
+                echo "No non-auto-merge checks were reported after 90 seconds."
+                exit 0
+              fi
+            elif [ "$pending_count" -eq 0 ]; then
+              echo "All reported non-auto-merge checks passed or were skipped."
+              exit 0
+            else
+              empty_since=""
+            fi
+
+            sleep 15
+          done
+
+          echo "::error::Timed out waiting for checks to finish."
+          exit 1
+
+      - name: Merge Dependabot PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --squash --delete-branch "$PR_URL"
