@@ -1,0 +1,76 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependabot:
+    name: approve and auto-merge
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.draft == false
+    steps:
+      - name: Fetch Dependabot metadata
+        id: dependabot-metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify dependency update scope
+        env:
+          PACKAGE_ECOSYSTEM: ${{ steps.dependabot-metadata.outputs.package-ecosystem }}
+          DEPENDENCY_NAMES: ${{ steps.dependabot-metadata.outputs.dependency-names }}
+          UPDATED_DEPENDENCIES_JSON: ${{ steps.dependabot-metadata.outputs.updated-dependencies-json }}
+        run: |
+          set -euo pipefail
+
+          case "$PACKAGE_ECOSYSTEM" in
+            github-actions|npm|deno) ;;
+            *)
+              echo "::error::Unsupported Dependabot ecosystem: $PACKAGE_ECOSYSTEM"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$DEPENDENCY_NAMES" ]; then
+            echo "::error::Dependabot metadata did not include dependency names."
+            exit 1
+          fi
+
+          dependency_count="$(jq 'length' <<<"$UPDATED_DEPENDENCIES_JSON")"
+          if [ "$dependency_count" -eq 0 ]; then
+            echo "::error::Dependabot metadata did not include updated dependencies."
+            exit 1
+          fi
+
+      - name: Approve Dependabot PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+
+          review_decision="$(gh pr view "$PR_URL" --json reviewDecision -q .reviewDecision)"
+          if [ "$review_decision" = "APPROVED" ]; then
+            echo "PR is already approved."
+          else
+            gh pr review --approve "$PR_URL"
+          fi
+
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash --delete-branch "$PR_URL"
