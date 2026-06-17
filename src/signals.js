@@ -1,5 +1,6 @@
 import { asyncSignal as createAsyncSignal, isAsyncSignal } from "./async-signal.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
+import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
 const signalKind = Symbol.for("@async/framework.signal");
 const computedKind = Symbol.for("@async/framework.computed");
@@ -122,6 +123,8 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
   const type = options.type ?? "signal";
   const entries = registryStore._map(type);
+  const asyncDescriptors = registryStore._map("asyncSignal");
+  const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
   const registryCleanups = new Map();
   const runtimeContext = {};
   const boundEntries = new Set();
@@ -162,6 +165,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
 
     ensure(id, initial) {
       assertId(id);
+      materializeAsyncSignal(id);
       if (!entries.has(id)) {
         registry.register(id, createSignal(initial));
       }
@@ -169,18 +173,18 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     },
 
     has(id) {
-      return entries.has(id);
+      return entries.has(id) || asyncDescriptors.has(id);
     },
 
     get(path) {
-      const parsed = parsePath(path, entries);
+      const parsed = parseRegistryPath(path);
       track(parsed.path);
       const entry = requireEntry(entries, parsed.id);
       return readEntry(entry, parsed.parts);
     },
 
     set(path, value) {
-      const parsed = parsePath(path, entries);
+      const parsed = parseRegistryPath(path);
       const entry = requireEntry(entries, parsed.id);
       if (parsed.parts.length === 0) {
         return entry.set(value);
@@ -199,6 +203,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
 
     ref(id) {
       assertId(id);
+      materializeAsyncSignal(id);
       return createRef(registry, id);
     },
 
@@ -206,7 +211,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
       if (typeof fn !== "function") {
         throw new TypeError("subscribe(path, fn) requires a function.");
       }
-      const parsed = parsePath(path, entries);
+      const parsed = parseRegistryPath(path);
       const entry = requireEntry(entries, parsed.id);
       const subscriptionId = ++subscriptionCounter;
       return entry.subscribe(() => {
@@ -312,6 +317,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     },
 
     _entry(id) {
+      materializeAsyncSignal(id);
       return requireEntry(entries, id);
     },
 
@@ -349,6 +355,42 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     if (typeof cleanup === "function") {
       registryCleanups.set(id, cleanup);
     }
+  }
+
+  function parseRegistryPath(path) {
+    if (typeof path !== "string" || path.length === 0) {
+      throw new TypeError("Signal path must be a non-empty string.");
+    }
+    const segments = path.split(".");
+    for (let end = segments.length; end > 0; end -= 1) {
+      const id = segments.slice(0, end).join(".");
+      if (entries.has(id) || asyncDescriptors.has(id)) {
+        materializeAsyncSignal(id);
+        return { id, parts: segments.slice(end), path };
+      }
+    }
+    const [id, ...parts] = segments;
+    return { id, parts, path };
+  }
+
+  function materializeAsyncSignal(id) {
+    if (entries.has(id) || !asyncDescriptors.has(id)) {
+      return;
+    }
+    const descriptor = asyncDescriptors.get(id);
+    if (!isLazyDescriptor(descriptor) && typeof descriptor !== "function") {
+      throw new TypeError(`Async signal "${id}" must be a function or lazy descriptor.`);
+    }
+    const loader = async function runLazyAsyncSignal(...args) {
+      const resolved = await lazyRegistry.resolve("asyncSignal", id, descriptor);
+      if (typeof resolved !== "function") {
+        throw new TypeError(`Async signal "${id}" did not resolve to a function.`);
+      }
+      return resolved.apply(this, args);
+    };
+    const entry = createAsyncSignal(id, loader);
+    entries.set(id, entry);
+    bindEntry(id, entry);
   }
 
   function scheduleCallback(fn, options = {}) {

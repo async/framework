@@ -1,4 +1,6 @@
-const declarationTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
+import { publicRegistryValue } from "./lazy-registry.js";
+
+const declarationTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal"]);
 const cacheTypes = new Set(["cache.browser", "cache.server"]);
 const cacheEntryTypes = new Set(["cache.browser.entries", "cache.server.entries"]);
 const allTypes = new Set([...declarationTypes, ...cacheTypes, ...cacheEntryTypes]);
@@ -85,11 +87,12 @@ export function createRegistryStore(initial = {}, options = {}) {
       const snapshotTarget = snapshotOptions.target ?? target;
       return {
         signal: snapshotSignals(backing.signal),
-        handler: snapshotDescriptors(backing.handler, "handler"),
-        server: snapshotDescriptors(backing.server, "server"),
-        partial: snapshotDescriptors(backing.partial, "partial"),
+        handler: snapshotDescriptors(backing.handler),
+        server: snapshotDescriptors(backing.server),
+        partial: snapshotDescriptors(backing.partial),
         route: snapshotPlain(backing.route),
-        component: snapshotDescriptors(backing.component, "component"),
+        component: snapshotDescriptors(backing.component),
+        asyncSignal: snapshotDescriptors(backing.asyncSignal),
         cache: {
           browser: snapshotPlain(backing.cache.browser),
           server: snapshotPlain(backing.cache.server)
@@ -109,6 +112,7 @@ export function createRegistryStore(initial = {}, options = {}) {
         partial: Object.fromEntries(backing.partial),
         route: Object.fromEntries(backing.route),
         component: Object.fromEntries(backing.component),
+        asyncSignal: Object.fromEntries(backing.asyncSignal),
         cache: {
           browser: Object.fromEntries(backing.cache.browser),
           server: Object.fromEntries(backing.cache.server)
@@ -168,6 +172,7 @@ function createBacking() {
     partial: new Map(),
     route: new Map(),
     component: new Map(),
+    asyncSignal: new Map(),
     cache: {
       browser: new Map(),
       server: new Map()
@@ -186,6 +191,7 @@ function applyInitial(registry, initial = {}) {
   registry.registerMany("partial", initial.partial);
   registry.registerMany("route", initial.route);
   registry.registerMany("component", initial.component);
+  registry.registerMany("asyncSignal", initial.asyncSignal);
   registry.registerMany("cache.browser", initial.cache?.browser);
   registry.registerMany("cache.server", initial.cache?.server);
 
@@ -213,7 +219,7 @@ function assertId(type, id) {
 
 function publicValue(type, id, value, options) {
   if (type === "server" && options.target === "browser") {
-    return { id, kind: "server" };
+    return publicRegistryValue(value, id);
   }
   if (cacheEntryTypes.has(type)) {
     return value?.value;
@@ -233,10 +239,10 @@ function snapshotSignals(map) {
   return snapshot;
 }
 
-function snapshotDescriptors(map, kind) {
+function snapshotDescriptors(map) {
   const snapshot = {};
-  for (const id of map.keys()) {
-    snapshot[id] = { id, kind };
+  for (const [id, value] of map) {
+    snapshot[id] = publicRegistryValue(value, id);
   }
   return snapshot;
 }

@@ -283,8 +283,217 @@ const __asyncSignalModule = (() => {
   return { asyncSignal, isAsyncSignal };
 })();
 
+const __lazyRegistryModule = (() => {
+  const descriptorTypes = new Set(["handler", "component", "asyncSignal", "partial", "route"]);
+  const defaultBaseUrl = "_async";
+
+  function defineRegistrySnapshot(snapshot = {}) {
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      throw new TypeError("defineRegistrySnapshot(snapshot) requires an object.");
+    }
+    return snapshot;
+  }
+
+  function createLazyRegistry(options = {}) {
+    const registryAssets = normalizeRegistryAssets(options.registryAssets ?? options.assets);
+    const importModule = options.importModule ?? ((url) => import(url));
+    const moduleCache = new Map();
+    const exportCache = new Map();
+
+    return {
+      registryAssets,
+
+      resolveUrl(type, id, descriptor) {
+        return resolveDescriptorUrl(type, id, descriptor, registryAssets);
+      },
+
+      async resolve(type, id, descriptor) {
+        if (!isLazyDescriptor(descriptor)) {
+          return descriptor;
+        }
+        const cacheKey = `${type}:${id}`;
+        if (exportCache.has(cacheKey)) {
+          return exportCache.get(cacheKey);
+        }
+
+        const resolved = resolveDescriptorUrl(type, id, descriptor, registryAssets);
+        let modulePromise = moduleCache.get(resolved.moduleUrl);
+        if (!modulePromise) {
+          modulePromise = Promise.resolve(importModule(resolved.moduleUrl));
+          moduleCache.set(resolved.moduleUrl, modulePromise);
+        }
+        const module = await modulePromise;
+        const value = resolveExport(module, resolved.exportNames, type, id);
+        exportCache.set(cacheKey, value);
+        return value;
+      },
+
+      inspect() {
+        return {
+          registryAssets,
+          modules: [...moduleCache.keys()],
+          exports: [...exportCache.keys()]
+        };
+      }
+    };
+  }
+
+  function normalizeRegistryAssets(options = {}) {
+    const baseUrl = normalizeBaseUrl(options.baseUrl ?? defaultBaseUrl);
+    const paths = {
+      component: "component",
+      handler: "handler",
+      asyncSignal: "asyncSignal",
+      partial: "partial",
+      route: "route",
+      ...(options.paths ?? {})
+    };
+
+    for (const [type, value] of Object.entries(paths)) {
+      if (!descriptorTypes.has(type)) {
+        continue;
+      }
+      if (typeof value !== "string" || value.length === 0) {
+        throw new TypeError(`Registry asset path for "${type}" must be a non-empty string.`);
+      }
+    }
+
+    return {
+      baseUrl,
+      paths
+    };
+  }
+
+  function isLazyDescriptor(value) {
+    return Boolean(
+      value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof value.url === "string"
+    );
+  }
+
+  function sameRegistryValue(left, right) {
+    if (left === right) {
+      return true;
+    }
+    if (isLazyDescriptor(left) && isLazyDescriptor(right)) {
+      return stableStringify(left) === stableStringify(right);
+    }
+    return false;
+  }
+
+  function publicRegistryValue(value, id) {
+    if (isLazyDescriptor(value)) {
+      return { ...value };
+    }
+    return { id };
+  }
+
+  function resolveDescriptorUrl(type, id, descriptor, registryAssets) {
+    if (!descriptorTypes.has(type)) {
+      throw new Error(`Registry type "${type}" does not support lazy descriptors.`);
+    }
+    if (!isLazyDescriptor(descriptor)) {
+      throw new TypeError(`Registry descriptor for "${type}:${id}" requires a url.`);
+    }
+
+    const { path, hash } = splitHash(descriptor.url);
+    const moduleUrl = resolveModuleUrl(type, path, registryAssets);
+    const exportNames = hash
+      ? [hash]
+      : inferredExportNames(id, path);
+
+    return {
+      moduleUrl,
+      exportNames,
+      url: hash ? `${moduleUrl}#${hash}` : moduleUrl
+    };
+  }
+
+  function resolveModuleUrl(type, path, registryAssets) {
+    if (isAbsoluteUrl(path) || path.startsWith("/") || path.startsWith("./") || path.startsWith("../")) {
+      return path;
+    }
+    const typePath = registryAssets.paths[type] ?? type;
+    return joinUrl(registryAssets.baseUrl, typePath, path);
+  }
+
+  function resolveExport(module, exportNames, type, id) {
+    for (const name of exportNames) {
+      if (name in module) {
+        return module[name];
+      }
+    }
+    throw new Error(`Lazy ${type} "${id}" did not export ${exportNames.map((name) => `"${name}"`).join(", ")}.`);
+  }
+
+  function inferredExportNames(id, path) {
+    const names = [];
+    const leaf = id.split(".").filter(Boolean).at(-1);
+    const basename = path
+      .split("/")
+      .filter(Boolean)
+      .at(-1)
+      ?.replace(/\.[^.]+$/, "");
+    for (const name of [leaf, basename, "default"]) {
+      if (name && !names.includes(name)) {
+        names.push(name);
+      }
+    }
+    return names;
+  }
+
+  function splitHash(url) {
+    const index = url.indexOf("#");
+    if (index === -1) {
+      return { path: url, hash: "" };
+    }
+    return {
+      path: url.slice(0, index),
+      hash: url.slice(index + 1)
+    };
+  }
+
+  function normalizeBaseUrl(baseUrl) {
+    if (typeof baseUrl !== "string" || baseUrl.length === 0) {
+      throw new TypeError("registryAssets.baseUrl must be a non-empty string.");
+    }
+    if (isAbsoluteUrl(baseUrl) || baseUrl.startsWith("/") || baseUrl.startsWith("./") || baseUrl.startsWith("../")) {
+      return stripTrailingSlash(baseUrl);
+    }
+    return `/${stripSlashes(baseUrl)}`;
+  }
+
+  function joinUrl(...parts) {
+    const [first, ...rest] = parts;
+    return [stripTrailingSlash(first), ...rest.map(stripSlashes)].filter(Boolean).join("/");
+  }
+
+  function stripSlashes(value) {
+    return String(value).replace(/^\/+|\/+$/g, "");
+  }
+
+  function stripTrailingSlash(value) {
+    return String(value).replace(/\/+$/g, "");
+  }
+
+  function isAbsoluteUrl(value) {
+    return /^[A-Za-z][A-Za-z\d+.-]*:/.test(value);
+  }
+
+  function stableStringify(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return JSON.stringify(value);
+    }
+    return JSON.stringify(Object.keys(value).sort().map((key) => [key, value[key]]));
+  }
+  return { defineRegistrySnapshot, createLazyRegistry, normalizeRegistryAssets, isLazyDescriptor, sameRegistryValue, publicRegistryValue };
+})();
+
 const __registryStoreModule = (() => {
-  const declarationTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
+  const { publicRegistryValue } = __lazyRegistryModule;
+  const declarationTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal"]);
   const cacheTypes = new Set(["cache.browser", "cache.server"]);
   const cacheEntryTypes = new Set(["cache.browser.entries", "cache.server.entries"]);
   const allTypes = new Set([...declarationTypes, ...cacheTypes, ...cacheEntryTypes]);
@@ -371,11 +580,12 @@ const __registryStoreModule = (() => {
         const snapshotTarget = snapshotOptions.target ?? target;
         return {
           signal: snapshotSignals(backing.signal),
-          handler: snapshotDescriptors(backing.handler, "handler"),
-          server: snapshotDescriptors(backing.server, "server"),
-          partial: snapshotDescriptors(backing.partial, "partial"),
+          handler: snapshotDescriptors(backing.handler),
+          server: snapshotDescriptors(backing.server),
+          partial: snapshotDescriptors(backing.partial),
           route: snapshotPlain(backing.route),
-          component: snapshotDescriptors(backing.component, "component"),
+          component: snapshotDescriptors(backing.component),
+          asyncSignal: snapshotDescriptors(backing.asyncSignal),
           cache: {
             browser: snapshotPlain(backing.cache.browser),
             server: snapshotPlain(backing.cache.server)
@@ -395,6 +605,7 @@ const __registryStoreModule = (() => {
           partial: Object.fromEntries(backing.partial),
           route: Object.fromEntries(backing.route),
           component: Object.fromEntries(backing.component),
+          asyncSignal: Object.fromEntries(backing.asyncSignal),
           cache: {
             browser: Object.fromEntries(backing.cache.browser),
             server: Object.fromEntries(backing.cache.server)
@@ -454,6 +665,7 @@ const __registryStoreModule = (() => {
       partial: new Map(),
       route: new Map(),
       component: new Map(),
+      asyncSignal: new Map(),
       cache: {
         browser: new Map(),
         server: new Map()
@@ -472,6 +684,7 @@ const __registryStoreModule = (() => {
     registry.registerMany("partial", initial.partial);
     registry.registerMany("route", initial.route);
     registry.registerMany("component", initial.component);
+    registry.registerMany("asyncSignal", initial.asyncSignal);
     registry.registerMany("cache.browser", initial.cache?.browser);
     registry.registerMany("cache.server", initial.cache?.server);
 
@@ -499,7 +712,7 @@ const __registryStoreModule = (() => {
 
   function publicValue(type, id, value, options) {
     if (type === "server" && options.target === "browser") {
-      return { id, kind: "server" };
+      return publicRegistryValue(value, id);
     }
     if (cacheEntryTypes.has(type)) {
       return value?.value;
@@ -519,10 +732,10 @@ const __registryStoreModule = (() => {
     return snapshot;
   }
 
-  function snapshotDescriptors(map, kind) {
+  function snapshotDescriptors(map) {
     const snapshot = {};
-    for (const id of map.keys()) {
-      snapshot[id] = { id, kind };
+    for (const [id, value] of map) {
+      snapshot[id] = publicRegistryValue(value, id);
     }
     return snapshot;
   }
@@ -799,6 +1012,7 @@ const __attributesModule = (() => {
 const __signalsModule = (() => {
   const { asyncSignal: createAsyncSignal, isAsyncSignal } = __asyncSignalModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
+  const { createLazyRegistry, isLazyDescriptor } = __lazyRegistryModule;
   const signalKind = Symbol.for("@async/framework.signal");
   const computedKind = Symbol.for("@async/framework.computed");
   const effectKind = Symbol.for("@async/framework.effect");
@@ -920,6 +1134,8 @@ const __signalsModule = (() => {
     const registryStore = options.registry ?? createRegistryStore();
     const type = options.type ?? "signal";
     const entries = registryStore._map(type);
+    const asyncDescriptors = registryStore._map("asyncSignal");
+    const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
     const registryCleanups = new Map();
     const runtimeContext = {};
     const boundEntries = new Set();
@@ -960,6 +1176,7 @@ const __signalsModule = (() => {
 
       ensure(id, initial) {
         assertId(id);
+        materializeAsyncSignal(id);
         if (!entries.has(id)) {
           registry.register(id, createSignal(initial));
         }
@@ -967,18 +1184,18 @@ const __signalsModule = (() => {
       },
 
       has(id) {
-        return entries.has(id);
+        return entries.has(id) || asyncDescriptors.has(id);
       },
 
       get(path) {
-        const parsed = parsePath(path, entries);
+        const parsed = parseRegistryPath(path);
         track(parsed.path);
         const entry = requireEntry(entries, parsed.id);
         return readEntry(entry, parsed.parts);
       },
 
       set(path, value) {
-        const parsed = parsePath(path, entries);
+        const parsed = parseRegistryPath(path);
         const entry = requireEntry(entries, parsed.id);
         if (parsed.parts.length === 0) {
           return entry.set(value);
@@ -997,6 +1214,7 @@ const __signalsModule = (() => {
 
       ref(id) {
         assertId(id);
+        materializeAsyncSignal(id);
         return createRef(registry, id);
       },
 
@@ -1004,7 +1222,7 @@ const __signalsModule = (() => {
         if (typeof fn !== "function") {
           throw new TypeError("subscribe(path, fn) requires a function.");
         }
-        const parsed = parsePath(path, entries);
+        const parsed = parseRegistryPath(path);
         const entry = requireEntry(entries, parsed.id);
         const subscriptionId = ++subscriptionCounter;
         return entry.subscribe(() => {
@@ -1110,6 +1328,7 @@ const __signalsModule = (() => {
       },
 
       _entry(id) {
+        materializeAsyncSignal(id);
         return requireEntry(entries, id);
       },
 
@@ -1147,6 +1366,42 @@ const __signalsModule = (() => {
       if (typeof cleanup === "function") {
         registryCleanups.set(id, cleanup);
       }
+    }
+
+    function parseRegistryPath(path) {
+      if (typeof path !== "string" || path.length === 0) {
+        throw new TypeError("Signal path must be a non-empty string.");
+      }
+      const segments = path.split(".");
+      for (let end = segments.length; end > 0; end -= 1) {
+        const id = segments.slice(0, end).join(".");
+        if (entries.has(id) || asyncDescriptors.has(id)) {
+          materializeAsyncSignal(id);
+          return { id, parts: segments.slice(end), path };
+        }
+      }
+      const [id, ...parts] = segments;
+      return { id, parts, path };
+    }
+
+    function materializeAsyncSignal(id) {
+      if (entries.has(id) || !asyncDescriptors.has(id)) {
+        return;
+      }
+      const descriptor = asyncDescriptors.get(id);
+      if (!isLazyDescriptor(descriptor) && typeof descriptor !== "function") {
+        throw new TypeError(`Async signal "${id}" must be a function or lazy descriptor.`);
+      }
+      const loader = async function runLazyAsyncSignal(...args) {
+        const resolved = await lazyRegistry.resolve("asyncSignal", id, descriptor);
+        if (typeof resolved !== "function") {
+          throw new TypeError(`Async signal "${id}" did not resolve to a function.`);
+        }
+        return resolved.apply(this, args);
+      };
+      const entry = createAsyncSignal(id, loader);
+      entries.set(id, entry);
+      bindEntry(id, entry);
     }
 
     function scheduleCallback(fn, options = {}) {
@@ -1514,6 +1769,7 @@ const __componentModule = (() => {
   const { attributeName } = __attributesModule;
   const { escapeHtml, rawHtml, renderTemplate } = __htmlModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
+  const { createLazyRegistry, isLazyDescriptor } = __lazyRegistryModule;
   const componentKind = Symbol.for("@async/framework.component");
   let componentCounter = 0;
 
@@ -1534,13 +1790,15 @@ const __componentModule = (() => {
     const registryStore = options.registry ?? createRegistryStore();
     const type = options.type ?? "component";
     const entries = registryStore._map(type);
+    const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
+    const lazyComponents = new Map();
 
     const registry = attachRegistryInspection({
       register(id, Component) {
         if (typeof id !== "string" || id.length === 0) {
           throw new TypeError("Component id must be a non-empty string.");
         }
-        if (!isComponent(Component) && typeof Component !== "function") {
+        if (!isComponent(Component) && typeof Component !== "function" && !isLazyDescriptor(Component)) {
           throw new TypeError(`Component "${id}" must be a component function.`);
         }
         if (entries.has(id)) {
@@ -1561,6 +1819,7 @@ const __componentModule = (() => {
         if (typeof id !== "string" || id.length === 0) {
           throw new TypeError("Component id must be a non-empty string.");
         }
+        lazyComponents.delete(id);
         return entries.delete(id);
       },
 
@@ -1568,7 +1827,20 @@ const __componentModule = (() => {
         if (typeof id !== "string" || id.length === 0) {
           throw new TypeError("Component id must be a non-empty string.");
         }
-        return entries.get(id);
+        const Component = entries.get(id);
+        if (!isLazyDescriptor(Component)) {
+          return Component;
+        }
+        if (!lazyComponents.has(id)) {
+          lazyComponents.set(id, async function LazyComponent(...args) {
+            const resolved = await lazyRegistry.resolve(type, id, Component);
+            if (typeof resolved !== "function") {
+              throw new TypeError(`Component "${id}" did not resolve to a function.`);
+            }
+            return resolved.apply(this, args);
+          });
+        }
+        return lazyComponents.get(id);
       },
 
       _adoptMany() {
@@ -2233,6 +2505,7 @@ const __serverModule = (() => {
 const __handlersModule = (() => {
   const { applyServerResult, defaultInput, resolveServerCommandArguments, unwrapServerResult } = __serverModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
+  const { createLazyRegistry, isLazyDescriptor } = __lazyRegistryModule;
   const builtInTokens = new Set(["prevent", "preventDefault", "stopPropagation", "stopImmediatePropagation"]);
   const builtInHandlers = {
     prevent: preventDefault,
@@ -2253,11 +2526,13 @@ const __handlersModule = (() => {
     const registryStore = options.registry ?? createRegistryStore();
     const type = options.type ?? "handler";
     const handlers = registryStore._map(type);
+    const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
+    const lazyHandlers = new Map();
 
     const registry = attachRegistryInspection({
       register(id, fn) {
         assertId(id);
-        if (typeof fn !== "function") {
+        if (typeof fn !== "function" && !isLazyDescriptor(fn)) {
           throw new TypeError(`Handler "${id}" must be a function.`);
         }
         if (handlers.has(id)) {
@@ -2276,12 +2551,26 @@ const __handlersModule = (() => {
 
       unregister(id) {
         assertId(id);
+        lazyHandlers.delete(id);
         return handlers.delete(id);
       },
 
       resolve(id) {
         assertId(id);
-        return handlers.get(id);
+        const handler = handlers.get(id);
+        if (!isLazyDescriptor(handler)) {
+          return handler;
+        }
+        if (!lazyHandlers.has(id)) {
+          lazyHandlers.set(id, async function runLazyHandler(...args) {
+            const resolved = await lazyRegistry.resolve(type, id, handler);
+            if (typeof resolved !== "function") {
+              throw new TypeError(`Handler "${id}" did not resolve to a function.`);
+            }
+            return resolved.apply(this, args);
+          });
+        }
+        return lazyHandlers.get(id);
       },
 
       async run(ref, context = {}) {
@@ -3071,7 +3360,7 @@ const __loaderModule = (() => {
         if (renderingBoundaries.has(boundary)) {
           continue;
         }
-        const id = readAttribute(boundary, attributeConfig, "async", "boundary");
+        const id = boundaryIdFor(boundary, attributeConfig);
         if (id == null) {
           continue;
         }
@@ -3388,17 +3677,24 @@ const __loaderModule = (() => {
   function collectBoundaryTemplates(boundary, id, attributeConfig) {
     const templates = {};
     for (const template of [...boundary.children].filter((child) => child.tagName === "TEMPLATE")) {
-      if (readAttribute(template, attributeConfig, "async", "loading") === id) {
+      if (templateMatchesState(template, "loading", id, boundary, attributeConfig)) {
         templates.loading = template;
       }
-      if (readAttribute(template, attributeConfig, "async", "ready") === id) {
+      if (templateMatchesState(template, "ready", id, boundary, attributeConfig)) {
         templates.ready = template;
       }
-      if (readAttribute(template, attributeConfig, "async", "error") === id) {
+      if (templateMatchesState(template, "error", id, boundary, attributeConfig)) {
         templates.error = template;
       }
     }
     return templates;
+  }
+
+  function templateMatchesState(template, state, id, boundary, attributeConfig) {
+    if (readAttribute(template, attributeConfig, "async", state) === id) {
+      return true;
+    }
+    return isAsyncSuspense(boundary) && template.hasAttribute?.(state);
   }
 
   function chooseBoundaryTemplate(templates, status) {
@@ -3448,11 +3744,22 @@ const __loaderModule = (() => {
 
   function findBoundary(root, boundaryId, attributeConfig) {
     for (const element of elementsIn(root)) {
-      if (readAttribute(element, attributeConfig, "async", "boundary") === String(boundaryId)) {
+      if (boundaryIdFor(element, attributeConfig) === String(boundaryId)) {
         return element;
       }
     }
     return null;
+  }
+
+  function boundaryIdFor(element, attributeConfig) {
+    if (isAsyncSuspense(element) && element.hasAttribute?.("for")) {
+      return element.getAttribute("for");
+    }
+    return readAttribute(element, attributeConfig, "async", "boundary");
+  }
+
+  function isAsyncSuspense(element) {
+    return element?.tagName === "ASYNC-SUSPENSE";
   }
 
   function toFragment(value, documentRef) {
@@ -3487,15 +3794,18 @@ const __loaderModule = (() => {
 const __partialsModule = (() => {
   const { isTemplateResult, renderTemplate } = __htmlModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
+  const { createLazyRegistry, isLazyDescriptor } = __lazyRegistryModule;
   function createPartialRegistry(initialMap = {}, options = {}) {
     const registryStore = options.registry ?? createRegistryStore();
     const type = options.type ?? "partial";
     const entries = registryStore._map(type);
+    const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
+    const lazyPartials = new Map();
 
     const registry = attachRegistryInspection({
       register(id, fn) {
         assertId(id);
-        if (typeof fn !== "function") {
+        if (typeof fn !== "function" && !isLazyDescriptor(fn)) {
           throw new TypeError(`Partial "${id}" must be a function.`);
         }
         if (entries.has(id)) {
@@ -3514,12 +3824,26 @@ const __partialsModule = (() => {
 
       unregister(id) {
         assertId(id);
+        lazyPartials.delete(id);
         return entries.delete(id);
       },
 
       resolve(id) {
         assertId(id);
-        return entries.get(id);
+        const partial = entries.get(id);
+        if (!isLazyDescriptor(partial)) {
+          return partial;
+        }
+        if (!lazyPartials.has(id)) {
+          lazyPartials.set(id, async function runLazyPartial(...args) {
+            const resolved = await lazyRegistry.resolve(type, id, partial);
+            if (typeof resolved !== "function") {
+              throw new TypeError(`Partial "${id}" did not resolve to a function.`);
+            }
+            return resolved.apply(this, args);
+          });
+        }
+        return lazyPartials.get(id);
       },
 
       async render(id, props = {}, context = {}) {
@@ -4189,7 +4513,8 @@ const __appModule = (() => {
   const { createSignal, createSignalRegistry } = __signalsModule;
   const { createRegistryStore } = __registryStoreModule;
   const { attributeName, normalizeAttributeConfig } = __attributesModule;
-  const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
+  const { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } = __lazyRegistryModule;
+  const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal"]);
 
   function defineApp(initial, options = {}) {
     const registry = createRegistryStore(undefined, { target: "browser" });
@@ -4218,6 +4543,27 @@ const __appModule = (() => {
         return runtime;
       },
 
+      attachRoot(root) {
+        return ensureRuntime(app).attachRoot(root);
+      },
+
+      detachRoot(root) {
+        return app.runtime?.detachRoot(root) ?? app;
+      },
+
+      applySnapshot(snapshot, snapshotOptions = {}) {
+        if (app.runtime) {
+          app.runtime.applySnapshot(snapshot, snapshotOptions);
+          return app;
+        }
+        appendSnapshotDeclarations(registry, snapshot, snapshotOptions);
+        return app;
+      },
+
+      inspectRoots() {
+        return app.runtime?.inspectRoots() ?? { count: 0, roots: [] };
+      },
+
       _attach(runtime) {
         runtimes.add(runtime);
         return () => app._detach(runtime);
@@ -4243,23 +4589,32 @@ const __appModule = (() => {
     });
     const ownsScheduler = !options.scheduler && !options.loader?.scheduler;
     const attributes = normalizeAttributeConfig(options.attributes);
+    const lazyRegistry = options.lazyRegistry ?? createLazyRegistry({
+      registryAssets: options.registryAssets,
+      importModule: options.importModule
+    });
     const registry = options.registry ?? app.registry.view({ target });
-    const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal" });
-    const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler" });
+    const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal", lazyRegistry });
+    const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler", lazyRegistry });
     const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
     const browserCache = createCacheRegistry(undefined, { registry, type: "cache.browser" });
     const serverFactory = options.serverFactory ?? createServerReferenceRegistry;
     const server = options.server ?? serverFactory(undefined, { registry, type: "server" });
-    const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial" });
+    const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial", lazyRegistry });
     const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
-    const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component" });
+    const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component", lazyRegistry });
+    const hasStartupRoot = options.loader || Object.hasOwn(options, "root");
+    const startupRoot = hasStartupRoot ? options.root : null;
     let loader = options.loader;
     let router = options.router;
+    let routerStarted = false;
     let detach = () => {};
     let started = false;
     let destroyed = false;
+    const rootLoaders = new Map();
 
-    applySnapshot(signals, browserCache, options.snapshot ?? (target === "browser" ? readSnapshot(options.root, { attributes }) : undefined));
+    const snapshotRoot = startupRoot ?? globalThis.document;
+    const initialSnapshot = options.snapshot ?? (target === "browser" ? readSnapshot(snapshotRoot, { attributes }) : undefined);
     attachServerCache(server, serverCache);
 
     const runtime = {
@@ -4288,43 +4643,15 @@ const __appModule = (() => {
         started = true;
 
         if (target !== "server") {
-          loader = loader ?? Loader({
-            root: options.root,
-            signals,
-            handlers,
-            server,
-            cache: browserCache,
-            scheduler,
-            attributes
-          });
-          runtime.loader = loader;
-
           configureServerContext({ cache: browserCache });
           signals._setContext?.({ server, loader, cache: browserCache, scheduler });
 
-          loader.start();
-
-          if (router !== false && (router || shouldStartRouter(routes, options))) {
-            router = router ?? createRouter({
-              mode: options.mode ?? "ssr-spa",
-              root: options.root,
-              boundary: options.boundary ?? "route",
-              routes,
-              loader,
-              signals,
-              handlers,
-              server,
-              cache: browserCache,
-              partials,
-              scheduler,
-              fetch: options.fetch,
-              routeEndpoint: options.routeEndpoint,
-              attributes
-            });
-            runtime.router = router;
-            loader.router = router;
-            configureServerContext({ cache: browserCache, router });
-            router.start();
+          if (loader) {
+            registerRootLoader(loader.root, loader);
+            loader.start();
+            startRouterFor(loader.root);
+          } else if (startupRoot != null) {
+            runtime.attachRoot(startupRoot);
           }
         } else {
           configureServerContext({ cache: serverCache });
@@ -4336,6 +4663,92 @@ const __appModule = (() => {
 
       use(typeOrModule, entries) {
         app.use(typeOrModule, entries);
+        return runtime;
+      },
+
+      attachRoot(root) {
+        assertActive();
+        if (target === "server") {
+          throw new Error("Server runtimes cannot attach DOM roots.");
+        }
+        if (!root) {
+          throw new TypeError("runtime.attachRoot(root) requires a root.");
+        }
+        if (rootLoaders.has(root)) {
+          return runtime;
+        }
+
+        const rootLoader = rootLoaders.size === 0 && loader
+          ? loader
+          : Loader({
+              root,
+              signals,
+              handlers,
+              server,
+              cache: browserCache,
+              scheduler,
+              attributes
+            });
+        registerRootLoader(root, rootLoader);
+        rootLoader.start();
+        configureServerContext({ cache: browserCache });
+        signals._setContext?.({ server, loader: runtime.loader, cache: browserCache, scheduler });
+        startRouterFor(root);
+        return runtime;
+      },
+
+      detachRoot(root) {
+        assertActive();
+        if (target === "server") {
+          return runtime;
+        }
+        if (root == null) {
+          for (const rootLoader of new Set(rootLoaders.values())) {
+            rootLoader.destroy?.();
+          }
+          rootLoaders.clear();
+          router?.destroy?.();
+          router = undefined;
+          routerStarted = false;
+          loader = undefined;
+          runtime.loader = undefined;
+          runtime.router = undefined;
+          return runtime;
+        }
+        const rootLoader = rootLoaders.get(root);
+        if (!rootLoader) {
+          return runtime;
+        }
+        rootLoader.destroy?.();
+        rootLoaders.delete(root);
+        if (loader === rootLoader) {
+          router?.destroy?.();
+          router = undefined;
+          routerStarted = false;
+          const next = rootLoaders.values().next().value;
+          loader = next;
+          runtime.loader = next;
+          runtime.router = undefined;
+          if (next) {
+            startRouterFor(next.root);
+          }
+        }
+        return runtime;
+      },
+
+      inspectRoots() {
+        return {
+          count: rootLoaders.size,
+          roots: [...rootLoaders].map(([root, rootLoader]) => ({
+            root,
+            loader: rootLoader,
+            primary: rootLoader === loader
+          }))
+        };
+      },
+
+      applySnapshot(snapshot, snapshotOptions = {}) {
+        applySnapshotToRuntime(runtime, snapshot, snapshotOptions);
         return runtime;
       },
 
@@ -4397,7 +4810,14 @@ const __appModule = (() => {
         destroyed = true;
         detach();
         router?.destroy?.();
-        loader?.destroy?.();
+        const destroyedLoaders = new Set(rootLoaders.values());
+        for (const rootLoader of destroyedLoaders) {
+          rootLoader.destroy?.();
+        }
+        rootLoaders.clear();
+        if (loader && !destroyedLoaders.has(loader)) {
+          loader?.destroy?.();
+        }
         signals.destroy?.();
         if (ownsScheduler) {
           scheduler.destroy();
@@ -4411,9 +4831,48 @@ const __appModule = (() => {
 
     server.cache = serverCache;
     runtime.server.cache = serverCache;
+    runtime.applySnapshot(initialSnapshot, { strict: options.strictSnapshots ?? true });
     detach = app._attach(runtime);
 
     return runtime;
+
+    function registerRootLoader(root, rootLoader) {
+      rootLoaders.set(root, rootLoader);
+      if (!loader) {
+        loader = rootLoader;
+        runtime.loader = rootLoader;
+      }
+      rootLoader.server = server;
+      rootLoader.cache = browserCache;
+      rootLoader.scheduler = scheduler;
+    }
+
+    function startRouterFor(root) {
+      if (router === false || routerStarted || !(router || shouldStartRouter(routes, options)) || !runtime.loader) {
+        return;
+      }
+      router = router ?? createRouter({
+        mode: options.mode ?? "ssr-spa",
+        root,
+        boundary: options.boundary ?? "route",
+        routes,
+        loader: runtime.loader,
+        signals,
+        handlers,
+        server,
+        cache: browserCache,
+        partials,
+        scheduler,
+        fetch: options.fetch,
+        routeEndpoint: options.routeEndpoint,
+        attributes
+      });
+      runtime.router = router;
+      runtime.loader.router = router;
+      configureServerContext({ cache: browserCache, router });
+      router.start();
+      routerStarted = true;
+    }
 
     function configureServerContext(extra = {}) {
       const cache = isLocalServerRegistry(server) ? serverCache : extra.cache;
@@ -4457,6 +4916,7 @@ const __appModule = (() => {
       return {};
     }
 
+    const merged = {};
     for (const searchRoot of new Set([rootNode, documentRef])) {
       if (!searchRoot?.querySelectorAll) {
         continue;
@@ -4467,17 +4927,19 @@ const __appModule = (() => {
         }
         const source = script.textContent?.trim() ?? "";
         if (!source) {
-          return {};
+          continue;
         }
+        let parsed;
         try {
-          return JSON.parse(source);
+          parsed = JSON.parse(source);
         } catch (cause) {
           throw new Error(`Could not parse Async snapshot: ${cause instanceof Error ? cause.message : String(cause)}`);
         }
+        mergeSnapshot(merged, parsed, { strict: true });
       }
     }
 
-    return {};
+    return merged;
   }
 
   function applyUseToRuntime(runtime, normalized) {
@@ -4487,8 +4949,20 @@ const __appModule = (() => {
     applyRegistryUse(runtime.partials, runtime.registry, normalized.partial);
     applyRegistryUse(runtime.routes, runtime.registry, normalized.route);
     applyRegistryUse(runtime.components, runtime.registry, normalized.component);
+    applyRegistryStoreUse(runtime.registry, "asyncSignal", normalized.asyncSignal);
     applyRegistryUse(runtime.browser.cache, runtime.registry, normalized.cache.browser);
     applyRegistryUse(runtime.server.cache, runtime.registry, normalized.cache.server);
+  }
+
+  function applyRegistryStoreUse(registry, type, entries) {
+    if (!entries || Object.keys(entries).length === 0) {
+      return;
+    }
+    for (const [id, value] of Object.entries(entries)) {
+      if (!registry.has(type, id)) {
+        registry.register(type, id, value);
+      }
+    }
   }
 
   function applyRegistryUse(registry, runtimeRegistry, entries) {
@@ -4510,6 +4984,7 @@ const __appModule = (() => {
       partial: {},
       route: {},
       component: {},
+      asyncSignal: {},
       cache: {
         browser: {},
         server: {}
@@ -4565,11 +5040,128 @@ const __appModule = (() => {
     return Boolean(value && typeof value.use === "function" && typeof value.snapshot === "function" && value.registry);
   }
 
-  function applySnapshot(signals, browserCache, snapshot = {}) {
-    for (const [path, value] of Object.entries(snapshot.signals ?? {})) {
-      setOrRegisterSignal(signals, path, value);
+  function ensureRuntime(app) {
+    if (!app.runtime) {
+      app.start();
     }
-    browserCache.restore(snapshot.cache?.browser);
+    return app.runtime;
+  }
+
+  function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {
+    const normalized = normalizeSnapshot(snapshot);
+    for (const [path, value] of Object.entries(normalized.signal)) {
+      setOrRegisterSignal(runtime.signals, path, value);
+    }
+    runtime.browser.cache.restore(normalized.cache.browser);
+    mergeRegistryEntries(runtime, "handler", normalized.handler, runtime.handlers, options);
+    mergeRegistryEntries(runtime, "server", normalized.server, runtime.server, options);
+    mergeRegistryEntries(runtime, "partial", normalized.partial, runtime.partials, options);
+    mergeRegistryEntries(runtime, "route", normalized.route, runtime.routes, options);
+    mergeRegistryEntries(runtime, "component", normalized.component, runtime.components, options);
+    mergeRegistryEntries(runtime, "asyncSignal", normalized.asyncSignal, null, options);
+    return runtime;
+  }
+
+  function appendSnapshotDeclarations(registry, snapshot = {}, options = {}) {
+    const normalized = normalizeSnapshot(snapshot);
+    for (const [id, value] of Object.entries(normalized.signal)) {
+      registerSnapshotEntry(registry, "signal", id, createSignal(value), options);
+    }
+    for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal"]) {
+      for (const [id, value] of Object.entries(normalized[type])) {
+        registerSnapshotEntry(registry, type, id, value, options);
+      }
+    }
+  }
+
+  function mergeRegistryEntries(runtime, type, entries, concreteRegistry, options = {}) {
+    if (!entries || Object.keys(entries).length === 0) {
+      return;
+    }
+    for (const [id, value] of Object.entries(entries)) {
+      registerSnapshotEntry(runtime.registry, type, id, value, options);
+    }
+    concreteRegistry?._adoptMany?.(entries);
+  }
+
+  function registerSnapshotEntry(registry, type, id, value, options = {}) {
+    const strict = options.strict ?? true;
+    const map = registry._map(type);
+    if (map.has(id)) {
+      if (sameRegistryValue(map.get(id), value) || sameSnapshotValue(map.get(id), value)) {
+        return;
+      }
+      if (strict) {
+        throw new Error(`${type} "${id}" is already registered with a different value.`);
+      }
+      return;
+    }
+    registry.set(type, id, value);
+  }
+
+  function normalizeSnapshot(snapshot = {}) {
+    const normalized = {
+      signal: {
+        ...(snapshot.signals ?? {}),
+        ...(snapshot.signal ?? {})
+      },
+      handler: { ...(snapshot.handler ?? {}) },
+      server: { ...(snapshot.server ?? {}) },
+      partial: { ...(snapshot.partial ?? {}) },
+      route: { ...(snapshot.route ?? {}) },
+      component: { ...(snapshot.component ?? {}) },
+      asyncSignal: { ...(snapshot.asyncSignal ?? {}) },
+      cache: {
+        browser: {
+          ...(snapshot.entries?.browser ?? {}),
+          ...(snapshot.cache?.browser ?? {})
+        }
+      }
+    };
+    return normalized;
+  }
+
+  function mergeSnapshot(target, source, options = {}) {
+    const normalized = normalizeSnapshot(defineRegistrySnapshot(source));
+    target.signal = {
+      ...(target.signal ?? target.signals ?? {}),
+      ...normalized.signal
+    };
+    target.signals = target.signal;
+    target.cache = {
+      ...(target.cache ?? {}),
+      browser: {
+        ...(target.cache?.browser ?? {}),
+        ...normalized.cache.browser
+      }
+    };
+    for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal"]) {
+      target[type] = target[type] ?? {};
+      for (const [id, value] of Object.entries(normalized[type])) {
+        if (Object.hasOwn(target[type], id)) {
+          if (sameRegistryValue(target[type][id], value) || sameSnapshotValue(target[type][id], value)) {
+            continue;
+          }
+          if (options.strict ?? true) {
+            throw new Error(`${type} "${id}" is already declared with a different value.`);
+          }
+          continue;
+        }
+        target[type][id] = value;
+      }
+    }
+    return target;
+  }
+
+  function sameSnapshotValue(left, right) {
+    if (left === right) {
+      return true;
+    }
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
   }
 
   function setOrRegisterSignal(signals, path, value) {
@@ -5054,6 +5646,72 @@ const __delayModule = (() => {
   return { delay };
 })();
 
+const __elementsModule = (() => {
+  const { Async } = __appModule;
+  function defineAsyncContainerElement(options = {}) {
+    const tagName = options.tagName ?? "async-container";
+    const registry = options.customElements ?? globalThis.customElements;
+    if (!registry) {
+      throw new Error("defineAsyncContainerElement(...) requires customElements.");
+    }
+    const existing = registry.get(tagName);
+    if (existing) {
+      return existing;
+    }
+    const app = options.app ?? options.Async ?? Async;
+    const HTMLElementBase = options.HTMLElement ?? options.window?.HTMLElement ?? globalThis.HTMLElement;
+    if (!HTMLElementBase) {
+      throw new Error("defineAsyncContainerElement(...) requires HTMLElement.");
+    }
+
+    class AsyncContainerElement extends HTMLElementBase {
+      connectedCallback() {
+        if (this.__asyncAttached) {
+          return;
+        }
+        const runtime = app.runtime ?? app.start?.();
+        runtime?.attachRoot?.(this);
+        this.__asyncRuntime = runtime;
+        this.__asyncAttached = true;
+      }
+
+      disconnectedCallback() {
+        if (!this.__asyncAttached) {
+          return;
+        }
+        this.__asyncRuntime?.detachRoot?.(this);
+        this.__asyncRuntime = undefined;
+        this.__asyncAttached = false;
+      }
+    }
+
+    registry.define(tagName, AsyncContainerElement);
+    return AsyncContainerElement;
+  }
+
+  function defineAsyncSuspenseElement(options = {}) {
+    const tagName = options.tagName ?? "async-suspense";
+    const registry = options.customElements ?? globalThis.customElements;
+    if (!registry) {
+      throw new Error("defineAsyncSuspenseElement(...) requires customElements.");
+    }
+    const existing = registry.get(tagName);
+    if (existing) {
+      return existing;
+    }
+    const HTMLElementBase = options.HTMLElement ?? options.window?.HTMLElement ?? globalThis.HTMLElement;
+    if (!HTMLElementBase) {
+      throw new Error("defineAsyncSuspenseElement(...) requires HTMLElement.");
+    }
+
+    class AsyncSuspenseElement extends HTMLElementBase {}
+
+    registry.define(tagName, AsyncSuspenseElement);
+    return AsyncSuspenseElement;
+  }
+  return { defineAsyncContainerElement, defineAsyncSuspenseElement };
+})();
+
 const { asyncSignal: asyncSignal } = __asyncSignalModule;
 const { Async: Async } = __appModule;
 const { createApp: createApp } = __appModule;
@@ -5068,8 +5726,12 @@ const { component: component } = __componentModule;
 const { createComponentRegistry: createComponentRegistry } = __componentModule;
 const { defineComponent: defineComponent } = __componentModule;
 const { delay: delay } = __delayModule;
+const { defineAsyncContainerElement: defineAsyncContainerElement } = __elementsModule;
+const { defineAsyncSuspenseElement: defineAsyncSuspenseElement } = __elementsModule;
 const { createHandlerRegistry: createHandlerRegistry } = __handlersModule;
 const { html: html } = __htmlModule;
+const { createLazyRegistry: createLazyRegistry } = __lazyRegistryModule;
+const { defineRegistrySnapshot: defineRegistrySnapshot } = __lazyRegistryModule;
 const { Loader: Loader } = __loaderModule;
 const { AsyncLoader: AsyncLoader } = __loaderModule;
 const { createPartialRegistry: createPartialRegistry } = __partialsModule;
@@ -5089,4 +5751,4 @@ const { createSignalRegistry: createSignalRegistry } = __signalsModule;
 const { effect: effect } = __signalsModule;
 const { signal: signal } = __signalsModule;
 
-export { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createBoundaryReceiver, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createScheduler, applyServerResult, createServerProxy, resolveServerCommandArguments, unwrapServerResult, computed, createSignal, createSignalRegistry, effect, signal };
+export { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createBoundaryReceiver, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, defineAsyncContainerElement, defineAsyncSuspenseElement, createHandlerRegistry, html, createLazyRegistry, defineRegistrySnapshot, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createScheduler, applyServerResult, createServerProxy, resolveServerCommandArguments, unwrapServerResult, computed, createSignal, createSignalRegistry, effect, signal };

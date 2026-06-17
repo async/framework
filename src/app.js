@@ -9,8 +9,9 @@ import { createServerNamespace } from "./server.js";
 import { createSignal, createSignalRegistry } from "./signals.js";
 import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
+import { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } from "./lazy-registry.js";
 
-const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
+const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal"]);
 
 export function defineApp(initial, options = {}) {
   const registry = createRegistryStore(undefined, { target: "browser" });
@@ -39,6 +40,27 @@ export function defineApp(initial, options = {}) {
       return runtime;
     },
 
+    attachRoot(root) {
+      return ensureRuntime(app).attachRoot(root);
+    },
+
+    detachRoot(root) {
+      return app.runtime?.detachRoot(root) ?? app;
+    },
+
+    applySnapshot(snapshot, snapshotOptions = {}) {
+      if (app.runtime) {
+        app.runtime.applySnapshot(snapshot, snapshotOptions);
+        return app;
+      }
+      appendSnapshotDeclarations(registry, snapshot, snapshotOptions);
+      return app;
+    },
+
+    inspectRoots() {
+      return app.runtime?.inspectRoots() ?? { count: 0, roots: [] };
+    },
+
     _attach(runtime) {
       runtimes.add(runtime);
       return () => app._detach(runtime);
@@ -64,23 +86,32 @@ export function createApp(appOrDefinition = Async, options = {}) {
   });
   const ownsScheduler = !options.scheduler && !options.loader?.scheduler;
   const attributes = normalizeAttributeConfig(options.attributes);
+  const lazyRegistry = options.lazyRegistry ?? createLazyRegistry({
+    registryAssets: options.registryAssets,
+    importModule: options.importModule
+  });
   const registry = options.registry ?? app.registry.view({ target });
-  const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal" });
-  const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler" });
+  const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal", lazyRegistry });
+  const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler", lazyRegistry });
   const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
   const browserCache = createCacheRegistry(undefined, { registry, type: "cache.browser" });
   const serverFactory = options.serverFactory ?? createServerReferenceRegistry;
   const server = options.server ?? serverFactory(undefined, { registry, type: "server" });
-  const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial" });
+  const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial", lazyRegistry });
   const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
-  const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component" });
+  const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component", lazyRegistry });
+  const hasStartupRoot = options.loader || Object.hasOwn(options, "root");
+  const startupRoot = hasStartupRoot ? options.root : null;
   let loader = options.loader;
   let router = options.router;
+  let routerStarted = false;
   let detach = () => {};
   let started = false;
   let destroyed = false;
+  const rootLoaders = new Map();
 
-  applySnapshot(signals, browserCache, options.snapshot ?? (target === "browser" ? readSnapshot(options.root, { attributes }) : undefined));
+  const snapshotRoot = startupRoot ?? globalThis.document;
+  const initialSnapshot = options.snapshot ?? (target === "browser" ? readSnapshot(snapshotRoot, { attributes }) : undefined);
   attachServerCache(server, serverCache);
 
   const runtime = {
@@ -109,43 +140,15 @@ export function createApp(appOrDefinition = Async, options = {}) {
       started = true;
 
       if (target !== "server") {
-        loader = loader ?? Loader({
-          root: options.root,
-          signals,
-          handlers,
-          server,
-          cache: browserCache,
-          scheduler,
-          attributes
-        });
-        runtime.loader = loader;
-
         configureServerContext({ cache: browserCache });
         signals._setContext?.({ server, loader, cache: browserCache, scheduler });
 
-        loader.start();
-
-        if (router !== false && (router || shouldStartRouter(routes, options))) {
-          router = router ?? createRouter({
-            mode: options.mode ?? "ssr-spa",
-            root: options.root,
-            boundary: options.boundary ?? "route",
-            routes,
-            loader,
-            signals,
-            handlers,
-            server,
-            cache: browserCache,
-            partials,
-            scheduler,
-            fetch: options.fetch,
-            routeEndpoint: options.routeEndpoint,
-            attributes
-          });
-          runtime.router = router;
-          loader.router = router;
-          configureServerContext({ cache: browserCache, router });
-          router.start();
+        if (loader) {
+          registerRootLoader(loader.root, loader);
+          loader.start();
+          startRouterFor(loader.root);
+        } else if (startupRoot != null) {
+          runtime.attachRoot(startupRoot);
         }
       } else {
         configureServerContext({ cache: serverCache });
@@ -157,6 +160,92 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
     use(typeOrModule, entries) {
       app.use(typeOrModule, entries);
+      return runtime;
+    },
+
+    attachRoot(root) {
+      assertActive();
+      if (target === "server") {
+        throw new Error("Server runtimes cannot attach DOM roots.");
+      }
+      if (!root) {
+        throw new TypeError("runtime.attachRoot(root) requires a root.");
+      }
+      if (rootLoaders.has(root)) {
+        return runtime;
+      }
+
+      const rootLoader = rootLoaders.size === 0 && loader
+        ? loader
+        : Loader({
+            root,
+            signals,
+            handlers,
+            server,
+            cache: browserCache,
+            scheduler,
+            attributes
+          });
+      registerRootLoader(root, rootLoader);
+      rootLoader.start();
+      configureServerContext({ cache: browserCache });
+      signals._setContext?.({ server, loader: runtime.loader, cache: browserCache, scheduler });
+      startRouterFor(root);
+      return runtime;
+    },
+
+    detachRoot(root) {
+      assertActive();
+      if (target === "server") {
+        return runtime;
+      }
+      if (root == null) {
+        for (const rootLoader of new Set(rootLoaders.values())) {
+          rootLoader.destroy?.();
+        }
+        rootLoaders.clear();
+        router?.destroy?.();
+        router = undefined;
+        routerStarted = false;
+        loader = undefined;
+        runtime.loader = undefined;
+        runtime.router = undefined;
+        return runtime;
+      }
+      const rootLoader = rootLoaders.get(root);
+      if (!rootLoader) {
+        return runtime;
+      }
+      rootLoader.destroy?.();
+      rootLoaders.delete(root);
+      if (loader === rootLoader) {
+        router?.destroy?.();
+        router = undefined;
+        routerStarted = false;
+        const next = rootLoaders.values().next().value;
+        loader = next;
+        runtime.loader = next;
+        runtime.router = undefined;
+        if (next) {
+          startRouterFor(next.root);
+        }
+      }
+      return runtime;
+    },
+
+    inspectRoots() {
+      return {
+        count: rootLoaders.size,
+        roots: [...rootLoaders].map(([root, rootLoader]) => ({
+          root,
+          loader: rootLoader,
+          primary: rootLoader === loader
+        }))
+      };
+    },
+
+    applySnapshot(snapshot, snapshotOptions = {}) {
+      applySnapshotToRuntime(runtime, snapshot, snapshotOptions);
       return runtime;
     },
 
@@ -218,7 +307,14 @@ export function createApp(appOrDefinition = Async, options = {}) {
       destroyed = true;
       detach();
       router?.destroy?.();
-      loader?.destroy?.();
+      const destroyedLoaders = new Set(rootLoaders.values());
+      for (const rootLoader of destroyedLoaders) {
+        rootLoader.destroy?.();
+      }
+      rootLoaders.clear();
+      if (loader && !destroyedLoaders.has(loader)) {
+        loader?.destroy?.();
+      }
       signals.destroy?.();
       if (ownsScheduler) {
         scheduler.destroy();
@@ -232,9 +328,48 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
   server.cache = serverCache;
   runtime.server.cache = serverCache;
+  runtime.applySnapshot(initialSnapshot, { strict: options.strictSnapshots ?? true });
   detach = app._attach(runtime);
 
   return runtime;
+
+  function registerRootLoader(root, rootLoader) {
+    rootLoaders.set(root, rootLoader);
+    if (!loader) {
+      loader = rootLoader;
+      runtime.loader = rootLoader;
+    }
+    rootLoader.server = server;
+    rootLoader.cache = browserCache;
+    rootLoader.scheduler = scheduler;
+  }
+
+  function startRouterFor(root) {
+    if (router === false || routerStarted || !(router || shouldStartRouter(routes, options)) || !runtime.loader) {
+      return;
+    }
+    router = router ?? createRouter({
+      mode: options.mode ?? "ssr-spa",
+      root,
+      boundary: options.boundary ?? "route",
+      routes,
+      loader: runtime.loader,
+      signals,
+      handlers,
+      server,
+      cache: browserCache,
+      partials,
+      scheduler,
+      fetch: options.fetch,
+      routeEndpoint: options.routeEndpoint,
+      attributes
+    });
+    runtime.router = router;
+    runtime.loader.router = router;
+    configureServerContext({ cache: browserCache, router });
+    router.start();
+    routerStarted = true;
+  }
 
   function configureServerContext(extra = {}) {
     const cache = isLocalServerRegistry(server) ? serverCache : extra.cache;
@@ -278,6 +413,7 @@ export function readSnapshot(root = globalThis.document, { attributes } = {}) {
     return {};
   }
 
+  const merged = {};
   for (const searchRoot of new Set([rootNode, documentRef])) {
     if (!searchRoot?.querySelectorAll) {
       continue;
@@ -288,17 +424,19 @@ export function readSnapshot(root = globalThis.document, { attributes } = {}) {
       }
       const source = script.textContent?.trim() ?? "";
       if (!source) {
-        return {};
+        continue;
       }
+      let parsed;
       try {
-        return JSON.parse(source);
+        parsed = JSON.parse(source);
       } catch (cause) {
         throw new Error(`Could not parse Async snapshot: ${cause instanceof Error ? cause.message : String(cause)}`);
       }
+      mergeSnapshot(merged, parsed, { strict: true });
     }
   }
 
-  return {};
+  return merged;
 }
 
 function applyUseToRuntime(runtime, normalized) {
@@ -308,8 +446,20 @@ function applyUseToRuntime(runtime, normalized) {
   applyRegistryUse(runtime.partials, runtime.registry, normalized.partial);
   applyRegistryUse(runtime.routes, runtime.registry, normalized.route);
   applyRegistryUse(runtime.components, runtime.registry, normalized.component);
+  applyRegistryStoreUse(runtime.registry, "asyncSignal", normalized.asyncSignal);
   applyRegistryUse(runtime.browser.cache, runtime.registry, normalized.cache.browser);
   applyRegistryUse(runtime.server.cache, runtime.registry, normalized.cache.server);
+}
+
+function applyRegistryStoreUse(registry, type, entries) {
+  if (!entries || Object.keys(entries).length === 0) {
+    return;
+  }
+  for (const [id, value] of Object.entries(entries)) {
+    if (!registry.has(type, id)) {
+      registry.register(type, id, value);
+    }
+  }
 }
 
 function applyRegistryUse(registry, runtimeRegistry, entries) {
@@ -331,6 +481,7 @@ function emptyDeclarations() {
     partial: {},
     route: {},
     component: {},
+    asyncSignal: {},
     cache: {
       browser: {},
       server: {}
@@ -386,11 +537,128 @@ function isAppHub(value) {
   return Boolean(value && typeof value.use === "function" && typeof value.snapshot === "function" && value.registry);
 }
 
-function applySnapshot(signals, browserCache, snapshot = {}) {
-  for (const [path, value] of Object.entries(snapshot.signals ?? {})) {
-    setOrRegisterSignal(signals, path, value);
+function ensureRuntime(app) {
+  if (!app.runtime) {
+    app.start();
   }
-  browserCache.restore(snapshot.cache?.browser);
+  return app.runtime;
+}
+
+function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {
+  const normalized = normalizeSnapshot(snapshot);
+  for (const [path, value] of Object.entries(normalized.signal)) {
+    setOrRegisterSignal(runtime.signals, path, value);
+  }
+  runtime.browser.cache.restore(normalized.cache.browser);
+  mergeRegistryEntries(runtime, "handler", normalized.handler, runtime.handlers, options);
+  mergeRegistryEntries(runtime, "server", normalized.server, runtime.server, options);
+  mergeRegistryEntries(runtime, "partial", normalized.partial, runtime.partials, options);
+  mergeRegistryEntries(runtime, "route", normalized.route, runtime.routes, options);
+  mergeRegistryEntries(runtime, "component", normalized.component, runtime.components, options);
+  mergeRegistryEntries(runtime, "asyncSignal", normalized.asyncSignal, null, options);
+  return runtime;
+}
+
+function appendSnapshotDeclarations(registry, snapshot = {}, options = {}) {
+  const normalized = normalizeSnapshot(snapshot);
+  for (const [id, value] of Object.entries(normalized.signal)) {
+    registerSnapshotEntry(registry, "signal", id, createSignal(value), options);
+  }
+  for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal"]) {
+    for (const [id, value] of Object.entries(normalized[type])) {
+      registerSnapshotEntry(registry, type, id, value, options);
+    }
+  }
+}
+
+function mergeRegistryEntries(runtime, type, entries, concreteRegistry, options = {}) {
+  if (!entries || Object.keys(entries).length === 0) {
+    return;
+  }
+  for (const [id, value] of Object.entries(entries)) {
+    registerSnapshotEntry(runtime.registry, type, id, value, options);
+  }
+  concreteRegistry?._adoptMany?.(entries);
+}
+
+function registerSnapshotEntry(registry, type, id, value, options = {}) {
+  const strict = options.strict ?? true;
+  const map = registry._map(type);
+  if (map.has(id)) {
+    if (sameRegistryValue(map.get(id), value) || sameSnapshotValue(map.get(id), value)) {
+      return;
+    }
+    if (strict) {
+      throw new Error(`${type} "${id}" is already registered with a different value.`);
+    }
+    return;
+  }
+  registry.set(type, id, value);
+}
+
+function normalizeSnapshot(snapshot = {}) {
+  const normalized = {
+    signal: {
+      ...(snapshot.signals ?? {}),
+      ...(snapshot.signal ?? {})
+    },
+    handler: { ...(snapshot.handler ?? {}) },
+    server: { ...(snapshot.server ?? {}) },
+    partial: { ...(snapshot.partial ?? {}) },
+    route: { ...(snapshot.route ?? {}) },
+    component: { ...(snapshot.component ?? {}) },
+    asyncSignal: { ...(snapshot.asyncSignal ?? {}) },
+    cache: {
+      browser: {
+        ...(snapshot.entries?.browser ?? {}),
+        ...(snapshot.cache?.browser ?? {})
+      }
+    }
+  };
+  return normalized;
+}
+
+function mergeSnapshot(target, source, options = {}) {
+  const normalized = normalizeSnapshot(defineRegistrySnapshot(source));
+  target.signal = {
+    ...(target.signal ?? target.signals ?? {}),
+    ...normalized.signal
+  };
+  target.signals = target.signal;
+  target.cache = {
+    ...(target.cache ?? {}),
+    browser: {
+      ...(target.cache?.browser ?? {}),
+      ...normalized.cache.browser
+    }
+  };
+  for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal"]) {
+    target[type] = target[type] ?? {};
+    for (const [id, value] of Object.entries(normalized[type])) {
+      if (Object.hasOwn(target[type], id)) {
+        if (sameRegistryValue(target[type][id], value) || sameSnapshotValue(target[type][id], value)) {
+          continue;
+        }
+        if (options.strict ?? true) {
+          throw new Error(`${type} "${id}" is already declared with a different value.`);
+        }
+        continue;
+      }
+      target[type][id] = value;
+    }
+  }
+  return target;
+}
+
+function sameSnapshotValue(left, right) {
+  if (left === right) {
+    return true;
+  }
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
 }
 
 function setOrRegisterSignal(signals, path, value) {

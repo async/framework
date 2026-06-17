@@ -35,8 +35,7 @@ test("Async.registry exists before startup and reflects Async.use", () => {
   assert.equal(Async.registry.has("signal", id), true);
   assert.equal(Async.registry.get("signal", id).value, "ready");
   assert.deepEqual(Async.registry.get("server", `${id}.server`), {
-    id: `${id}.server`,
-    kind: "server"
+    id: `${id}.server`
   });
 });
 
@@ -70,8 +69,8 @@ test("app registry snapshot serializes declarations without executable values", 
   });
 
   assert.deepEqual(app.registry.snapshot().signal, { count: 1 });
-  assert.deepEqual(app.registry.snapshot().handler.increment, { id: "increment", kind: "handler" });
-  assert.deepEqual(app.registry.snapshot().server["cart.add"], { id: "cart.add", kind: "server" });
+  assert.deepEqual(app.registry.snapshot().handler.increment, { id: "increment" });
+  assert.deepEqual(app.registry.snapshot().server["cart.add"], { id: "cart.add" });
   assert.deepEqual(app.registry.snapshot().route["/"], { partial: "home" });
   assert.equal(typeof app.snapshot().handler.increment, "function");
 });
@@ -132,8 +131,7 @@ test("browser runtime inspection exposes server ids without server functions or 
 
   assert.deepEqual(runtime.registry.keys("server"), ["products.get"]);
   assert.deepEqual(runtime.registry.get("server", "products.get"), {
-    id: "products.get",
-    kind: "server"
+    id: "products.get"
   });
   assert.equal(typeof runtime.server.resolve("products.get"), "function");
   assert.deepEqual(runtime.registry.keys("cache.server.entries"), []);

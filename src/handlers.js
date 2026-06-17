@@ -5,6 +5,7 @@ import {
   unwrapServerResult
 } from "./server.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
+import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
 const builtInTokens = new Set(["prevent", "preventDefault", "stopPropagation", "stopImmediatePropagation"]);
 const builtInHandlers = {
@@ -26,11 +27,13 @@ export function createHandlerRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
   const type = options.type ?? "handler";
   const handlers = registryStore._map(type);
+  const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
+  const lazyHandlers = new Map();
 
   const registry = attachRegistryInspection({
     register(id, fn) {
       assertId(id);
-      if (typeof fn !== "function") {
+      if (typeof fn !== "function" && !isLazyDescriptor(fn)) {
         throw new TypeError(`Handler "${id}" must be a function.`);
       }
       if (handlers.has(id)) {
@@ -49,12 +52,26 @@ export function createHandlerRegistry(initialMap = {}, options = {}) {
 
     unregister(id) {
       assertId(id);
+      lazyHandlers.delete(id);
       return handlers.delete(id);
     },
 
     resolve(id) {
       assertId(id);
-      return handlers.get(id);
+      const handler = handlers.get(id);
+      if (!isLazyDescriptor(handler)) {
+        return handler;
+      }
+      if (!lazyHandlers.has(id)) {
+        lazyHandlers.set(id, async function runLazyHandler(...args) {
+          const resolved = await lazyRegistry.resolve(type, id, handler);
+          if (typeof resolved !== "function") {
+            throw new TypeError(`Handler "${id}" did not resolve to a function.`);
+          }
+          return resolved.apply(this, args);
+        });
+      }
+      return lazyHandlers.get(id);
     },
 
     async run(ref, context = {}) {

@@ -335,7 +335,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
       if (renderingBoundaries.has(boundary)) {
         continue;
       }
-      const id = readAttribute(boundary, attributeConfig, "async", "boundary");
+      const id = boundaryIdFor(boundary, attributeConfig);
       if (id == null) {
         continue;
       }
@@ -652,17 +652,24 @@ function writeClassTokens(element, tokens) {
 function collectBoundaryTemplates(boundary, id, attributeConfig) {
   const templates = {};
   for (const template of [...boundary.children].filter((child) => child.tagName === "TEMPLATE")) {
-    if (readAttribute(template, attributeConfig, "async", "loading") === id) {
+    if (templateMatchesState(template, "loading", id, boundary, attributeConfig)) {
       templates.loading = template;
     }
-    if (readAttribute(template, attributeConfig, "async", "ready") === id) {
+    if (templateMatchesState(template, "ready", id, boundary, attributeConfig)) {
       templates.ready = template;
     }
-    if (readAttribute(template, attributeConfig, "async", "error") === id) {
+    if (templateMatchesState(template, "error", id, boundary, attributeConfig)) {
       templates.error = template;
     }
   }
   return templates;
+}
+
+function templateMatchesState(template, state, id, boundary, attributeConfig) {
+  if (readAttribute(template, attributeConfig, "async", state) === id) {
+    return true;
+  }
+  return isAsyncSuspense(boundary) && template.hasAttribute?.(state);
 }
 
 function chooseBoundaryTemplate(templates, status) {
@@ -712,11 +719,22 @@ function elementsIn(scope) {
 
 function findBoundary(root, boundaryId, attributeConfig) {
   for (const element of elementsIn(root)) {
-    if (readAttribute(element, attributeConfig, "async", "boundary") === String(boundaryId)) {
+    if (boundaryIdFor(element, attributeConfig) === String(boundaryId)) {
       return element;
     }
   }
   return null;
+}
+
+function boundaryIdFor(element, attributeConfig) {
+  if (isAsyncSuspense(element) && element.hasAttribute?.("for")) {
+    return element.getAttribute("for");
+  }
+  return readAttribute(element, attributeConfig, "async", "boundary");
+}
+
+function isAsyncSuspense(element) {
+  return element?.tagName === "ASYNC-SUSPENSE";
 }
 
 function toFragment(value, documentRef) {

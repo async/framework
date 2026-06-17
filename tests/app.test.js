@@ -4,9 +4,13 @@ import { Window } from "happy-dom";
 import {
   Async,
   createApp,
+  createLazyRegistry,
   createSignal,
+  defineAsyncContainerElement,
+  defineAsyncSuspenseElement,
   defineApp,
   defineCache,
+  defineRegistrySnapshot,
   defineRoute,
   delay,
   html,
@@ -414,9 +418,21 @@ test("readSnapshot supports configured async data attributes", () => {
       async: "data-async-"
     }
   }), {
+    signal: {
+      productId: "sku-3"
+    },
     signals: {
       productId: "sku-3"
-    }
+    },
+    cache: {
+      browser: {}
+    },
+    handler: {},
+    server: {},
+    partial: {},
+    route: {},
+    component: {},
+    asyncSignal: {}
   });
 });
 
@@ -429,6 +445,245 @@ test("readSnapshot reports malformed snapshot JSON with an Async-specific error"
     () => readSnapshot(document.body),
     /Could not parse Async snapshot/
   );
+});
+
+test("readSnapshot merges incremental snapshots in document order", () => {
+  const window = new Window();
+  const { document } = window;
+  document.head.innerHTML = `
+    <script type="application/json" async:snapshot>
+      {
+        "signal": { "productId": "sku-1" },
+        "handler": { "cart.add": { "url": "cart.add.js" } }
+      }
+    </script>
+  `;
+  document.body.innerHTML = `
+    <script type="application/json" async:snapshot>
+      {
+        "signals": { "productId": "sku-2" },
+        "component": { "ProductCard": { "url": "ProductCard.js" } }
+      }
+    </script>
+  `;
+
+  assert.deepEqual(readSnapshot(document), {
+    signal: {
+      productId: "sku-2"
+    },
+    signals: {
+      productId: "sku-2"
+    },
+    cache: {
+      browser: {}
+    },
+    handler: {
+      "cart.add": { url: "cart.add.js" }
+    },
+    server: {},
+    partial: {},
+    route: {},
+    component: {
+      ProductCard: { url: "ProductCard.js" }
+    },
+    asyncSignal: {}
+  });
+});
+
+test("rootless runtime starts without scanning until a root is attached", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<output signal:text="status"></output>`;
+  const app = defineApp({
+    signal: {
+      status: createSignal("ready")
+    }
+  });
+
+  const runtime = createApp(app, { router: false }).start();
+
+  assert.equal(runtime.loader, undefined);
+  assert.equal(runtime.inspectRoots().count, 0);
+  assert.equal(document.querySelector("output").textContent, "");
+
+  runtime.attachRoot(document.body);
+  await delay(0);
+
+  assert.equal(runtime.inspectRoots().count, 1);
+  assert.equal(document.querySelector("output").textContent, "ready");
+
+  runtime.detachRoot(document.body);
+  assert.equal(runtime.inspectRoots().count, 0);
+  runtime.destroy();
+});
+
+test("async-container self attaches to the active runtime without double binding", async () => {
+  const window = new Window();
+  const { document } = window;
+  const app = defineApp({
+    signal: {
+      count: createSignal(0)
+    },
+    handler: {
+      increment() {
+        this.signals.update("count", (count) => count + 1);
+      }
+    }
+  });
+  const runtime = app.start({ router: false });
+  const AsyncContainer = defineAsyncContainerElement({
+    app,
+    customElements: window.customElements,
+    HTMLElement: window.HTMLElement
+  });
+
+  assert.equal(typeof AsyncContainer, "function");
+  const container = document.createElement("async-container");
+  container.innerHTML = `
+    <button on:click="increment">+</button>
+    <output signal:text="count"></output>
+  `;
+  document.body.append(container);
+
+  await delay(0);
+  container.connectedCallback();
+  assert.equal(runtime.inspectRoots().count, 1);
+  document.querySelector("button").click();
+  await delay(0);
+  assert.equal(document.querySelector("output").textContent, "1");
+
+  container.connectedCallback();
+  document.querySelector("button").click();
+  await delay(0);
+  assert.equal(document.querySelector("output").textContent, "2");
+
+  runtime.destroy();
+});
+
+test("lazy registry resolves compact descriptor URLs and infers exports", async () => {
+  const imported = [];
+  const lazy = createLazyRegistry({
+    importModule(url) {
+      imported.push(url);
+      return {
+        ProductCard: "component",
+        add: "handler",
+        load: "async"
+      };
+    }
+  });
+
+  assert.equal(await lazy.resolve("component", "ProductCard", { url: "ProductCard.js" }), "component");
+  assert.equal(await lazy.resolve("handler", "cart.add", { url: "cart.add.js" }), "handler");
+  assert.equal(await lazy.resolve("asyncSignal", "product.load", { url: "product.load.js" }), "async");
+  assert.deepEqual(imported, [
+    "/_async/component/ProductCard.js",
+    "/_async/handler/cart.add.js",
+    "/_async/asyncSignal/product.load.js"
+  ]);
+});
+
+test("runtime applies streamed descriptors and lazy handlers on first event", async () => {
+  const window = new Window();
+  const { document } = window;
+  const imports = [];
+  document.body.innerHTML = `
+    <button on:click="cart.add">Add</button>
+    <output signal:text="cartCount"></output>
+  `;
+  const app = defineApp({
+    signal: {
+      cartCount: createSignal(0)
+    }
+  });
+  const runtime = createApp(app, {
+    root: document.body,
+    router: false,
+    importModule(url) {
+      imports.push(url);
+      return {
+        add() {
+          this.signals.update("cartCount", (count) => count + 1);
+        }
+      };
+    }
+  }).start();
+
+  runtime.applySnapshot(defineRegistrySnapshot({
+    handler: {
+      "cart.add": { url: "cart.add.js" }
+    }
+  }));
+
+  document.querySelector("button").click();
+  await delay(0);
+
+  assert.deepEqual(imports, ["/_async/handler/cart.add.js"]);
+  assert.equal(document.querySelector("output").textContent, "1");
+  runtime.destroy();
+});
+
+test("lazy async signal descriptors materialize on ref access", async () => {
+  const imports = [];
+  const runtime = createApp(defineApp(), {
+    router: false,
+    importModule(url) {
+      imports.push(url);
+      return {
+        load() {
+          return { title: "Keyboard" };
+        }
+      };
+    },
+    snapshot: {
+      asyncSignal: {
+        "product.load": { url: "product.load.js" }
+      }
+    }
+  }).start();
+
+  const product = runtime.signals.ref("product.load");
+  await product.refresh();
+
+  assert.deepEqual(imports, ["/_async/asyncSignal/product.load.js"]);
+  assert.deepEqual(product.value, { title: "Keyboard" });
+  runtime.destroy();
+});
+
+test("conflicting streamed descriptors fail in strict mode", () => {
+  const runtime = createApp(defineApp(), { router: false }).start();
+  runtime.applySnapshot({
+    handler: {
+      save: { url: "save.js" }
+    }
+  });
+
+  assert.doesNotThrow(() => runtime.applySnapshot({
+    handler: {
+      save: { url: "save.js" }
+    }
+  }));
+  assert.throws(
+    () => runtime.applySnapshot({
+      handler: {
+        save: { url: "other-save.js" }
+      }
+    }),
+    /handler "save" is already registered with a different value/
+  );
+
+  runtime.destroy();
+});
+
+test("async-suspense custom element can be defined independently", () => {
+  const window = new Window();
+  const AsyncSuspense = defineAsyncSuspenseElement({
+    customElements: window.customElements,
+    HTMLElement: window.HTMLElement
+  });
+
+  assert.equal(typeof AsyncSuspense, "function");
+  assert.equal(window.customElements.get("async-suspense"), AsyncSuspense);
 });
 
 test("app runtime starts a CSR router from registered routes and partials", async () => {

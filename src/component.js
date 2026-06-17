@@ -1,6 +1,7 @@
 import { attributeName } from "./attributes.js";
 import { escapeHtml, rawHtml, renderTemplate } from "./html.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
+import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
 const componentKind = Symbol.for("@async/framework.component");
 let componentCounter = 0;
@@ -22,13 +23,15 @@ export function createComponentRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
   const type = options.type ?? "component";
   const entries = registryStore._map(type);
+  const lazyRegistry = options.lazyRegistry ?? createLazyRegistry(options);
+  const lazyComponents = new Map();
 
   const registry = attachRegistryInspection({
     register(id, Component) {
       if (typeof id !== "string" || id.length === 0) {
         throw new TypeError("Component id must be a non-empty string.");
       }
-      if (!isComponent(Component) && typeof Component !== "function") {
+      if (!isComponent(Component) && typeof Component !== "function" && !isLazyDescriptor(Component)) {
         throw new TypeError(`Component "${id}" must be a component function.`);
       }
       if (entries.has(id)) {
@@ -49,6 +52,7 @@ export function createComponentRegistry(initialMap = {}, options = {}) {
       if (typeof id !== "string" || id.length === 0) {
         throw new TypeError("Component id must be a non-empty string.");
       }
+      lazyComponents.delete(id);
       return entries.delete(id);
     },
 
@@ -56,7 +60,20 @@ export function createComponentRegistry(initialMap = {}, options = {}) {
       if (typeof id !== "string" || id.length === 0) {
         throw new TypeError("Component id must be a non-empty string.");
       }
-      return entries.get(id);
+      const Component = entries.get(id);
+      if (!isLazyDescriptor(Component)) {
+        return Component;
+      }
+      if (!lazyComponents.has(id)) {
+        lazyComponents.set(id, async function LazyComponent(...args) {
+          const resolved = await lazyRegistry.resolve(type, id, Component);
+          if (typeof resolved !== "function") {
+            throw new TypeError(`Component "${id}" did not resolve to a function.`);
+          }
+          return resolved.apply(this, args);
+        });
+      }
+      return lazyComponents.get(id);
     },
 
     _adoptMany() {

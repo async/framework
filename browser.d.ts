@@ -13,6 +13,7 @@ export type RegistryType =
   | "partial"
   | "route"
   | "component"
+  | "asyncSignal"
   | "cache.browser"
   | "cache.server"
   | "cache.browser.entries"
@@ -34,6 +35,20 @@ export interface NormalizedAttributeConfig {
 
 export type TemplatePrimitive = string | number | boolean | null | undefined;
 export type TemplateLike = TemplateResult | TemplatePrimitive | Node | TemplateLike[];
+export interface LazyDescriptor {
+  url: string;
+  [key: string]: unknown;
+}
+export interface RegistryAssetsConfig {
+  baseUrl?: string;
+  paths?: Partial<Record<"component" | "handler" | "asyncSignal" | "partial" | "route", string>>;
+}
+export interface LazyRegistry {
+  registryAssets: Required<Pick<RegistryAssetsConfig, "baseUrl">> & { paths: Record<string, string> };
+  resolveUrl(type: "component" | "handler" | "asyncSignal" | "partial" | "route", id: string, descriptor: LazyDescriptor): { moduleUrl: string; exportNames: string[]; url: string };
+  resolve<T = unknown>(type: "component" | "handler" | "asyncSignal" | "partial" | "route", id: string, descriptor: LazyDescriptor): Promise<T>;
+  inspect(): { registryAssets: unknown; modules: string[]; exports: string[] };
+}
 
 export interface TemplateResult {
   readonly strings: TemplateStringsArray;
@@ -209,8 +224,8 @@ export interface HandlerContext {
 export type HandlerFunction = (this: HandlerContext, context: HandlerContext) => MaybePromise<unknown>;
 
 export interface HandlerRegistry extends RegistryInspection<HandlerFunction> {
-  register(id: string, fn: HandlerFunction): string;
-  registerMany(map?: Record<string, HandlerFunction>): this;
+  register(id: string, fn: HandlerFunction | LazyDescriptor): string;
+  registerMany(map?: Record<string, HandlerFunction | LazyDescriptor>): this;
   unregister(id: string): boolean;
   resolve(id: string): HandlerFunction | undefined;
   run(ref: string, context?: Partial<HandlerContext>): Promise<unknown[]>;
@@ -322,8 +337,8 @@ export interface PartialContext {
 export type PartialFunction = (this: PartialContext, props: Record<string, unknown>) => MaybePromise<TemplateLike | ServerEnvelope>;
 
 export interface PartialRegistry extends RegistryInspection<PartialFunction> {
-  register(id: string, fn: PartialFunction): string;
-  registerMany(map?: Record<string, PartialFunction>): this;
+  register(id: string, fn: PartialFunction | LazyDescriptor): string;
+  registerMany(map?: Record<string, PartialFunction | LazyDescriptor>): this;
   unregister(id: string): boolean;
   resolve(id: string): PartialFunction | undefined;
   render(id: string, props?: Record<string, unknown>, context?: Partial<PartialContext>): Promise<ServerEnvelope>;
@@ -423,8 +438,8 @@ export interface SuspenseViews {
 }
 
 export interface ComponentRegistry extends RegistryInspection<ComponentFunction> {
-  register(id: string, Component: ComponentFunction): string;
-  registerMany(map?: Record<string, ComponentFunction>): this;
+  register(id: string, Component: ComponentFunction | LazyDescriptor): string;
+  registerMany(map?: Record<string, ComponentFunction | LazyDescriptor>): this;
   unregister(id: string): boolean;
   resolve(id: string): ComponentFunction | undefined;
 }
@@ -524,22 +539,24 @@ export interface RegistryStore {
 
 export interface RegistrySnapshot {
   signal: Record<string, unknown>;
-  handler: Record<string, { id: string; kind: "handler" }>;
-  server: Record<string, { id: string; kind: "server" }>;
-  partial: Record<string, { id: string; kind: "partial" }>;
+  handler: Record<string, { id?: string } | LazyDescriptor>;
+  server: Record<string, { id?: string } | LazyDescriptor>;
+  partial: Record<string, { id?: string } | LazyDescriptor>;
   route: Record<string, RouteDefinition>;
-  component: Record<string, { id: string; kind: "component" }>;
+  component: Record<string, { id?: string } | LazyDescriptor>;
+  asyncSignal: Record<string, { id?: string } | LazyDescriptor>;
   cache: { browser: Record<string, CacheDefinition>; server: Record<string, CacheDefinition> };
   entries: { browser: Record<string, unknown>; server: Record<string, unknown> };
 }
 
 export interface AppDefinition {
   signal?: SignalMap;
-  handler?: Record<string, HandlerFunction>;
+  handler?: Record<string, HandlerFunction | LazyDescriptor>;
   server?: Record<string, ServerFunction>;
-  partial?: Record<string, PartialFunction>;
+  partial?: Record<string, PartialFunction | LazyDescriptor>;
   route?: Record<string, RouteDefinition | string>;
-  component?: Record<string, ComponentFunction>;
+  component?: Record<string, ComponentFunction | LazyDescriptor>;
+  asyncSignal?: Record<string, AsyncSignalFunction | LazyDescriptor>;
   cache?: {
     browser?: Record<string, CacheDefinition | CacheDefinitionOptions>;
     server?: Record<string, CacheDefinition | CacheDefinitionOptions>;
@@ -547,25 +564,43 @@ export interface AppDefinition {
   entries?: { browser?: Record<string, unknown>; server?: Record<string, unknown> };
 }
 
+export interface RegistryRuntimeSnapshot extends AppDefinition {
+  signals?: Record<string, unknown>;
+}
+
+export interface RootInspection {
+  count: number;
+  roots: Array<{ root: Document | Element | DocumentFragment; loader: LoaderInstance; primary: boolean }>;
+}
+
 export interface AppHub {
   registry: RegistryStore;
   runtime?: AppRuntime;
   use(type: "signal", entries: SignalMap): this;
-  use(type: "handler", entries: Record<string, HandlerFunction>): this;
+  use(type: "handler", entries: Record<string, HandlerFunction | LazyDescriptor>): this;
   use(type: "server", entries: Record<string, ServerFunction>): this;
-  use(type: "partial", entries: Record<string, PartialFunction>): this;
+  use(type: "partial", entries: Record<string, PartialFunction | LazyDescriptor>): this;
   use(type: "route", entries: Record<string, RouteDefinition | string>): this;
-  use(type: "component", entries: Record<string, ComponentFunction>): this;
+  use(type: "component", entries: Record<string, ComponentFunction | LazyDescriptor>): this;
+  use(type: "asyncSignal", entries: Record<string, AsyncSignalFunction | LazyDescriptor>): this;
   use(moduleObject: AppDefinition): this;
   snapshot(): AppDefinition;
   start(options?: CreateAppOptions): AppRuntime;
+  attachRoot(root: Document | Element | DocumentFragment): AppRuntime;
+  detachRoot(root?: Document | Element | DocumentFragment): this;
+  applySnapshot(snapshot: RegistryRuntimeSnapshot, options?: { strict?: boolean }): this;
+  inspectRoots(): RootInspection;
 }
 
 export interface CreateAppOptions extends LoaderOptions {
   target?: RuntimeTarget;
   mode?: RouterMode;
   boundary?: string;
-  snapshot?: { signals?: Record<string, unknown>; cache?: { browser?: Record<string, unknown> } };
+  snapshot?: RegistryRuntimeSnapshot;
+  registryAssets?: RegistryAssetsConfig;
+  importModule?: (url: string) => MaybePromise<Record<string, unknown>>;
+  lazyRegistry?: LazyRegistry;
+  strictSnapshots?: boolean;
   registry?: RegistryStore;
   loader?: LoaderInstance;
   router?: Router | false;
@@ -604,6 +639,10 @@ export interface AppRuntime {
   attributes: NormalizedAttributeConfig;
   start(): this;
   use(type: Parameters<AppHub["use"]>[0], entries?: unknown): this;
+  attachRoot(root: Document | Element | DocumentFragment): this;
+  detachRoot(root?: Document | Element | DocumentFragment): this;
+  applySnapshot(snapshot: RegistryRuntimeSnapshot, options?: { strict?: boolean }): this;
+  inspectRoots(): RootInspection;
   render(url: string | URL): Promise<RenderResult>;
   destroy(): void;
 }
@@ -614,6 +653,10 @@ export interface AsyncNamespace extends AppHub {
   createApp: typeof createApp;
   defineApp: typeof defineApp;
   readSnapshot: typeof readSnapshot;
+  attachRoot: AppHub["attachRoot"];
+  detachRoot: AppHub["detachRoot"];
+  applySnapshot: AppHub["applySnapshot"];
+  inspectRoots: AppHub["inspectRoots"];
   attributeName: typeof attributeName;
   defineAttributeConfig: typeof defineAttributeConfig;
   createBoundaryReceiver: typeof createBoundaryReceiver;
@@ -622,6 +665,10 @@ export interface AsyncNamespace extends AppHub {
   component: typeof component;
   createComponentRegistry: typeof createComponentRegistry;
   defineComponent: typeof defineComponent;
+  defineAsyncContainerElement: typeof defineAsyncContainerElement;
+  defineAsyncSuspenseElement: typeof defineAsyncSuspenseElement;
+  defineRegistrySnapshot: typeof defineRegistrySnapshot;
+  createLazyRegistry: typeof createLazyRegistry;
   delay: typeof delay;
   createHandlerRegistry: typeof createHandlerRegistry;
   html: typeof html;
@@ -649,7 +696,7 @@ export declare function asyncSignal<T = unknown>(id: string, fn: AsyncSignalFunc
 export declare const Async: AppHub;
 export declare function createApp(appOrDefinition?: AppHub | AppDefinition, options?: CreateAppOptions): AppRuntime;
 export declare function defineApp(initial?: AppDefinition): AppHub;
-export declare function readSnapshot(root?: Document | Element, options?: { attributes?: AttributeConfig }): { signals?: Record<string, unknown>; cache?: { browser?: Record<string, unknown> } };
+export declare function readSnapshot(root?: Document | Element, options?: { attributes?: AttributeConfig }): RegistryRuntimeSnapshot;
 export declare function attributeName(attributes: AttributeConfig | undefined, type: keyof NormalizedAttributeConfig, name: string): string;
 export declare function defineAttributeConfig(config?: AttributeConfig): NormalizedAttributeConfig;
 export declare function createBoundaryReceiver(options: BoundaryReceiverOptions): BoundaryReceiver;
@@ -658,6 +705,10 @@ export declare function defineCache(options?: CacheDefinitionOptions): CacheDefi
 export declare function component<TProps extends Record<string, unknown> = Record<string, unknown>>(fn: ComponentFunction<TProps>): ComponentFunction<TProps>;
 export declare function createComponentRegistry(initialMap?: Record<string, ComponentFunction>, options?: { registry?: RegistryStore; type?: "component" }): ComponentRegistry;
 export declare function defineComponent<TProps extends Record<string, unknown> = Record<string, unknown>>(fn: ComponentFunction<TProps>): ComponentFunction<TProps>;
+export declare function defineAsyncContainerElement(options?: { tagName?: string; app?: AppHub; Async?: AppHub; customElements?: CustomElementRegistry; HTMLElement?: typeof HTMLElement; window?: Window }): CustomElementConstructor;
+export declare function defineAsyncSuspenseElement(options?: { tagName?: string; customElements?: CustomElementRegistry; HTMLElement?: typeof HTMLElement; window?: Window }): CustomElementConstructor;
+export declare function defineRegistrySnapshot<T extends RegistryRuntimeSnapshot>(snapshot?: T): T;
+export declare function createLazyRegistry(options?: { registryAssets?: RegistryAssetsConfig; assets?: RegistryAssetsConfig; importModule?: (url: string) => MaybePromise<Record<string, unknown>> }): LazyRegistry;
 export declare function delay(ms: number, signal?: AbortSignal): Promise<void>;
 export declare function createHandlerRegistry(initialMap?: Record<string, HandlerFunction>, options?: { registry?: RegistryStore; type?: "handler" }): HandlerRegistry;
 export declare function html(strings: TemplateStringsArray, ...values: unknown[]): TemplateResult;

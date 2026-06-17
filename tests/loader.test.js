@@ -166,6 +166,30 @@ test("Loader renders async boundaries through loading, ready, and error template
   assert.equal(document.querySelector("h1").textContent, "Keyboard");
 });
 
+test("Loader treats async-suspense as boundary markup without custom element registration", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <async-suspense for="product">
+      <template loading><p class="loading">Loading</p></template>
+      <template ready><h1 signal:text="product.title"></h1></template>
+      <template error><p class="error" signal:text="product.$error.message"></p></template>
+    </async-suspense>
+  `;
+
+  const signals = createSignalRegistry();
+  signals.asyncSignal("product", async function () {
+    await delay(5, this.abort);
+    return { title: "Keyboard" };
+  });
+
+  Loader({ root: document.body, signals }).start();
+
+  assert.equal(document.querySelector(".loading").textContent, "Loading");
+  await delay(10);
+  assert.equal(document.querySelector("async-suspense h1").textContent, "Keyboard");
+});
+
 test("Loader dispatches async:error for missing delegated handlers", async () => {
   const window = new Window();
   const { document } = window;

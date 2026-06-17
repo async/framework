@@ -187,6 +187,117 @@ You can also use an import map so app code imports `@async/framework` by name:
 </script>
 ```
 
+## Advanced Build-Step Runtime
+
+Layer 1 still works with no build step. A build step can optimize the same
+runtime by emitting SSR HTML plus compact registry descriptors. The browser can
+start in the document head, apply snapshots, and wait for a root to appear:
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@async/framework": "https://unpkg.com/@async/framework@latest/browser.js"
+  }
+}
+</script>
+
+<script type="application/json" async:snapshot>
+{
+  "signal": {
+    "productId": "sku-1"
+  },
+  "handler": {
+    "cart.add": { "url": "cart.add.js" }
+  },
+  "component": {
+    "ProductCard": { "url": "ProductCard.js" }
+  },
+  "asyncSignal": {
+    "product.load": { "url": "product.load.js" }
+  }
+}
+</script>
+
+<script type="module">
+  import {
+    Async,
+    defineAsyncContainerElement,
+    defineAsyncSuspenseElement,
+    readSnapshot
+  } from "@async/framework";
+
+  Async.start({
+    snapshot: readSnapshot(document),
+    registryAssets: { baseUrl: "_async" }
+  });
+
+  defineAsyncContainerElement();
+  defineAsyncSuspenseElement();
+</script>
+```
+
+`Async.start()` defaults to rootless browser startup. It creates registries,
+applies snapshots, and prepares the scheduler/server proxy context without
+scanning DOM. Attach a root later with `Async.attachRoot(root)` or by using
+`<async-container>`:
+
+```html
+<async-container>
+  <button type="button" on:click="cart.add">Add</button>
+</async-container>
+```
+
+Descriptor URLs are relative to a type folder under `registryAssets.baseUrl`.
+The default is:
+
+```js
+{
+  baseUrl: "_async",
+  paths: {
+    component: "component",
+    handler: "handler",
+    asyncSignal: "asyncSignal",
+    partial: "partial",
+    route: "route"
+  }
+}
+```
+
+So this descriptor:
+
+```json
+{ "url": "ProductCard.js#ProductCard" }
+```
+
+resolves as:
+
+```txt
+/_async/component/ProductCard.js#ProductCard
+```
+
+If `#export` is omitted, Async tries the registry id leaf, then the file
+basename, then `default`.
+
+For declarative async boundaries, use `<async-suspense>` or keep using
+`this.suspense(...)` inside components:
+
+```html
+<async-suspense for="product.load">
+  <template loading>Loading...</template>
+  <template ready>
+    <h1 signal:text="product.load.title"></h1>
+  </template>
+  <template error>
+    <p signal:text="product.load.$error.message"></p>
+  </template>
+</async-suspense>
+```
+
+The build layer can hide `createBoundaryReceiver(...)` setup, but streaming is
+still explicit boundary patches: boundary id, sequence number, HTML, signal
+patches, and browser-cache patches. Async does not ship a component resume graph.
+
 ## Core API
 
 For npm consumers, `@async/framework` uses conditional exports: browser-aware
@@ -202,6 +313,7 @@ import {
   createApp,
   createCacheRegistry,
   createComponentRegistry,
+  createLazyRegistry,
   component,
   computed,
   createSignal,
@@ -213,10 +325,13 @@ import {
   createScheduler,
   createServerProxy,
   createSignalRegistry,
+  defineAsyncContainerElement,
+  defineAsyncSuspenseElement,
   defineAttributeConfig,
   defineApp,
   defineCache,
   defineComponent,
+  defineRegistrySnapshot,
   defineRoute,
   delay,
   effect,
