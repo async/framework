@@ -1050,6 +1050,47 @@ loader.swap(
 `swap(boundaryId, fragmentOrTemplate)` replaces the boundary contents and
 rescans the inserted fragment.
 
+When boundary patches can arrive independently, use `createBoundaryReceiver`.
+It keeps per-boundary sequence state, applies signal/cache effects before the
+HTML swap, flushes scheduled bindings, and ignores stale child patches after a
+parent scope is destroyed.
+
+```js
+import { createBoundaryReceiver } from "@async/framework/browser";
+
+const receiver = createBoundaryReceiver({
+  loader: runtime.loader,
+  signals: runtime.signals,
+  cache: runtime.browser.cache,
+  scheduler: runtime.scheduler,
+  router: runtime.router
+});
+
+await receiver.apply({
+  boundary: "product",
+  seq: 1,
+  signals: {
+    product: { title: "Keyboard" }
+  },
+  cache: {
+    browser: {
+      "product:sku-1": { title: "Keyboard" }
+    }
+  },
+  html: `
+    <article>
+      <h1 signal:text="product.title"></h1>
+      <button type="button" on:click="server.cart.add(productId)">Add</button>
+    </article>
+  `
+});
+```
+
+Sequence numbers are tracked per boundary: `hero` patch `10` can apply before
+`reviews` patch `2`, while a later `hero` patch `9` is ignored. The receiver
+does not add transport management, a transaction log, hydration, or component
+rerendering.
+
 ## Examples
 
 | Example | Shows |

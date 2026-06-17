@@ -162,6 +162,10 @@ export function createScheduler(options = {}) {
       return api;
     },
 
+    isScopeDestroyed(scope) {
+      return scope !== undefined && destroyedScopes.has(scope);
+    },
+
     inspect() {
       const counts = {};
       for (const [phase, queue] of queues) {

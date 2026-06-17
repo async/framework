@@ -75,6 +75,7 @@ export interface Scheduler {
   afterFlush(job: () => MaybePromise<unknown>, options?: { scope?: unknown; boundary?: string; key?: string }): Cleanup;
   cancelScope(scope: unknown): this;
   markScopeDestroyed(scope: unknown): this;
+  isScopeDestroyed(scope: unknown): boolean;
   destroy(): void;
   inspect(): SchedulerInspection;
 }
@@ -458,6 +459,53 @@ export interface LoaderInstance {
 export type AsyncLoaderOptions = LoaderOptions;
 export type AsyncLoaderInstance = LoaderInstance;
 
+export interface BoundaryPatch {
+  boundary: string;
+  seq: number;
+  html?: TemplateLike;
+  signals?: Record<string, unknown>;
+  cache?: { browser?: Record<string, unknown> };
+  redirect?: string;
+  error?: unknown;
+  parentScope?: string;
+  scope?: string;
+  meta?: Record<string, unknown>;
+}
+
+export type BoundaryApplyResult =
+  | { status: "applied"; boundary: string; seq: number }
+  | { status: "ignored-stale"; boundary: string; seq: number; lastSeq: number }
+  | { status: "ignored-destroyed"; boundary: string; seq: number; parentScope?: string }
+  | { status: "redirected"; boundary: string; seq: number; redirect: string }
+  | { status: "errored"; boundary: string; seq: number; error: Error };
+
+export interface BoundaryReceiverInspection {
+  destroyed: boolean;
+  boundaries: Record<string, { lastSeq: number; applied: number; ignored: number; errored?: number; lastStatus?: BoundaryApplyResult["status"] }>;
+  recent: Array<{ boundary: string; seq: number; status: BoundaryApplyResult["status"]; lastSeq?: number; parentScope?: string; redirect?: string }>;
+}
+
+export interface BoundaryReceiverOptions {
+  loader: LoaderInstance;
+  signals?: SignalRegistry;
+  cache?: CacheRegistry;
+  scheduler?: Scheduler;
+  router?: Router;
+  onApply?(result: BoundaryApplyResult, patch: BoundaryPatch): void;
+  onIgnore?(result: BoundaryApplyResult, patch: BoundaryPatch): void;
+  onError?(error: Error, result: BoundaryApplyResult, patch: BoundaryPatch): void;
+  throwOnError?: boolean;
+  recentLimit?: number;
+  isScopeDestroyed?(scope: string): boolean;
+}
+
+export interface BoundaryReceiver {
+  apply(patch: BoundaryPatch): Promise<BoundaryApplyResult>;
+  inspect(): BoundaryReceiverInspection;
+  reset(boundary?: string): this;
+  destroy(): void;
+}
+
 export interface RegistryStore {
   target: RuntimeTarget;
   register(type: RegistryType, id: string, value: unknown): string;
@@ -568,6 +616,7 @@ export interface AsyncNamespace extends AppHub {
   readSnapshot: typeof readSnapshot;
   attributeName: typeof attributeName;
   defineAttributeConfig: typeof defineAttributeConfig;
+  createBoundaryReceiver: typeof createBoundaryReceiver;
   createCacheRegistry: typeof createCacheRegistry;
   defineCache: typeof defineCache;
   component: typeof component;
@@ -605,6 +654,7 @@ export declare function defineApp(initial?: AppDefinition): AppHub;
 export declare function readSnapshot(root?: Document | Element, options?: { attributes?: AttributeConfig }): { signals?: Record<string, unknown>; cache?: { browser?: Record<string, unknown> } };
 export declare function attributeName(attributes: AttributeConfig | undefined, type: keyof NormalizedAttributeConfig, name: string): string;
 export declare function defineAttributeConfig(config?: AttributeConfig): NormalizedAttributeConfig;
+export declare function createBoundaryReceiver(options: BoundaryReceiverOptions): BoundaryReceiver;
 export declare function createCacheRegistry(initialMap?: Record<string, CacheDefinition | CacheDefinitionOptions>, options?: { now?: () => number; registry?: RegistryStore; type?: "cache.browser" | "cache.server" }): CacheRegistry;
 export declare function defineCache(options?: CacheDefinitionOptions): CacheDefinition;
 export declare function component<TProps extends Record<string, unknown> = Record<string, unknown>>(fn: ComponentFunction<TProps>): ComponentFunction<TProps>;

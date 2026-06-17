@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added `createBoundaryReceiver(...)` for optional out-of-order boundary patch
+  delivery with per-boundary sequence checks, signal/cache effect ordering,
+  scheduler flushing, redirects, and destroyed parent-scope filtering.
+
 ## 0.8.0 - 2026-06-17
 
 - Split browser and server entrypoints with `@async/framework/browser`,
