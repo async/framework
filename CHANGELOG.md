@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added the Layer 1.5 scheduler for deterministic signal binding, lifecycle,
+  effect, async, and post-flush phases.
+- Added browser microtask scheduling by default and manual scheduler flushing for
+  server render paths.
+- Threaded `this.scheduler` through loader, handler, component, async signal,
+  server, router, and partial contexts.
+
 ## 0.7.0 - 2026-06-17
 
 - Added router navigation abort/version guards so stale route partials cannot

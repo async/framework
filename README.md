@@ -53,6 +53,8 @@ primitives. It keeps the runtime small and explicit:
 - Handlers live in a registry and run through delegated DOM events.
 - Async signals use native `AbortSignal` cancellation and suppress stale async
   completions.
+- A small scheduler batches signal-driven DOM bindings, lifecycle callbacks,
+  effects, and async refreshes without adding a render loop.
 - Browser and server cache declarations are structurally split.
 - Boundaries can be swapped out of order and rescanned, which keeps server
   streaming and partial HTML replacement simple.
@@ -68,7 +70,7 @@ next level on every app.
 
 | Layer | Name | Requirement | Purpose |
 | --- | --- | --- | --- |
-| 1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
+| 1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, scheduler, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
 | 2 | App/server layer | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial registry, SSR output, browser activation, and split browser/server cache. |
 | 3 | Authoring build | Build step required. | JSX, ESM, and TypeScript authoring that lowers into Layer 1 HTML attributes and Layer 2 registries. |
 | 4 | Chunk and resumability metadata | Build metadata required. | Lazy module manifests, visibility/prefetch hints, resource graphs, and resumability records that the bootloader can consume. |
@@ -204,6 +206,7 @@ import {
   createRegistryStore,
   createRouteRegistry,
   createRouter,
+  createScheduler,
   createServerProxy,
   createServerRegistry,
   createSignalRegistry,
@@ -373,6 +376,49 @@ signals.set("product.title", "Headphones");
 
 `signal(...)` remains a compatibility alias for `createSignal(...)`.
 
+### Scheduler
+
+The scheduler is the Layer 1.5 ordering engine. Signal writes are still
+synchronous:
+
+```js
+signals.set("count", 3);
+signals.get("count");
+// 3
+```
+
+DOM bindings, component lifecycle callbacks, component effects, and async signal
+refreshes are scheduled through deterministic phases:
+
+```txt
+binding -> lifecycle -> effect -> async -> post
+```
+
+Browser runtimes use a microtask scheduler by default. Server runtimes use a
+manual scheduler and drain it during `runtime.render(...)`.
+
+```js
+import {
+  createScheduler
+} from "@async/framework";
+
+const scheduler = createScheduler({
+  strategy: "manual"
+});
+
+const runtime = Async.start({
+  root: document,
+  scheduler
+});
+
+signals.set("count", 1);
+await scheduler.flush();
+```
+
+Most apps do not need to call the scheduler directly. It is exposed for tests,
+custom runtimes, streaming receivers, and higher layers that need explicit flush
+boundaries.
+
 ### Async Signals
 
 Async signals add loading state, error state, versions, refresh, and cancel to a
@@ -401,6 +447,7 @@ The async function context includes:
 | `this.id` | Current async signal id |
 | `this.version` | Run version |
 | `this.abort` | Native `AbortSignal` with non-enumerable `cancel(reason?)` |
+| `this.scheduler` | Current runtime scheduler |
 | `this.refresh()` | Start a new run |
 
 `this.abort` can be passed directly to `fetch` or to `delay`:
