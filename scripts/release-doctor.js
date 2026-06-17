@@ -41,8 +41,8 @@ async function main() {
   }
   console.log(`OK Git tag: ${repository}@${tagName}`);
 
-  if (normalizeReleaseBody(release.body ?? "") !== normalizeReleaseBody(releaseBody)) {
-    throw new Error(`GitHub Release ${tagName} description does not match CHANGELOG.md.`);
+  if (!normalizeReleaseBody(release.body ?? "").includes(normalizeReleaseBody(releaseBody))) {
+    throw new Error(`GitHub Release ${tagName} description does not include the CHANGELOG.md entry.`);
   }
   console.log(`OK GitHub Release: ${repository}@${tagName}`);
   console.log(`Release doctor passed for ${manifest.name}@${version}.`);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 - 2026-06-17
+
+- Fixed release doctor validation to accept the pipeline-generated GitHub
+  Release description wrapper around changelog entries.
+
 ## 0.2.1 - 2026-06-17
 
 - Fixed the generated release pipeline for the no-build package by verifying
