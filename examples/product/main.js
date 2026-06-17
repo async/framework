@@ -1,4 +1,4 @@
-import { AsyncLoader, createSignal, createSignalRegistry, delay } from "../../src/index.js";
+import { Loader, createSignal, createSignalRegistry, delay } from "../../src/index.js";
 
 const products = {
   "sku-1": {
@@ -21,4 +21,4 @@ signals.asyncSignal("product", async function () {
   return products[id];
 });
 
-AsyncLoader({ root: document.body, signals }).start();
+Loader({ root: document.body, signals }).start();

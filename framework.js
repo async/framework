@@ -1516,7 +1516,7 @@ const __componentModule = (() => {
       bind(value) {
         const id = runtime.loader?._registerBinding?.(value);
         if (!id) {
-          throw new Error("Inline template bindings require an AsyncLoader.");
+          throw new Error("Inline template bindings require a Loader.");
         }
         bindingIds.push(id);
         return id;
@@ -2356,7 +2356,7 @@ const __loaderModule = (() => {
   const { matchAttribute, normalizeAttributeConfig, readAttribute } = __attributesModule;
   const inlineBindingPrefix = "__async:inline:";
 
-  function AsyncLoader({ root, signals, handlers, server, router, cache, attributes } = {}) {
+  function Loader({ root, signals, handlers, server, router, cache, attributes } = {}) {
     const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
     const rootNode = root ?? documentRef;
     const signalRegistry = signals ?? createSignalRegistry();
@@ -2798,7 +2798,7 @@ const __loaderModule = (() => {
 
     function assertActive() {
       if (destroyed) {
-        throw new Error("AsyncLoader has been destroyed.");
+        throw new Error("Loader has been destroyed.");
       }
     }
 
@@ -2861,6 +2861,8 @@ const __loaderModule = (() => {
 
     return api;
   }
+
+  const AsyncLoader = Loader;
 
   function normalizeClassTokens(value, tokens = new Set()) {
     if (value == null || value === false) {
@@ -3062,7 +3064,7 @@ const __loaderModule = (() => {
       })
     );
   }
-  return { AsyncLoader };
+  return { Loader, AsyncLoader };
 })();
 
 const __partialsModule = (() => {
@@ -3185,7 +3187,7 @@ const __partialsModule = (() => {
 })();
 
 const __routerModule = (() => {
-  const { AsyncLoader } = __loaderModule;
+  const { Loader } = __loaderModule;
   const { createHandlerRegistry } = __handlersModule;
   const { createSignalRegistry } = __signalsModule;
   const { applyServerResult } = __serverModule;
@@ -3314,7 +3316,7 @@ const __routerModule = (() => {
     const attributeConfig = normalizeAttributeConfig(attributes ?? loader?.attributes);
     const loaderInstance =
       loader ??
-      AsyncLoader({
+      Loader({
         root: rootNode,
         signals: signalRegistry,
         handlers: handlerRegistry,
@@ -3665,7 +3667,7 @@ const __appModule = (() => {
   const { createCacheRegistry } = __cacheModule;
   const { createComponentRegistry } = __componentModule;
   const { createHandlerRegistry } = __handlersModule;
-  const { AsyncLoader } = __loaderModule;
+  const { Loader } = __loaderModule;
   const { createPartialRegistry } = __partialsModule;
   const { createRouteRegistry, createRouter } = __routerModule;
   const { createServerRegistry } = __serverModule;
@@ -3764,7 +3766,7 @@ const __appModule = (() => {
         started = true;
 
         if (target !== "server") {
-          loader = loader ?? AsyncLoader({
+          loader = loader ?? Loader({
             root: options.root,
             signals,
             handlers,
@@ -4115,6 +4117,7 @@ const { defineComponent: defineComponent } = __componentModule;
 const { delay: delay } = __delayModule;
 const { createHandlerRegistry: createHandlerRegistry } = __handlersModule;
 const { html: html } = __htmlModule;
+const { Loader: Loader } = __loaderModule;
 const { AsyncLoader: AsyncLoader } = __loaderModule;
 const { createPartialRegistry: createPartialRegistry } = __partialsModule;
 const { createRegistryStore: createRegistryStore } = __registryStoreModule;
@@ -4130,4 +4133,4 @@ const { createSignalRegistry: createSignalRegistry } = __signalsModule;
 const { effect: effect } = __signalsModule;
 const { signal: signal } = __signalsModule;
 
-export { asyncSignal, Async, createApp, defineApp, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };
+export { asyncSignal, Async, createApp, defineApp, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };

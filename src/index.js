@@ -6,7 +6,7 @@ export { component, createComponentRegistry, defineComponent } from "./component
 export { delay } from "./delay.js";
 export { createHandlerRegistry } from "./handlers.js";
 export { html } from "./html.js";
-export { AsyncLoader } from "./loader.js";
+export { Loader, AsyncLoader } from "./loader.js";
 export { createPartialRegistry } from "./partials.js";
 export { createRegistryStore } from "./registry-store.js";
 export { createRouteRegistry, createRouter, defineRoute, route } from "./router.js";

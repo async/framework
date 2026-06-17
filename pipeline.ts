@@ -40,7 +40,12 @@ export default definePipeline({
       "examples/**/*",
       "README.md",
       "CHANGELOG.md",
+      "framework.d.ts",
       "framework.js",
+      "framework.min.js",
+      "framework.umd.js",
+      "framework.umd.min.js",
+      "framework.ts",
       "package.json",
       "pipeline.ts",
       "scripts/**/*.js"

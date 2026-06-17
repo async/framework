@@ -1,7 +1,7 @@
 {
   "name": "@async/framework",
   "version": "0.5.0",
-  "description": "No-build AsyncLoader app runtime with signals, command events, server calls, route partials, cache split, SSR activation, and streaming boundaries.",
+  "description": "No-build Loader app runtime with signals, command events, server calls, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "packageManager": "pnpm@11.1.0",
   "engines": {
@@ -28,21 +28,49 @@
     "web-framework"
   ],
   "license": "MIT",
-  "unpkg": "./framework.js",
+  "types": "./framework.d.ts",
+  "unpkg": "./framework.umd.min.js",
+  "jsdelivr": "./framework.umd.min.js",
   "exports": {
     ".": {
-      "unpkg": "./framework.js",
+      "types": "./framework.d.ts",
+      "unpkg": "./framework.umd.min.js",
       "browser": "./framework.js",
       "import": "./src/index.js",
       "default": "./src/index.js"
     },
-    "./framework.js": "./framework.js",
+    "./framework.js": {
+      "types": "./framework.d.ts",
+      "default": "./framework.js"
+    },
+    "./framework.min.js": {
+      "types": "./framework.d.ts",
+      "default": "./framework.min.js"
+    },
+    "./framework.umd.js": {
+      "types": "./framework.d.ts",
+      "default": "./framework.umd.js"
+    },
+    "./framework.umd.min.js": {
+      "types": "./framework.d.ts",
+      "default": "./framework.umd.min.js"
+    },
+    "./framework.ts": {
+      "types": "./framework.d.ts",
+      "default": "./framework.ts"
+    },
+    "./framework.d.ts": "./framework.d.ts",
     "./package.json": "./package.json"
   },
   "files": [
     "CHANGELOG.md",
     "README.md",
+    "framework.d.ts",
     "framework.js",
+    "framework.min.js",
+    "framework.umd.js",
+    "framework.umd.min.js",
+    "framework.ts",
     "src",
     "examples",
     "LICENSE",

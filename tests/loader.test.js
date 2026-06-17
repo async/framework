@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
-  AsyncLoader,
+  Loader,
   createHandlerRegistry,
   createServerRegistry,
   createSignalRegistry,
@@ -11,7 +11,7 @@ import {
   signal
 } from "../src/index.js";
 
-test("AsyncLoader binds text, values, attributes, classes, and input writes", async () => {
+test("Loader binds text, values, attributes, classes, and input writes", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -42,7 +42,7 @@ test("AsyncLoader binds text, values, attributes, classes, and input writes", as
     registeredClasses: signal(["registered", { enabled: true, disabled: false }])
   });
 
-  const loader = AsyncLoader({ root: document.body, signals }).start();
+  const loader = Loader({ root: document.body, signals }).start();
   const text = document.querySelector("span");
   const input = document.querySelector("input");
   const button = document.querySelector("button");
@@ -87,7 +87,7 @@ test("AsyncLoader binds text, values, attributes, classes, and input writes", as
   loader.destroy();
 });
 
-test("AsyncLoader supports configured data attribute prefixes", async () => {
+test("Loader supports configured data attribute prefixes", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -117,7 +117,7 @@ test("AsyncLoader supports configured data attribute prefixes", async () => {
     selected: signal(false),
     buttonClasses: signal(["from-array", { custom: true }])
   });
-  const loader = AsyncLoader({
+  const loader = Loader({
     root: document.body,
     signals,
     attributes,
@@ -141,7 +141,7 @@ test("AsyncLoader supports configured data attribute prefixes", async () => {
   loader.destroy();
 });
 
-test("AsyncLoader renders async boundaries through loading, ready, and error templates", async () => {
+test("Loader renders async boundaries through loading, ready, and error templates", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -158,14 +158,14 @@ test("AsyncLoader renders async boundaries through loading, ready, and error tem
     return { title: "Keyboard" };
   });
 
-  AsyncLoader({ root: document.body, signals }).start();
+  Loader({ root: document.body, signals }).start();
 
   assert.equal(document.querySelector(".loading").textContent, "Loading");
   await delay(10);
   assert.equal(document.querySelector("h1").textContent, "Keyboard");
 });
 
-test("AsyncLoader dispatches async:error for missing delegated handlers", async () => {
+test("Loader dispatches async:error for missing delegated handlers", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<button on:click="missing">Missing</button>`;
@@ -175,14 +175,14 @@ test("AsyncLoader dispatches async:error for missing delegated handlers", async 
     seen = event.detail.error;
   });
 
-  AsyncLoader({ root: document.body }).start();
+  Loader({ root: document.body }).start();
   document.querySelector("button").click();
   await delay(0);
 
   assert.match(seen.message, /Handler "missing" is not registered/);
 });
 
-test("AsyncLoader runs semicolon commands with server calls from DOM events", async () => {
+test("Loader runs semicolon commands with server calls from DOM events", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -207,7 +207,7 @@ test("AsyncLoader runs semicolon commands with server calls from DOM events", as
       };
     }
   });
-  const loader = AsyncLoader({ root: document.body, signals, server }).start();
+  const loader = Loader({ root: document.body, signals, server }).start();
   const form = document.querySelector("form");
   const event = new window.Event("submit", { bubbles: true, cancelable: true });
 
@@ -220,7 +220,7 @@ test("AsyncLoader runs semicolon commands with server calls from DOM events", as
   loader.destroy();
 });
 
-test("AsyncLoader treats on:attach as the attach pseudo-event and on:mount as an alias", async () => {
+test("Loader treats on:attach as the attach pseudo-event and on:mount as an alias", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -229,7 +229,7 @@ test("AsyncLoader treats on:attach as the attach pseudo-event and on:mount as an
   `;
 
   const events = [];
-  const loader = AsyncLoader({
+  const loader = Loader({
     root: document.body,
     handlers: createHandlerRegistry({
       attach({ element }) {
@@ -268,7 +268,7 @@ test("boundary swap rescans inserted HTML and scanned handlers still work", asyn
     selected: signal(false)
   });
 
-  const loader = AsyncLoader({
+  const loader = Loader({
     root: document.body,
     signals,
     handlers: createHandlerRegistry({

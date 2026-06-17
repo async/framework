@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
-  AsyncLoader,
+  Loader,
   createServerProxy,
   createServerRegistry,
   createSignalRegistry,
@@ -99,7 +99,7 @@ test("async signal context exposes this.server from the loader runtime", async (
     return this.server.products.get("sku-1");
   });
 
-  const loader = AsyncLoader({ root: window.document, signals, server }).start();
+  const loader = Loader({ root: window.document, signals, server }).start();
   await delay(5);
 
   assert.equal(signals.get("product.$status"), "ready");
@@ -139,7 +139,7 @@ test("async signal server proxy calls unwrap values and apply returned effects",
     return this.server.products.get("sku-1");
   });
 
-  const loader = AsyncLoader({ root: window.document, signals, server }).start();
+  const loader = Loader({ root: window.document, signals, server }).start();
   await delay(5);
 
   assert.equal(signals.get("product.$status"), "ready");
@@ -181,7 +181,7 @@ test("async signal server proxy calls receive the active abort signal", async ()
     return this.server.products.get(id);
   });
 
-  const loader = AsyncLoader({ root: window.document, signals, server }).start();
+  const loader = Loader({ root: window.document, signals, server }).start();
   await delay(0);
 
   signals.set("productId", "sku-2");
@@ -219,7 +219,7 @@ test("async signal stores normalized server errors with stable messages", async 
     return this.server.products.get("missing");
   });
 
-  const loader = AsyncLoader({ root: window.document, signals, server }).start();
+  const loader = Loader({ root: window.document, signals, server }).start();
   await delay(5);
 
   assert.equal(signals.get("product.$status"), "error");

@@ -1,4 +1,4 @@
-import { AsyncLoader } from "./loader.js";
+import { Loader } from "./loader.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { createSignalRegistry } from "./signals.js";
 import { applyServerResult } from "./server.js";
@@ -128,7 +128,7 @@ export function createRouter({
   const attributeConfig = normalizeAttributeConfig(attributes ?? loader?.attributes);
   const loaderInstance =
     loader ??
-    AsyncLoader({
+    Loader({
       root: rootNode,
       signals: signalRegistry,
       handlers: handlerRegistry,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { AsyncLoader, component, createServerRegistry, delay, html } from "../src/index.js";
+import { Loader, component, createServerRegistry, delay, html } from "../src/index.js";
 
 test("component helpers create scoped signals, handlers, effects, children, and lifecycle cleanup", async () => {
   const window = new Window();
@@ -56,7 +56,7 @@ test("component helpers create scoped signals, handlers, effects, children, and 
     `;
   });
 
-  const loader = AsyncLoader({ root: document, server });
+  const loader = Loader({ root: document, server });
   loader.mount(document.querySelector("#app"), Parent);
   await delay(0);
 
@@ -104,7 +104,7 @@ test("component this.on supports rootless fragment lifecycle fallback", async ()
     return html`text <span>fragment</span>`;
   });
 
-  const loader = AsyncLoader({ root: document });
+  const loader = Loader({ root: document });
   loader.mount(document.querySelector("#app"), Rootless);
   await delay(0);
 
@@ -148,7 +148,7 @@ test("component templates support inline handlers, signal class values, and sign
     `;
   });
 
-  const loader = AsyncLoader({ root: document });
+  const loader = Loader({ root: document });
   loader.mount(document.querySelector("#app"), ProductCard, {
     id: "sku-1",
     title: "Keyboard"
@@ -218,7 +218,7 @@ test("component templates support inline signal refs for text, attributes, and p
     `;
   });
 
-  const loader = AsyncLoader({ root: document });
+  const loader = Loader({ root: document });
   loader.mount(document.querySelector("#app"), FormControls);
   await delay(0);
 
@@ -279,7 +279,7 @@ test("component scoped handlers and signals clean up when a mounted fragment is 
     `;
   });
 
-  const loader = AsyncLoader({ root: document.body }).start();
+  const loader = Loader({ root: document.body }).start();
   loader.mount(document.querySelector("#slot"), Card);
   await delay(0);
 
@@ -340,7 +340,7 @@ test("component this.suspense emits async boundary templates without owning a wr
     `;
   });
 
-  const loader = AsyncLoader({ root: document, server });
+  const loader = Loader({ root: document, server });
   loader.mount(document.querySelector("#app"), Product);
 
   assert.equal(document.querySelector("#product").tagName, "ARTICLE");
@@ -375,7 +375,7 @@ test("component this.suspense supports shorthand ready views and configured asyn
     `;
   });
 
-  const loader = AsyncLoader({
+  const loader = Loader({
     root: document,
     attributes: {
       async: "data-async-",
@@ -415,7 +415,7 @@ test("component this.suspense validates signal refs and view callbacks", async (
     return html`<span id="suspense-errors-ok">ok</span>`;
   });
 
-  const loader = AsyncLoader({ root: document });
+  const loader = Loader({ root: document });
   loader.mount(document.querySelector("#app"), Errors);
 
   assert.equal(document.querySelector("#suspense-errors-ok").textContent, "ok");

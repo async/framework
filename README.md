@@ -90,9 +90,18 @@ and package lifecycle tooling. Browser consumers import ESM directly.
 
 ## CDN
 
-The package ships a root `framework.js` ESM bundle for UNPKG and can be loaded
-without a build step. Use `@latest` for quick prototypes, and pin an exact
-version in production:
+The package ships root CDN artifacts for UNPKG and can be loaded without a
+build step. Use `@latest` for quick prototypes, and pin an exact version in
+production:
+
+| File | Format | Use |
+| --- | --- | --- |
+| `framework.js` | ESM | Readable browser module bundle |
+| `framework.min.js` | ESM | Compact browser module bundle |
+| `framework.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
+| `framework.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
+| `framework.ts` | TypeScript source facade | TS-aware runtimes and higher-layer tooling |
+| `framework.d.ts` | Type declarations | TypeScript declarations for the public API |
 
 ```html
 <main async:container>
@@ -109,6 +118,29 @@ version in production:
   Async.use({
     signal: {
       count: createSignal(0)
+    },
+    handler: {
+      increment() {
+        this.signals.update("count", (count) => count + 1);
+      }
+    }
+  });
+
+  Async.start({ root: document });
+</script>
+```
+
+For a plain script tag, use the UMD bundle. In this UMD-only global form,
+`globalThis.Async` is the app hub plus the exported helper functions, with
+`globalThis.AsyncFramework` kept as an alias. Lower-level bootloader code can
+call `Async.Loader(...)` directly.
+
+```html
+<script src="https://unpkg.com/@async/framework@latest/framework.umd.min.js"></script>
+<script>
+  Async.use({
+    signal: {
+      count: Async.createSignal(0)
     },
     handler: {
       increment() {
@@ -157,8 +189,8 @@ You can also use an import map so app code imports `@async/framework` by name:
 
 ```js
 import {
-  AsyncLoader,
   Async,
+  Loader,
   attributeName,
   asyncSignal,
   createApp,
@@ -187,6 +219,9 @@ import {
   signal
 } from "@async/framework";
 ```
+
+`Loader` is the canonical loader factory. `AsyncLoader` remains as a
+compatibility alias for older code.
 
 ### App Hub
 
@@ -378,7 +413,7 @@ reruns and the previous run is aborted.
 
 ## HTML Protocol
 
-AsyncLoader scans regular HTML attributes:
+Loader scans regular HTML attributes:
 
 | Attribute | Behavior |
 | --- | --- |
@@ -792,7 +827,7 @@ createApp(browserApp, {
 ## Components
 
 Components are scoped fragment functions. They return strings or `html`
-templates; AsyncLoader inserts and scans the result. There is no virtual node
+templates; Loader inserts and scans the result. There is no virtual node
 type and no rerender loop.
 
 ```js
@@ -822,7 +857,7 @@ const Toggle = defineComponent(function Toggle() {
   `;
 });
 
-const loader = AsyncLoader({ root: document });
+const loader = Loader({ root: document });
 loader.mount(document.querySelector("#app"), Toggle);
 ```
 
@@ -845,7 +880,7 @@ Component helpers:
 | `this.onMount(fn)` | Compatibility alias for `this.on("attach", fn)` |
 | `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
 
-`this.suspense(...)` is sugar for AsyncLoader boundaries:
+`this.suspense(...)` is sugar for Loader boundaries:
 `asyncSignal + async:boundary + async:* templates`. It emits only templates. The
 caller owns the boundary element, and the loader chooses the loading, ready, or
 error template from the async signal status.

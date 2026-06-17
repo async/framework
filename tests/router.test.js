@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
-  AsyncLoader,
+  Loader,
   createCacheRegistry,
   createHandlerRegistry,
   createPartialRegistry,
@@ -61,7 +61,7 @@ test("CSR router renders the current route partial into an empty boundary on sta
       };
     }
   });
-  const loader = AsyncLoader({ root: document.body, signals, handlers, cache }).start();
+  const loader = Loader({ root: document.body, signals, handlers, cache }).start();
   const router = createRouter({
     mode: "csr",
     root: document.body,
@@ -104,7 +104,7 @@ test("CSR router records an error when no route matches", async () => {
   document.body.innerHTML = `<section async:boundary="route"></section>`;
 
   const signals = createSignalRegistry();
-  const loader = AsyncLoader({ root: document.body, signals }).start();
+  const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
     mode: "csr",
     root: document.body,
@@ -140,7 +140,7 @@ test("CSR router supports wildcard fallback routes", async () => {
 
   const signals = createSignalRegistry();
   const notFoundRoute = route("notFound.page");
-  const loader = AsyncLoader({ root: document.body, signals }).start();
+  const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
     mode: "csr",
     root: document.body,
@@ -197,7 +197,7 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
       `;
     }
   });
-  const loader = AsyncLoader({ root: document.body, signals, handlers }).start();
+  const loader = Loader({ root: document.body, signals, handlers }).start();
   const router = createRouter({
     mode: "spa",
     root: document.body,
@@ -238,7 +238,7 @@ test("SSR-SPA router starts from existing HTML and intercepts later same-origin 
 
   const signals = createSignalRegistry();
   let requestedUrl;
-  const loader = AsyncLoader({ root: document.body, signals }).start();
+  const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
     mode: "ssr-spa",
     root: document.body,

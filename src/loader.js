@@ -5,7 +5,7 @@ import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attri
 
 const inlineBindingPrefix = "__async:inline:";
 
-export function AsyncLoader({ root, signals, handlers, server, router, cache, attributes } = {}) {
+export function Loader({ root, signals, handlers, server, router, cache, attributes } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
@@ -447,7 +447,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
 
   function assertActive() {
     if (destroyed) {
-      throw new Error("AsyncLoader has been destroyed.");
+      throw new Error("Loader has been destroyed.");
     }
   }
 
@@ -510,6 +510,8 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
 
   return api;
 }
+
+export const AsyncLoader = Loader;
 
 function normalizeClassTokens(value, tokens = new Set()) {
   if (value == null || value === false) {

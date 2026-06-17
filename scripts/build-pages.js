@@ -6,7 +6,7 @@ const site = {
   title: "@async/framework",
   repo: "framework",
   stage: "Layer 1 + Layer 2",
-  description: "No-build AsyncLoader runtime with signals, app declarations, command events, server calls, route partials, cache split, and SSR activation.",
+  description: "No-build Loader runtime with signals, app declarations, command events, server calls, route partials, cache split, and SSR activation.",
   lead: "Plain HTML plus ESM for reactive islands, async loading state, route fragments, and out-of-order HTML swaps without a virtual DOM.",
   quickstart: "pnpm add @async/framework\n\nimport { Async, createSignal } from '@async/framework';\n\nAsync.use({\n  signal: { count: createSignal(0) },\n  handler: {\n    increment() {\n      this.signals.update('count', (count) => count + 1);\n    }\n  }\n});\n\nAsync.start({ root: document });"
 };

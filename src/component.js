@@ -89,7 +89,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
     bind(value) {
       const id = runtime.loader?._registerBinding?.(value);
       if (!id) {
-        throw new Error("Inline template bindings require an AsyncLoader.");
+        throw new Error("Inline template bindings require a Loader.");
       }
       bindingIds.push(id);
       return id;

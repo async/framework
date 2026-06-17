@@ -1,4 +1,4 @@
-import { AsyncLoader, defineComponent, html } from "../../src/index.js";
+import { Loader, defineComponent, html } from "../../src/index.js";
 
 const Toggle = defineComponent(function Toggle() {
   const selected = this.signal(false);
@@ -22,5 +22,5 @@ const Toggle = defineComponent(function Toggle() {
   `;
 });
 
-const loader = AsyncLoader({ root: document });
+const loader = Loader({ root: document });
 loader.mount(document.querySelector("#app"), Toggle);

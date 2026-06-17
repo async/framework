@@ -1,7 +1,7 @@
 import { createCacheRegistry } from "./cache.js";
 import { createComponentRegistry } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
-import { AsyncLoader } from "./loader.js";
+import { Loader } from "./loader.js";
 import { createPartialRegistry } from "./partials.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createServerRegistry } from "./server.js";
@@ -101,7 +101,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       started = true;
 
       if (target !== "server") {
-        loader = loader ?? AsyncLoader({
+        loader = loader ?? Loader({
           root: options.root,
           signals,
           handlers,
