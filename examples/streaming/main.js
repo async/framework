@@ -14,7 +14,7 @@ Async.use({
         `
           <article>
             <h1 signal:text="streamingDemo.title"></h1>
-            <button type="button" on:click="streamingDemo.select" signal:class:selected="streamingDemo.selected">
+            <button type="button" on:click="streamingDemo.select" class:selected="streamingDemo.selected">
               Select
             </button>
           </article>

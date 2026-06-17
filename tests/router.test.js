@@ -324,6 +324,7 @@ test("CSR router passes custom attribute config to its owned loader", async () =
     boundary: "route",
     attributes: {
       async: "data-async-",
+      class: "data-class-",
       signal: "data-signal-",
       on: "data-on-"
     },
@@ -338,7 +339,7 @@ test("CSR router passes custom attribute config to its owned loader", async () =
     }),
     partials: createPartialRegistry({
       "custom.page"({ id }) {
-        return `<button id="custom-select" data-on-click="select" data-signal-class:selected="selected">${id}</button>`;
+        return `<button id="custom-select" data-on-click="select" data-class-selected="selected">${id}</button>`;
       }
     })
   }).start();

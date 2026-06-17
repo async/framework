@@ -56,7 +56,7 @@ serverApp.use({
           <article>
             <h1>${product.title}</h1>
             <p>${product.id}</p>
-            <button type="button" on:click="ssrDemo.selectProduct" signal:class:selected="ssrDemo.selected">
+            <button type="button" on:click="ssrDemo.selectProduct" class:selected="ssrDemo.selected">
               Select
             </button>
           </article>

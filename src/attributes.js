@@ -1,5 +1,6 @@
 const defaultPrefixes = Object.freeze({
   async: ["async:"],
+  class: ["class:"],
   signal: ["signal:"],
   on: ["on:"]
 });
@@ -11,6 +12,7 @@ export function defineAttributeConfig(config = {}) {
 export function normalizeAttributeConfig(config = {}) {
   return {
     async: normalizePrefixes(config.async, defaultPrefixes.async),
+    class: normalizePrefixes(config.class, defaultPrefixes.class),
     signal: normalizePrefixes(config.signal, defaultPrefixes.signal),
     on: normalizePrefixes(config.on, defaultPrefixes.on)
   };

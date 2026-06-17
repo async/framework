@@ -40,6 +40,7 @@ export default definePipeline({
       "examples/**/*",
       "README.md",
       "CHANGELOG.md",
+      "framework.js",
       "package.json",
       "pipeline.ts",
       "scripts/**/*.js"
@@ -74,7 +75,7 @@ export default definePipeline({
       dependsOn: ["examples", "docs.site"],
       inputs: ["source"],
       cache: false,
-      run: sh`npm pack --dry-run --ignore-scripts`
+      run: sh`pnpm run bundle:check && npm pack --dry-run --ignore-scripts`
     }),
 
     "release-ensure": task({

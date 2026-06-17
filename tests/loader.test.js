@@ -18,29 +18,66 @@ test("AsyncLoader binds text, values, attributes, classes, and input writes", as
     <main async:container>
       <span signal:text="product.title"></span>
       <input signal:value="productId">
-      <button signal:attr:disabled="product.$loading" signal:class:selected="selected"></button>
+      <button
+        class="base"
+        signal:attr:disabled="product.$loading"
+        class:selected="selected"
+        class:="buttonClasses"
+      ></button>
+      <button id="legacy" signal:class:legacy="legacySelected"></button>
+      <button id="registered-class" signal:class="registeredClasses"></button>
     </main>
   `;
 
   const signals = createSignalRegistry({
     productId: signal("sku-1"),
     product: signal({ title: "Keyboard" }),
-    selected: signal(false)
+    legacySelected: signal(true),
+    selected: signal(false),
+    buttonClasses: signal({
+      ready: true,
+      "tone primary": true,
+      hidden: false
+    }),
+    registeredClasses: signal(["registered", { enabled: true, disabled: false }])
   });
 
   const loader = AsyncLoader({ root: document.body, signals }).start();
   const text = document.querySelector("span");
   const input = document.querySelector("input");
   const button = document.querySelector("button");
+  const legacy = document.querySelector("#legacy");
+  const registeredClass = document.querySelector("#registered-class");
 
   assert.equal(text.textContent, "Keyboard");
   assert.equal(input.value, "sku-1");
+  assert.equal(button.classList.contains("base"), true);
+  assert.equal(legacy.classList.contains("legacy"), true);
   assert.equal(button.classList.contains("selected"), false);
+  assert.equal(button.classList.contains("ready"), true);
+  assert.equal(button.classList.contains("tone"), true);
+  assert.equal(button.classList.contains("primary"), true);
+  assert.equal(button.classList.contains("hidden"), false);
+  assert.equal(registeredClass.classList.contains("registered"), true);
+  assert.equal(registeredClass.classList.contains("enabled"), true);
+  assert.equal(registeredClass.classList.contains("disabled"), false);
 
   signals.set("product.title", "Headphones");
   signals.set("selected", true);
+  signals.set("buttonClasses", ["compact", { ready: false, active: true }, ["nested"]]);
+  signals.set("registeredClasses", { registered: false, changed: true });
   assert.equal(text.textContent, "Headphones");
   assert.equal(button.classList.contains("selected"), true);
+  assert.equal(button.classList.contains("base"), true);
+  assert.equal(button.classList.contains("ready"), false);
+  assert.equal(button.classList.contains("tone"), false);
+  assert.equal(button.classList.contains("primary"), false);
+  assert.equal(button.classList.contains("compact"), true);
+  assert.equal(button.classList.contains("active"), true);
+  assert.equal(button.classList.contains("nested"), true);
+  assert.equal(registeredClass.classList.contains("registered"), false);
+  assert.equal(registeredClass.classList.contains("enabled"), false);
+  assert.equal(registeredClass.classList.contains("changed"), true);
 
   input.value = "sku-2";
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
@@ -55,7 +92,12 @@ test("AsyncLoader supports configured data attribute prefixes", async () => {
   const { document } = window;
   document.body.innerHTML = `
     <main data-async-container>
-      <button data-on-click="select" data-signal-attr:disabled="product.$loading" data-signal-class:selected="selected">
+      <button
+        data-on-click="select"
+        data-signal-attr:disabled="product.$loading"
+        data-class-selected="selected"
+        data-class-="buttonClasses"
+      >
         <span data-signal-text="product.title"></span>
       </button>
       <input data-signal-value="productId">
@@ -65,13 +107,15 @@ test("AsyncLoader supports configured data attribute prefixes", async () => {
 
   const attributes = defineAttributeConfig({
     async: "data-async-",
+    class: "data-class-",
     signal: "data-signal-",
     on: "data-on-"
   });
   const signals = createSignalRegistry({
     productId: signal("sku-1"),
     product: signal({ title: "Keyboard" }),
-    selected: signal(false)
+    selected: signal(false),
+    buttonClasses: signal(["from-array", { custom: true }])
   });
   const loader = AsyncLoader({
     root: document.body,
@@ -90,6 +134,8 @@ test("AsyncLoader supports configured data attribute prefixes", async () => {
   await delay(0);
 
   assert.equal(document.querySelector("button").classList.contains("selected"), true);
+  assert.equal(document.querySelector("button").classList.contains("from-array"), true);
+  assert.equal(document.querySelector("button").classList.contains("custom"), true);
   assert.equal(document.querySelector("p").textContent, "sku-1");
 
   loader.destroy();
@@ -172,6 +218,39 @@ test("AsyncLoader runs semicolon commands with server calls from DOM events", as
   assert.equal(document.querySelector("output").textContent, "Keyboard");
 
   loader.destroy();
+});
+
+test("AsyncLoader treats on:attach as the attach pseudo-event and on:mount as an alias", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section id="attach" on:attach="attach"></section>
+    <section id="mount" on:mount="mount"></section>
+  `;
+
+  const events = [];
+  const loader = AsyncLoader({
+    root: document.body,
+    handlers: createHandlerRegistry({
+      attach({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push("attach-cleanup");
+      },
+      mount({ element }) {
+        events.push(`mount:${element.id}`);
+        return () => events.push("mount-cleanup");
+      }
+    })
+  }).start();
+  await delay(0);
+
+  loader.scan(document.body);
+  await delay(0);
+
+  assert.deepEqual(events, ["attach:attach", "mount:mount"]);
+
+  loader.destroy();
+  assert.deepEqual(events, ["attach:attach", "mount:mount", "attach-cleanup", "mount-cleanup"]);
 });
 
 test("boundary swap rescans inserted HTML and scanned handlers still work", async () => {

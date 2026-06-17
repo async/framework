@@ -1,9 +1,9 @@
 # @async/framework
 
-Layer 1 AsyncLoader plus small Layer 2 app, routing, server, cache, and SSR
-primitives for no-build web apps: signals, async signals, delegated command
-events, scoped fragment components, server calls, route partials, and
-out-of-order boundary swaps without a virtual DOM.
+Async is a layered framework plan that starts as a no-build browser bootloader:
+signals, async signals, delegated command events, scoped fragment components,
+server calls, route partials, and out-of-order boundary swaps without a virtual
+DOM.
 
 ```bash
 pnpm add @async/framework
@@ -43,10 +43,10 @@ Async.start({ root: document });
 
 ## What It Is
 
-`@async/framework` is the browser bootloader layer for Async apps. It keeps the
-runtime small and explicit:
+`@async/framework` is the Layer 1 runtime plus the first Layer 2 app/server
+primitives. It keeps the runtime small and explicit:
 
-- No build step for consumers.
+- No build step for Layer 1 consumers.
 - No virtual DOM, diff path, hydration runtime, or component rerender loop.
 - Signals are the state boundary.
 - `Async.use(...)` registers app declarations before or after startup.
@@ -57,8 +57,27 @@ runtime small and explicit:
 - Boundaries can be swapped out of order and rescanned, which keeps server
   streaming and partial HTML replacement simple.
 
-Higher layers can still add JSX lowering, chunk manifests, server compilation,
-or resumability metadata later. Layer 1 stays plain HTML plus ESM.
+Higher layers can add JSX lowering, TypeScript, chunk manifests, compiler-owned
+server/client splits, and intent-first authoring later. They should compile down
+to the same runtime registries and HTML protocol.
+
+## Layers
+
+Async is designed as layers, so each level can stay useful without forcing the
+next level on every app.
+
+| Layer | Name | Requirement | Purpose |
+| --- | --- | --- | --- |
+| 1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
+| 2 | App/server layer | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial registry, SSR output, browser activation, and split browser/server cache. |
+| 3 | Authoring build | Build step required. | JSX, ESM, and TypeScript authoring that lowers into Layer 1 HTML attributes and Layer 2 registries. |
+| 4 | Chunk and resumability metadata | Build metadata required. | Lazy module manifests, visibility/prefetch hints, resource graphs, and resumability records that the bootloader can consume. |
+| 5 | Framework compiler | Compiler required. | Server/client partitioning, code motion, optimized registry generation, serialized closures, and deeper resumability transforms. |
+| 6 | TSRX and intent layer | Higher-level compiler required. | More declarative author intent, AI/compiler-friendly metadata, and source forms that generate lower-layer Async apps. |
+
+The package in this repository intentionally focuses on Layers 1 and 2. Layers
+3 through 6 are higher authoring surfaces, not extra runtime requirements for
+plain HTML apps.
 
 ## Install
 
@@ -71,9 +90,9 @@ and package lifecycle tooling. Browser consumers import ESM directly.
 
 ## CDN
 
-The package is browser-ready ESM and can be loaded from UNPKG without a build
-step. Use `@latest` for quick prototypes, and pin an exact version in
-production:
+The package ships a root `framework.js` ESM bundle for UNPKG and can be loaded
+without a build step. Use `@latest` for quick prototypes, and pin an exact
+version in production:
 
 ```html
 <main async:container>
@@ -85,7 +104,7 @@ production:
   import {
     Async,
     createSignal
-  } from "https://unpkg.com/@async/framework@latest";
+  } from "https://unpkg.com/@async/framework@latest/framework.js";
 
   Async.use({
     signal: {
@@ -108,7 +127,7 @@ You can also use an import map so app code imports `@async/framework` by name:
 <script type="importmap">
 {
   "imports": {
-    "@async/framework": "https://unpkg.com/@async/framework@latest"
+    "@async/framework": "https://unpkg.com/@async/framework@latest/framework.js"
   }
 }
 </script>
@@ -365,10 +384,13 @@ AsyncLoader scans regular HTML attributes:
 | `on:click="selectProduct"` | Delegated command event |
 | `on:submit="preventDefault; save"` | Sequential command chain |
 | `on:click="server.cart.add(productId)"` | Server command with signal args |
+| `on:attach="setup"` | Component root attach lifecycle pseudo-event |
+| `on:visible="trackView"` | Component root visible lifecycle pseudo-event |
 | `signal:text="product.title"` | Text binding |
 | `signal:value="productId"` | Form value binding with writeback |
 | `signal:attr:disabled="product.$loading"` | Attribute binding |
-| `signal:class:selected="selected"` | Class toggle |
+| `class:selected="selected"` | Class toggle from a signal path |
+| `signal:class="buttonClasses"` | Class set from a signal value: string, object, or array |
 | `async:boundary="product"` | Async or streamed replacement boundary |
 | `async:loading="product"` | Boundary loading template |
 | `async:ready="product"` | Boundary ready template |
@@ -396,19 +418,92 @@ Async.start({
   root: document,
   attributes: {
     async: "data-async-",
+    class: "data-class-",
     signal: "data-signal-",
     on: "data-on-"
   }
 });
 ```
 
-That maps to `data-async-container`, `data-on-click="save"`, and
-`data-signal-text="product.title"`.
+That maps to `data-async-container`, `data-on-click="save"`,
+`data-signal-text="product.title"`, and `data-class-selected="selected"`.
+
+Named class toggles use their own top-level namespace:
+
+```html
+<button
+  class="button"
+  class:selected="selected"
+>
+  Add
+</button>
+```
+
+Aggregate class binding uses `signal:class`. It reads the current signal value
+and accepts strings, objects, and arrays:
+
+```js
+Async.use({
+  signal: {
+    buttonClasses: createSignal([
+      "button-primary",
+      { selected: true, disabled: false },
+      ["compact"]
+    ])
+  }
+});
+```
+
+```html
+<button signal:class="buttonClasses">Add</button>
+```
+
+Inside `html` templates, `signal:class` can also receive objects or arrays
+directly. Signal refs inside the object or array are tracked:
+
+```js
+const selected = this.signal("selected", false);
+const tone = this.signal("tone", "primary");
+
+return html`
+  <article signal:class="${["card", tone, { selected }]}"}>
+    ...
+  </article>
+`;
+```
+
+For component-local state that does not need a stable public id, omit the name.
+The signal is still registered under the component scope:
+
+```js
+const selected = this.signal(false);
+const tone = this.signal("primary");
+
+return html`
+  <article signal:class="${["card", selected, tone]}">
+    ...
+  </article>
+`;
+```
+
+`value="${signalRef}"` in an `html` template is equivalent to adding
+`signal:value` for that signal. It writes back on input/change:
+
+```js
+const productId = this.signal("productId", "sku-1");
+
+return html`<input value="${productId}">`;
+```
+
+`signal:class:selected="selected"` remains supported as a compatibility alias,
+but new examples should use `class:selected`. The parser-safe top-level
+aggregate form `class:="buttonClasses"` also remains supported.
 
 ### Command Events
 
-`on:*` works with any native DOM event name. `on:mount` and `on:visible` are
-reserved pseudo-events with cleanup support.
+`on:*` works with any native DOM event name. `on:attach` and `on:visible` are
+reserved component lifecycle pseudo-events with cleanup support. `on:mount`
+remains as a compatibility alias for `on:attach`.
 
 Command chains use semicolons and are awaited sequentially:
 
@@ -674,21 +769,25 @@ type and no rerender loop.
 
 ```js
 const Toggle = defineComponent(function Toggle() {
-  const selected = this.signal("selected", false);
-  const toggle = this.handler("toggle", function () {
-    selected.update((value) => !value);
+  const selected = this.signal(false);
+  const attach = this.handler("attach", function ({ element }) {
+    element.dataset.attached = "true";
   });
-
-  this.onMount((target) => {
-    target.dataset.mounted = "true";
+  const visible = this.handler("visible", function ({ element }) {
+    element.dataset.visible = "true";
   });
 
   return html`
     <button
       type="button"
-      on:click="${toggle}"
-      signal:class:selected="${selected.id}"
-      signal:attr:aria-pressed="${selected.id}"
+      on:attach="${attach}"
+      on:visible="${visible}"
+      on:click="${this.handler(function () {
+        selected.update((value) => !value);
+      })}"
+      class:selected="${selected}"
+      signal:class="${["toggle", { active: selected }]}"
+      signal:attr:aria-pressed="${selected}"
     >
       Toggle
     </button>
@@ -705,17 +804,46 @@ Component helpers:
 
 | Helper | Behavior |
 | --- | --- |
-| `this.signal(name, initial)` | Scoped get-or-create signal |
+| `this.signal(name, initial)` | Scoped named get-or-create signal |
+| `this.signal(initial)` | Generated scoped local signal |
 | `this.computed(name, fn)` | Scoped computed signal |
 | `this.asyncSignal(name, fn)` | Scoped async signal |
 | `this.effect(fn)` | Scoped effect with cleanup |
-| `this.handler(name, fn)` | Scoped handler registry entry |
+| `this.handler(name, fn)` | Scoped named handler registry entry |
+| `this.handler(fn)` | Generated scoped handler registry entry |
 | `this.render(Component, props)` | Child fragment rendering |
-| `this.onMount(fn)` | One-shot mount hook |
-| `this.onVisible(fn)` | One-shot visibility hook |
+| `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
+| `this.onMount(fn)` | Compatibility alias for `this.on("attach", fn)` |
+| `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
 
-`on:mount` and `on:visible` are loader pseudo-events with cleanup support. They
-do not drive component rerenders.
+Put component lifecycle on the component root element when there is one:
+
+```js
+const attach = this.handler("attach", function ({ element }) {
+  element.dataset.attached = "true";
+});
+const visible = this.handler("visible", function ({ element }) {
+  element.dataset.visible = "true";
+});
+
+return html`<article on:attach="${attach}" on:visible="${visible}">...</article>`;
+```
+
+If a component returns text or multiple root nodes, use the scoped fallback:
+
+```js
+this.on("attach", (target) => {
+  target.dataset.attached = "true";
+});
+
+this.on("destroy", () => {
+  // Clean up fragment-scoped resources.
+});
+```
+
+`on:visible` is defined as a component lifecycle pseudo-event. It runs once when
+the component root first becomes visible. Lifecycle events do not drive
+component rerenders.
 
 ## Streaming
 
@@ -782,3 +910,22 @@ then runs release doctor.
 The core runtime is intentionally small. Bundling, lazy chunk manifests, JSX
 lowering, TSRX lowering, server resource compilation, and higher-level
 resumability metadata are deferred to later layers.
+
+## Async And htmx
+
+Async and htmx are both HTML-first and avoid a virtual DOM, but they optimize
+for different boundaries.
+
+| Area | htmx | Async |
+| --- | --- | --- |
+| Primary model | HTML attributes issue HTTP requests and swap server responses. | HTML attributes bind signals, command events, server calls, and route boundaries. |
+| State | Server-owned hypermedia state; browser state is intentionally minimal. | Browser signal registry plus server signal patches and cache snapshots. |
+| Server interaction | DOM attributes describe HTTP verbs, targets, and swaps. | `server.*(...)` commands call registered server functions and apply returned effects. |
+| Routing | Usually server navigation or htmx-boosted navigation. | CSR, SPA, SSR, SSR-SPA, and MPA router modes built around partial boundaries. |
+| Components | Server-rendered HTML fragments. | Scoped fragment functions today; higher layers can compile JSX/TSRX later. |
+| Build story | No build by default. | Layer 1 is no-build/CDN; higher layers can add build or compiler steps. |
+
+Use htmx when the server should own most interaction through hypermedia and
+HTTP swaps. Use Async when you want an HTML-first runtime that also has local
+signals, async resources, registered browser/server handlers, route partials,
+and a path to higher compiler layers without changing the Layer 1 protocol.

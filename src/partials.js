@@ -46,7 +46,7 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
         partials: registry
       };
       const result = await fn.call(partialContext, props);
-      return normalizePartialResult(result);
+      return normalizePartialResult(result, partialContext);
     },
 
     _adoptMany() {
@@ -58,18 +58,18 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
   return registry;
 }
 
-export function normalizePartialResult(result) {
+export function normalizePartialResult(result, context = {}) {
   if (isPartialEnvelope(result)) {
     return {
       ...result,
-      html: Object.hasOwn(result, "html") ? renderPartialValue(result.html) : result.html
+      html: Object.hasOwn(result, "html") ? renderPartialValue(result.html, context) : result.html
     };
   }
 
-  return { html: renderPartialValue(result) };
+  return { html: renderPartialValue(result, context) };
 }
 
-function renderPartialValue(value) {
+function renderPartialValue(value, context) {
   if (value?.nodeType) {
     return value;
   }
@@ -77,9 +77,17 @@ function renderPartialValue(value) {
     return value;
   }
   if (isTemplateResult(value)) {
-    return renderTemplate(value);
+    return renderTemplate(value, templateRenderOptions(context));
   }
-  return renderTemplate(value);
+  return renderTemplate(value, templateRenderOptions(context));
+}
+
+function templateRenderOptions(context) {
+  return {
+    attributes: context.loader?.attributes,
+    signals: context.signals,
+    bind: context.loader?._registerBinding?.bind(context.loader)
+  };
 }
 
 function isPartialEnvelope(value) {

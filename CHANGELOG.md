@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 - 2026-06-17
+
+- Added a generated root `framework.js` ESM bundle for UNPKG browser imports.
+- Expanded the README with Async layer definitions and an htmx comparison.
+- Added `on:attach` as the canonical component attach lifecycle pseudo-event
+  with `on:mount` kept as a compatibility alias.
+- Added top-level `class:*` bindings, including aggregate `class:`
+  string/object/array class sets.
+- Added inline `html` template bindings for signal refs, class arrays/objects,
+  `value="${signalRef}"`, and generated component handlers via
+  `this.handler(fn)`.
+- Added generated component-local signals via `this.signal(initial)`.
+
 ## 0.3.0 - 2026-06-17
 
 - Added a shared registry store behind `Async`, app runtimes, and concrete

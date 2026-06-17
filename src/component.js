@@ -71,28 +71,45 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
 
   const scope = `${parentScope}.${componentName(Component)}.${++componentCounter}`;
   const cleanups = [];
-  const mountHooks = [];
+  const attachHooks = [];
   const visibleHooks = [];
+  const destroyHooks = [];
+  const bindingIds = [];
   const context = createComponentContext({
     runtime,
     scope,
     cleanups,
-    mountHooks,
-    visibleHooks
+    attachHooks,
+    visibleHooks,
+    destroyHooks
   });
 
   const output = Component.call(context, props);
-  const html = renderTemplate(output);
+  const html = renderTemplate(output, {
+    attributes: runtime.attributes,
+    signals: runtime.signals,
+    bind(value) {
+      const id = runtime.loader?._registerBinding?.(value);
+      if (!id) {
+        throw new Error("Inline template bindings require an AsyncLoader.");
+      }
+      bindingIds.push(id);
+      return id;
+    }
+  });
 
   return {
     html,
-    mount(target) {
-      for (const hook of mountHooks) {
+    attach(target) {
+      for (const hook of attachHooks) {
         const cleanup = hook(target);
         if (typeof cleanup === "function") {
           cleanups.push(cleanup);
         }
       }
+    },
+    mount(target) {
+      this.attach(target);
     },
     visible(target, observeVisible) {
       for (const hook of visibleHooks) {
@@ -103,15 +120,24 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
       }
     },
     cleanup() {
+      while (destroyHooks.length > 0) {
+        destroyHooks.pop()?.();
+      }
       while (cleanups.length > 0) {
         cleanups.pop()?.();
+      }
+      while (bindingIds.length > 0) {
+        runtime.loader?._releaseBinding?.(bindingIds.pop());
       }
     }
   };
 }
 
-function createComponentContext({ runtime, scope, cleanups, mountHooks, visibleHooks }) {
+function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks }) {
   const { signals, handlers, loader, server, router, cache } = runtime;
+  const generatedHandlers = new WeakMap();
+  let generatedHandlerCounter = 0;
+  let generatedSignalCounter = 0;
   const context = {
     scope,
     signals,
@@ -122,6 +148,9 @@ function createComponentContext({ runtime, scope, cleanups, mountHooks, visibleH
     cache,
 
     signal(name, initial) {
+      if (arguments.length === 1) {
+        return signals.ensure(scoped(scope, `signal.${++generatedSignalCounter}`), name);
+      }
       return signals.ensure(scoped(scope, name), initial);
     },
 
@@ -150,31 +179,70 @@ function createComponentContext({ runtime, scope, cleanups, mountHooks, visibleH
     },
 
     handler(name, fn) {
-      const id = scoped(scope, name);
-      handlers.register(id, function runComponentHandler(handlerContext) {
-        return fn.call({ ...context, ...handlerContext }, handlerContext);
-      });
-      return id;
+      if (typeof name === "function" && fn === undefined) {
+        const inlineFn = name;
+        if (generatedHandlers.has(inlineFn)) {
+          return generatedHandlers.get(inlineFn);
+        }
+        const id = registerScopedHandler(`handler.${++generatedHandlerCounter}`, inlineFn);
+        generatedHandlers.set(inlineFn, id);
+        return id;
+      }
+      if (typeof fn !== "function") {
+        throw new TypeError("this.handler(name, fn) or this.handler(fn) requires a function.");
+      }
+      return registerScopedHandler(name, fn);
     },
 
     render(Child, childProps = {}) {
       const child = renderComponent(Child, childProps, runtime, scope);
       cleanups.push(child.cleanup);
-      mountHooks.push((target) => child.mount(target));
+      attachHooks.push((target) => child.attach(target));
       visibleHooks.push((target) => child.visible(target, loader._observeVisible));
       return rawHtml(child.html);
     },
 
+    on(eventName, fn) {
+      if (typeof eventName !== "string" || eventName.length === 0) {
+        throw new TypeError("Component lifecycle event must be a non-empty string.");
+      }
+      if (typeof fn !== "function") {
+        throw new TypeError(`Component lifecycle "${eventName}" requires a function.`);
+      }
+      const event = eventName === "mount" ? "attach" : eventName;
+      if (event === "attach") {
+        attachHooks.push((target) => fn.call(context, target));
+        return;
+      }
+      if (event === "visible") {
+        visibleHooks.push((target) => fn.call(context, target));
+        return;
+      }
+      if (event === "destroy") {
+        destroyHooks.push(() => fn.call(context));
+        return;
+      }
+      throw new Error(`Unsupported component lifecycle event "${eventName}".`);
+    },
+
     onMount(fn) {
-      mountHooks.push((target) => fn.call(context, target));
+      context.on("attach", fn);
     },
 
     onVisible(fn) {
-      visibleHooks.push((target) => fn.call(context, target));
+      context.on("visible", fn);
     }
   };
 
   return context;
+
+  function registerScopedHandler(name, fn) {
+    const id = scoped(scope, name);
+    handlers.register(id, function runComponentHandler(handlerContext) {
+      return fn.call({ ...context, ...handlerContext }, handlerContext);
+    });
+    return id;
+  }
 }
 
 function scoped(scope, name) {

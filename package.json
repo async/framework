@@ -1,6 +1,6 @@
 {
   "name": "@async/framework",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "No-build AsyncLoader app runtime with signals, command events, server calls, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "packageManager": "pnpm@11.1.0",
@@ -28,19 +28,21 @@
     "web-framework"
   ],
   "license": "MIT",
-  "unpkg": "./src/index.js",
+  "unpkg": "./framework.js",
   "exports": {
     ".": {
-      "unpkg": "./src/index.js",
-      "browser": "./src/index.js",
+      "unpkg": "./framework.js",
+      "browser": "./framework.js",
       "import": "./src/index.js",
       "default": "./src/index.js"
     },
+    "./framework.js": "./framework.js",
     "./package.json": "./package.json"
   },
   "files": [
     "CHANGELOG.md",
     "README.md",
+    "framework.js",
     "src",
     "examples",
     "LICENSE",
@@ -48,10 +50,12 @@
   ],
   "scripts": {
     "async-pipeline": "async-pipeline",
+    "bundle": "node scripts/build-framework-bundle.js",
+    "bundle:check": "node scripts/build-framework-bundle.js --check",
     "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",
-    "pack:check": "npm pack --dry-run --ignore-scripts",
+    "pack:check": "pnpm run bundle:check && npm pack --dry-run --ignore-scripts",
     "pipeline:github:check": "async-pipeline github check",
     "pipeline:github:generate": "async-pipeline github generate",
     "pipeline:pages": "async-pipeline run pages",

@@ -1,7 +1,9 @@
 import { renderComponent } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
-import { createSignalRegistry } from "./signals.js";
+import { createSignalRegistry, isSignalRef } from "./signals.js";
 import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attributes.js";
+
+const inlineBindingPrefix = "__async:inline:";
 
 export function AsyncLoader({ root, signals, handlers, server, router, cache, attributes } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
@@ -16,6 +18,8 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
   const visibleElements = new WeakSet();
   const boundaryState = new WeakMap();
   const renderingBoundaries = new WeakSet();
+  const inlineBindings = new Map();
+  let inlineBindingCounter = 0;
   let destroyed = false;
 
   const api = {
@@ -36,6 +40,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
     scan(rootOrFragment = rootNode) {
       assertActive();
       bindSignalAttributes(rootOrFragment);
+      bindClassAttributes(rootOrFragment);
       bindEventAttributes(rootOrFragment);
       bindBoundaries(rootOrFragment);
       runPseudoEvents(rootOrFragment);
@@ -85,6 +90,16 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
 
     _observeVisible(target, fn) {
       return observeVisible(target, fn);
+    },
+
+    _registerBinding(value) {
+      const id = `${inlineBindingPrefix}${++inlineBindingCounter}`;
+      inlineBindings.set(id, value);
+      return id;
+    },
+
+    _releaseBinding(id) {
+      inlineBindings.delete(id);
     }
   };
 
@@ -100,7 +115,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
         if (!eventName) {
           continue;
         }
-        if (eventName === "mount" || eventName === "visible") {
+        if (eventName === "attach" || eventName === "mount" || eventName === "visible") {
           continue;
         }
         bindEvent(element, eventName, element.getAttribute(name));
@@ -175,15 +190,62 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
         if (signalName.startsWith("class:")) {
           const className = signalName.slice("class:".length);
           const path = element.getAttribute(name);
-          bindSignal(element, `class:${className}:${path}`, path, (value) => {
-            element.classList.toggle(className, Boolean(value));
-          });
+          if (className === "" || className === "{}") {
+            bindClass(element, className, path);
+          } else {
+            bindSignal(element, `class:${className}:${path}`, path, (value) => {
+              element.classList.toggle(className, Boolean(value));
+            });
+          }
+          continue;
+        }
+        if (signalName === "class") {
+          const path = element.getAttribute(name);
+          bindClass(element, "{}", path);
         }
       }
     }
   }
 
-  function bindSignal(element, key, path, apply) {
+  function bindClassAttributes(scope) {
+    for (const element of elementsIn(scope)) {
+      for (const name of element.getAttributeNames?.() ?? []) {
+        const className = matchAttribute(name, attributeConfig, "class");
+        if (className == null) {
+          continue;
+        }
+        bindClass(element, className, element.getAttribute(name));
+      }
+    }
+  }
+
+  function bindClass(element, className, path) {
+    if (className === "" || className === "{}") {
+      const staticClasses = readClassTokens(element);
+      let previous = new Set();
+      bindSignal(element, `class:{}:${path}`, path, (value) => {
+        const next = normalizeClassTokens(value);
+        const current = readClassTokens(element);
+        for (const token of previous) {
+          if (!next.has(token) && !staticClasses.has(token)) {
+            current.delete(token);
+          }
+        }
+        for (const token of next) {
+          current.add(token);
+        }
+        writeClassTokens(element, current);
+        previous = next;
+      }, { rawInline: true });
+      return;
+    }
+
+    bindSignal(element, `class:${className}:${path}`, path, (value) => {
+      updateClassToken(element, className, Boolean(value));
+    });
+  }
+
+  function bindSignal(element, key, path, apply, options = {}) {
     const bound = signalBindings.get(element) ?? new Set();
     if (bound.has(key)) {
       return;
@@ -191,8 +253,9 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
     bound.add(key);
     signalBindings.set(element, bound);
 
-    apply(signalRegistry.get(path));
-    cleanups.add(signalRegistry.subscribe(path, apply));
+    const read = () => readBinding(path, options);
+    apply(read());
+    cleanups.add(subscribeBinding(path, () => apply(read())));
   }
 
   function bindValueWriter(element, path) {
@@ -200,9 +263,40 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
     bindEvent(element, "change", `__async:set:${path}`);
     if (!handlerRegistry.resolve(`__async:set:${path}`)) {
       handlerRegistry.register(`__async:set:${path}`, function writeValue({ element }) {
-        signalRegistry.set(path, element.value);
+        writeBinding(path, element.value);
       });
     }
+  }
+
+  function readBinding(path, options = {}) {
+    if (isInlineBinding(path)) {
+      const value = inlineBindings.get(path);
+      return options.rawInline ? value : resolveInlineValue(value);
+    }
+    return signalRegistry.get(path);
+  }
+
+  function writeBinding(path, value) {
+    if (!isInlineBinding(path)) {
+      return signalRegistry.set(path, value);
+    }
+    const binding = inlineBindings.get(path);
+    if (isSignalRef(binding)) {
+      return binding.set(value);
+    }
+    throw new Error(`Inline binding "${path}" is not writable.`);
+  }
+
+  function subscribeBinding(path, fn) {
+    if (!isInlineBinding(path)) {
+      return signalRegistry.subscribe(path, fn);
+    }
+    const cleanups = collectSignalRefs(inlineBindings.get(path)).map((ref) => ref.subscribe(fn));
+    return () => {
+      for (const cleanup of cleanups) {
+        cleanup();
+      }
+    };
   }
 
   function bindBoundaries(scope) {
@@ -252,15 +346,17 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
 
   function runPseudoEvents(scope) {
     for (const element of elementsIn(scope)) {
-      const ref = readAttribute(element, attributeConfig, "on", "mount");
-      if (ref == null) {
+      const refs = readPseudoRefs(element, ["attach", "mount"]);
+      if (refs.length === 0) {
         continue;
       }
       if (mountedElements.has(element)) {
         continue;
       }
       mountedElements.add(element);
-      runPseudo(element, ref);
+      for (const ref of refs) {
+        runPseudo(element, ref);
+      }
     }
 
     for (const element of elementsIn(scope)) {
@@ -274,6 +370,17 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
       visibleElements.add(element);
       cleanups.add(observeVisible(element, () => runPseudo(element, ref)));
     }
+  }
+
+  function readPseudoRefs(element, names) {
+    const refs = [];
+    for (const name of names) {
+      const ref = readAttribute(element, attributeConfig, "on", name);
+      if (ref != null) {
+        refs.push(ref);
+      }
+    }
+    return refs;
   }
 
   async function runPseudo(element, ref) {
@@ -328,6 +435,110 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
   }
 
   return api;
+}
+
+function normalizeClassTokens(value, tokens = new Set()) {
+  if (value == null || value === false) {
+    return tokens;
+  }
+  if (isSignalRef(value)) {
+    const signalValue = value.value;
+    if (signalValue === true) {
+      tokens.add(signalClassName(value.id));
+      return tokens;
+    }
+    return normalizeClassTokens(signalValue, tokens);
+  }
+  if (typeof value === "string") {
+    for (const token of value.split(/\s+/).filter(Boolean)) {
+      tokens.add(token);
+    }
+    return tokens;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      normalizeClassTokens(item, tokens);
+    }
+    return tokens;
+  }
+  if (typeof value === "object") {
+    for (const [token, enabled] of Object.entries(value)) {
+      const value = isSignalRef(enabled) ? enabled.value : enabled;
+      if (value) {
+        normalizeClassTokens(token, tokens);
+      }
+    }
+    return tokens;
+  }
+  if (value !== true) {
+    tokens.add(String(value));
+  }
+  return tokens;
+}
+
+function resolveInlineValue(value) {
+  if (isSignalRef(value)) {
+    return value.value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(resolveInlineValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, resolveInlineValue(entry)]));
+  }
+  return value;
+}
+
+function collectSignalRefs(value, refs = new Map()) {
+  if (isSignalRef(value)) {
+    refs.set(value.id, value);
+    return [...refs.values()];
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectSignalRefs(item, refs);
+    }
+    return [...refs.values()];
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) {
+      collectSignalRefs(item, refs);
+    }
+  }
+  return [...refs.values()];
+}
+
+function isInlineBinding(value) {
+  return typeof value === "string" && value.startsWith(inlineBindingPrefix);
+}
+
+function signalClassName(id) {
+  return id.split(".").at(-1);
+}
+
+function updateClassToken(element, className, enabled) {
+  const tokens = readClassTokens(element);
+  for (const token of normalizeClassTokens(className)) {
+    if (enabled) {
+      tokens.add(token);
+    } else {
+      tokens.delete(token);
+    }
+  }
+  writeClassTokens(element, tokens);
+}
+
+function readClassTokens(element) {
+  return normalizeClassTokens(element.getAttribute("class") ?? "");
+}
+
+function writeClassTokens(element, tokens) {
+  const value = [...tokens].join(" ");
+  if (value.length === 0) {
+    element.removeAttribute("class");
+    return;
+  }
+  element.setAttribute("class", value);
 }
 
 function collectBoundaryTemplates(boundary, id, attributeConfig) {
