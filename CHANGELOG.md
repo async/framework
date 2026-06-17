@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.1 - 2026-06-17
 
 - Added Terser-powered browser bundle minification and pointed legacy
   `module`/`browser` analyzer fields plus the root `exports.browser` condition
