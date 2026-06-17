@@ -31,6 +31,7 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
       const nextRoute = normalizeRoute(pattern, definition);
       entries.set(pattern, nextRoute.definition);
       routes.push(nextRoute);
+      sortRoutes(routes);
       return nextRoute;
     },
 
@@ -103,6 +104,7 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
     const nextRoute = normalizeRoute(pattern, definition);
     entries.set(pattern, nextRoute.definition);
     routes.push(nextRoute);
+    sortRoutes(routes);
   }
 }
 
@@ -139,6 +141,8 @@ export function createRouter({
   const ownsLoader = !loader;
   const cleanups = new Set();
   let destroyed = false;
+  let navigationVersion = 0;
+  let activeNavigation;
 
   const api = {
     mode,
@@ -178,7 +182,7 @@ export function createRouter({
     },
 
     match(url) {
-      return routes.match(url);
+      return routes.match(resolveUrl(url));
     },
 
     prefetch(url) {
@@ -203,7 +207,7 @@ export function createRouter({
         return null;
       }
 
-      const target = toUrl(url);
+      const target = resolveUrl(url);
       if (mode === "ssr-spa") {
         return fetchRoutePartial(target, options);
       }
@@ -215,6 +219,7 @@ export function createRouter({
         return;
       }
       destroyed = true;
+      activeNavigation?.controller.abort(new Error("Router has been destroyed."));
       for (const cleanup of cleanups) {
         cleanup();
       }
@@ -254,24 +259,37 @@ export function createRouter({
   async function renderLocalRoutePartial(target, options = {}) {
     const matched = api.match(target);
     if (!matched) {
+      beginNavigation(target, null);
       setNoRouteError(target);
       return null;
     }
 
+    const navigation = beginNavigation(target, matched);
     setMatchedRouterState(target, matched, { pending: true, error: null });
 
     try {
       if (!matched.route?.partial || !partials?.resolve?.(matched.route.partial)) {
         const error = new Error(`Route "${target.pathname}" does not have a registered partial.`);
-        setRouterState({ pending: false, error });
+        if (isActiveNavigation(navigation)) {
+          setRouterState({ pending: false, error });
+        }
         return null;
       }
 
-      const result = await partials.render(matched.route.partial, matched.params, contextFor(matched));
-      await applyNavigationResult(result, target, options);
+      const result = await partials.render(matched.route.partial, matched.params, contextFor(matched, navigation));
+      if (!isActiveNavigation(navigation)) {
+        return null;
+      }
+      await applyNavigationResult(result, target, options, navigation);
+      if (!isActiveNavigation(navigation)) {
+        return null;
+      }
       setRouterState({ pending: false, error: null });
       return result;
     } catch (error) {
+      if (!isActiveNavigation(navigation)) {
+        return null;
+      }
       setRouterState({ pending: false, error });
       throw error;
     }
@@ -279,26 +297,43 @@ export function createRouter({
 
   async function fetchRoutePartial(target, options = {}) {
     const matched = api.match(target);
+    const navigation = beginNavigation(target, matched);
     setMatchedRouterState(target, matched, { pending: true, error: null });
 
     try {
-      const result = await fetchRoute(target.href);
-      await applyNavigationResult(result, target, options);
+      const result = await fetchRoute(target.href, { signal: navigation.abort });
+      if (!isActiveNavigation(navigation)) {
+        return null;
+      }
+      await applyNavigationResult(result, target, options, navigation);
+      if (!isActiveNavigation(navigation)) {
+        return null;
+      }
       setRouterState({ pending: false, error: null });
       return result;
     } catch (error) {
+      if (!isActiveNavigation(navigation)) {
+        return null;
+      }
       setRouterState({ pending: false, error });
       throw error;
     }
   }
 
-  async function applyNavigationResult(result, target, options) {
+  async function applyNavigationResult(result, target, options, navigation) {
+    if (!isActiveNavigation(navigation)) {
+      return;
+    }
     await applyServerResult(result, {
       signals: signalRegistry,
       loader: loaderInstance,
       router: api,
-      cache
+      cache,
+      abort: navigation?.abort
     });
+    if (!isActiveNavigation(navigation)) {
+      return;
+    }
     if (result?.html != null && !result.boundary && !result.redirect) {
       loaderInstance.swap(boundary, result.html);
     }
@@ -312,14 +347,15 @@ export function createRouter({
     documentRef.defaultView?.history?.pushState?.({}, "", target.href);
   }
 
-  async function fetchRoute(url, { prefetch = false } = {}) {
+  async function fetchRoute(url, { prefetch = false, signal } = {}) {
     if (typeof fetchImpl !== "function") {
       throw new Error("Router navigation requires a partial registry or fetch.");
     }
     const response = await fetchImpl(`${routeEndpoint}?to=${encodeURIComponent(String(url))}`, {
       headers: {
         accept: "application/json, text/html"
-      }
+      },
+      signal
     });
     if (!response.ok) {
       throw new Error(`Route "${url}" failed with ${response.status}.`);
@@ -334,7 +370,7 @@ export function createRouter({
     return { boundary, html: await response.text() };
   }
 
-  function contextFor(matched) {
+  function contextFor(matched, navigation) {
     return {
       params: matched.params,
       route: matched.route,
@@ -344,8 +380,26 @@ export function createRouter({
       loader: loaderInstance,
       server,
       cache,
-      abort: undefined
+      abort: navigation?.abort
     };
+  }
+
+  function beginNavigation(target, matched) {
+    activeNavigation?.controller.abort(new Error(`Router navigation superseded by ${target.pathname}${target.search}.`));
+    const controller = new AbortController();
+    const navigation = {
+      id: ++navigationVersion,
+      controller,
+      abort: controller.signal,
+      target,
+      matched
+    };
+    activeNavigation = navigation;
+    return navigation;
+  }
+
+  function isActiveNavigation(navigation) {
+    return !destroyed && navigation && activeNavigation?.id === navigation.id && !navigation.abort.aborted;
   }
 
   function updateStateFromLocation() {
@@ -382,7 +436,14 @@ export function createRouter({
   }
 
   function currentUrl() {
-    return toUrl(documentRef.defaultView?.location?.href ?? "http://localhost/");
+    return resolveUrl(documentRef.defaultView?.location?.href ?? "http://localhost/");
+  }
+
+  function resolveUrl(url) {
+    if (url instanceof URL) {
+      return url;
+    }
+    return new URL(String(url), documentRef.defaultView?.location?.href ?? "http://localhost/");
   }
 
   function assertActive() {
@@ -399,6 +460,7 @@ function normalizeRoute(pattern, definition) {
     pattern,
     regex,
     keys,
+    score: routeScore(pattern),
     definition: normalized
   };
 }
@@ -465,6 +527,28 @@ function queryObject(url) {
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sortRoutes(routes) {
+  routes.sort((left, right) => right.score - left.score || right.pattern.length - left.pattern.length);
+}
+
+function routeScore(pattern) {
+  if (pattern === "*") {
+    return -1;
+  }
+  return pattern
+    .split("/")
+    .filter(Boolean)
+    .reduce((score, segment) => {
+      if (segment === "*") {
+        return score;
+      }
+      if (segment.startsWith(":")) {
+        return score + 2;
+      }
+      return score + 4;
+    }, pattern === "/" ? 3 : 0);
 }
 
 function assertPattern(pattern) {

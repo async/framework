@@ -168,6 +168,126 @@ test("CSR router supports wildcard fallback routes", async () => {
   loader.destroy();
 });
 
+test("route matching ranks static and dynamic routes before wildcard fallbacks", () => {
+  const routes = createRouteRegistry({
+    "*": route("notFound.page"),
+    "/products/:id": route("product.page"),
+    "/products/new": route("product.new")
+  });
+
+  assert.equal(routes.match("/products/new").route.partial, "product.new");
+  assert.equal(routes.match("/products/sku-1").route.partial, "product.page");
+  assert.equal(routes.match("/missing").route.partial, "notFound.page");
+});
+
+test("SPA router aborts stale navigations and ignores late partial results", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const pending = new Map();
+  const partials = createPartialRegistry({
+    "product.page": async function ({ id }) {
+      const record = {
+        id,
+        abort: this.abort,
+        resolve: undefined
+      };
+      pending.set(id, record);
+      await new Promise((resolve) => {
+        record.resolve = resolve;
+      });
+      return `<h1 id="route-title">${id}</h1>`;
+    }
+  });
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": route("product.page")
+    }),
+    loader,
+    signals,
+    partials
+  }).start();
+
+  const slow = router.navigate("/products/slow");
+  await delay(0);
+  const slowRecord = pending.get("slow");
+
+  const fast = router.navigate("/products/fast");
+  await delay(0);
+  const fastRecord = pending.get("fast");
+
+  assert.equal(slowRecord.abort.aborted, true);
+  assert.equal(fastRecord.abort.aborted, false);
+
+  fastRecord.resolve();
+  await fast;
+  assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("router.pending"), false);
+
+  slowRecord.resolve();
+  await slow;
+  assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("router.path"), "/products/fast");
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("SPA router ignores stale partial rejections after a newer navigation completes", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const pending = new Map();
+  const partials = createPartialRegistry({
+    "product.page": async function ({ id }) {
+      const record = {};
+      pending.set(id, record);
+      await new Promise((resolve, reject) => {
+        record.resolve = resolve;
+        record.reject = reject;
+      });
+      return `<h1 id="route-title">${id}</h1>`;
+    }
+  });
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": route("product.page")
+    }),
+    loader,
+    signals,
+    partials
+  }).start();
+
+  const slow = router.navigate("/products/slow");
+  await delay(0);
+  const fast = router.navigate("/products/fast");
+  await delay(0);
+
+  pending.get("fast").resolve();
+  await fast;
+
+  pending.get("slow").reject(new Error("slow route failed late"));
+  assert.equal(await slow, null);
+  assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("router.path"), "/products/fast");
+  assert.equal(signals.get("router.error"), null);
+
+  router.destroy();
+  loader.destroy();
+});
+
 test("SPA router swaps route boundaries and rescans inserted handlers", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
@@ -221,6 +341,127 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
   document.querySelector("#select").click();
   await delay(0);
   assert.equal(document.querySelector("#select").classList.contains("selected"), true);
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("SSR-SPA router aborts stale fetch navigations and ignores late route responses", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const pending = new Map();
+  const signals = createSignalRegistry({
+    routerTest: signal({})
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "ssr-spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": route("product.page")
+    }),
+    loader,
+    signals,
+    fetch: async (url, init = {}) => {
+      const to = new URL(new URL(url, "http://app.test").searchParams.get("to"));
+      const id = to.pathname.split("/").at(-1);
+      const record = {
+        id,
+        signal: init.signal
+      };
+      pending.set(id, record);
+      return new Promise((resolve) => {
+        record.resolve = () => resolve(new Response(JSON.stringify({
+          html: `<h1 id="route-title">${id}</h1>`,
+          signals: {
+            "routerTest.loaded": id
+          }
+        }), {
+          headers: {
+            "content-type": "application/json"
+          }
+        }));
+      });
+    }
+  }).start();
+
+  const slow = router.navigate("/products/slow");
+  await delay(0);
+  const slowRecord = pending.get("slow");
+
+  const fast = router.navigate("/products/fast");
+  await delay(0);
+  const fastRecord = pending.get("fast");
+
+  assert.equal(slowRecord.signal.aborted, true);
+  assert.equal(fastRecord.signal.aborted, false);
+
+  fastRecord.resolve();
+  await fast;
+  assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("routerTest.loaded"), "fast");
+  assert.equal(signals.get("router.pending"), false);
+
+  slowRecord.resolve();
+  assert.equal(await slow, null);
+  assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("routerTest.loaded"), "fast");
+  assert.equal(signals.get("router.path"), "/products/fast");
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("SSR-SPA router ignores stale fetch rejections after a newer navigation completes", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const pending = new Map();
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "ssr-spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": route("product.page")
+    }),
+    loader,
+    signals,
+    fetch: async (url) => {
+      const to = new URL(new URL(url, "http://app.test").searchParams.get("to"));
+      const id = to.pathname.split("/").at(-1);
+      const record = {};
+      pending.set(id, record);
+      return new Promise((resolve, reject) => {
+        record.resolve = () => resolve(new Response(JSON.stringify({
+          html: `<h1 id="route-title">${id}</h1>`
+        }), {
+          headers: {
+            "content-type": "application/json"
+          }
+        }));
+        record.reject = reject;
+      });
+    }
+  }).start();
+
+  const slow = router.navigate("/products/slow");
+  await delay(0);
+  const fast = router.navigate("/products/fast");
+  await delay(0);
+
+  pending.get("fast").resolve();
+  await fast;
+
+  pending.get("slow").reject(new Error("slow fetch failed late"));
+  assert.equal(await slow, null);
+  assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("router.error"), null);
 
   router.destroy();
   loader.destroy();
