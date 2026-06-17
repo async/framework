@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.10.0 - 2026-06-17
+
+- Added rootless browser startup plus `attachRoot`, `detachRoot`,
+  `inspectRoots`, and streamed `applySnapshot(...)` support for advanced
+  build-step bootstrapping.
+- Added compact lazy registry descriptors with `_async` asset resolution,
+  inferred exports, and lazy handler, partial, component, and async-signal
+  materialization.
+- Added optional `async-container` and `async-suspense` custom elements while
+  preserving the existing `async:container`, `async:boundary`, and
+  `this.suspense(...)` Layer 1 APIs.
+
 ## 0.9.0 - 2026-06-17
 
 - Added `createBoundaryReceiver(...)` for optional out-of-order boundary patch
