@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createHandlerRegistry,
   createServerProxy,
   createServerRegistry,
   createSignalRegistry,
@@ -69,4 +70,114 @@ test("server proxy posts args, input, signals, and applies returned signal patch
   });
   assert.deepEqual(value, { ok: true });
   assert.equal(signals.get("cartCount"), 4);
+});
+
+test("server proxy envelopes are applied once through namespace and handler callers", async () => {
+  let swaps = 0;
+  const server = createServerProxy({
+    fetch: async () => new Response(
+      JSON.stringify({
+        boundary: "cart",
+        html: "<aside>Cart</aside>"
+      }),
+      {
+        headers: {
+          "content-type": "application/json"
+        }
+      }
+    ),
+    loader: {
+      swap(boundary, html) {
+        swaps += 1;
+        assert.equal(boundary, "cart");
+        assert.equal(html, "<aside>Cart</aside>");
+      }
+    }
+  });
+
+  await server.cart.refresh();
+  assert.equal(swaps, 1);
+
+  const handlers = createHandlerRegistry();
+  await handlers.run("server.cart.refresh()", {
+    server
+  });
+
+  assert.equal(swaps, 2);
+});
+
+test("server proxy does not apply unwrapped envelope-shaped values as effects", async () => {
+  const signals = createSignalRegistry({
+    status: signal("idle")
+  });
+  const server = createServerProxy({
+    signals,
+    fetch: async () => new Response(
+      JSON.stringify({
+        value: {
+          ok: true,
+          signals: {
+            status: "wrong"
+          }
+        },
+        signals: {
+          status: "right"
+        }
+      }),
+      {
+        headers: {
+          "content-type": "application/json"
+        }
+      }
+    )
+  });
+
+  const handlers = createHandlerRegistry();
+  const results = await handlers.run("server.product.load()", {
+    server,
+    signals
+  });
+
+  assert.deepEqual(results, [{
+    ok: true,
+    signals: {
+      status: "wrong"
+    }
+  }]);
+  assert.equal(signals.get("status"), "right");
+});
+
+test("server proxy forwards abort signals to fetch", async () => {
+  const controller = new AbortController();
+  let fetchSignal;
+  const server = createServerProxy({
+    fetch: async (_url, init) => {
+      fetchSignal = init.signal;
+      return new Response(JSON.stringify({ value: "ok" }), {
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }
+  });
+
+  assert.equal(await server.run("products.get", [], { abort: controller.signal }), "ok");
+  assert.equal(fetchSignal, controller.signal);
+});
+
+test("server proxy rejects file-like values instead of silently JSON stringifying them", async () => {
+  const fileLike = {
+    [Symbol.toStringTag]: "File",
+    name: "avatar.png"
+  };
+  const server = createServerProxy({
+    fetch() {
+      throw new Error("fetch should not run for unsupported JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("profile.upload", [fileLike]),
+    /does not support File, Blob, or FormData/
+  );
 });

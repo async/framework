@@ -1,6 +1,8 @@
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
 const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
+const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
+const appliedServerValues = new WeakSet();
 
 export function createServerRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
@@ -107,6 +109,7 @@ export function createServerProxy({
       input: context.input ?? defaultInput(runContext),
       signals: context.signalValues ?? snapshotSignalPaths(context.signalPaths, runContext.signals)
     };
+    assertJsonTransportable(body);
 
     const response = await fetchImpl(joinEndpoint(endpoint, id), {
       method: "POST",
@@ -124,7 +127,7 @@ export function createServerProxy({
 
     const result = await readServerResponse(response);
     await applyServerResult(result, runContext);
-    return unwrapServerResult(result);
+    return markAppliedServerValue(unwrapServerResult(result));
   }
 
   return createServerNamespace(run, {
@@ -159,6 +162,9 @@ export async function applyServerResult(result, context = {}) {
   if (!isServerEnvelope(result)) {
     return result;
   }
+  if (result[appliedServerResult] || appliedServerValues.has(result)) {
+    return result;
+  }
 
   if (result.signals && context.signals) {
     for (const [path, value] of Object.entries(result.signals)) {
@@ -182,6 +188,12 @@ export async function applyServerResult(result, context = {}) {
     throw toError(result.error);
   }
 
+  Object.defineProperty(result, appliedServerResult, {
+    configurable: true,
+    enumerable: false,
+    value: true
+  });
+
   return result;
 }
 
@@ -190,6 +202,13 @@ export function unwrapServerResult(result) {
     return result.value;
   }
   return result;
+}
+
+function markAppliedServerValue(value) {
+  if (value && typeof value === "object") {
+    appliedServerValues.add(value);
+  }
+  return value;
 }
 
 export function defaultInput(context = {}) {
@@ -367,6 +386,30 @@ function formDataToObject(formData) {
     output[key] = value;
   }
   return output;
+}
+
+function assertJsonTransportable(value, seen = new Set()) {
+  if (value == null || typeof value !== "object") {
+    return;
+  }
+  if (seen.has(value)) {
+    return;
+  }
+  seen.add(value);
+
+  const tag = Object.prototype.toString.call(value);
+  if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
+    throw new Error("Server proxy JSON transport does not support File, Blob, or FormData values yet.");
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      assertJsonTransportable(item, seen);
+    }
+    return;
+  }
+  for (const item of Object.values(value)) {
+    assertJsonTransportable(item, seen);
+  }
 }
 
 function joinEndpoint(endpoint, id) {
