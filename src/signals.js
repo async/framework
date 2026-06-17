@@ -96,7 +96,8 @@ export function computed(fn) {
           server: registry._context?.().server,
           router: registry._context?.().router,
           loader: registry._context?.().loader,
-          cache: registry._context?.().cache
+          cache: registry._context?.().cache,
+          scheduler: registry._context?.().scheduler
         }));
       });
     }
@@ -124,6 +125,8 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
   const registryCleanups = new Map();
   const runtimeContext = {};
   const boundEntries = new Set();
+  let subscriptionCounter = 0;
+  let effectCounter = 0;
 
   const registry = attachRegistryInspection({
     register(id, signalLike) {
@@ -199,17 +202,21 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
       return createRef(registry, id);
     },
 
-    subscribe(path, fn) {
+    subscribe(path, fn, options = {}) {
       if (typeof fn !== "function") {
         throw new TypeError("subscribe(path, fn) requires a function.");
       }
       const parsed = parsePath(path, entries);
       const entry = requireEntry(entries, parsed.id);
+      const subscriptionId = ++subscriptionCounter;
       return entry.subscribe(() => {
-        fn(registry.get(parsed.path), {
+        scheduleCallback(() => fn(registry.get(parsed.path), {
           id: parsed.id,
           path: parsed.path,
           signal: entry
+        }), {
+          ...options,
+          key: options.key ?? `signal:${parsed.path}:${subscriptionId}`
         });
       });
     },
@@ -227,10 +234,12 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
       return registry.ref(id);
     },
 
-    effect(fn) {
+    effect(fn, options = {}) {
       let cleanup;
       let dependencyCleanups = [];
       let stopped = false;
+      const scheduler = options.scheduler;
+      const effectId = ++effectCounter;
 
       const run = () => {
         if (stopped) {
@@ -249,10 +258,22 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
           server: runtimeContext.server,
           router: runtimeContext.router,
           loader: runtimeContext.loader,
-          cache: runtimeContext.cache
+          cache: runtimeContext.cache,
+          scheduler: runtimeContext.scheduler
         }));
         cleanup = outcome.value;
-        dependencyCleanups = outcome.dependencies.map((dependency) => registry.subscribe(dependency, run));
+        dependencyCleanups = outcome.dependencies.map((dependency) => registry.subscribe(dependency, scheduleRun));
+      };
+
+      const scheduleRun = () => {
+        if (!scheduler) {
+          run();
+          return;
+        }
+        scheduler.enqueue(options.phase ?? "effect", run, {
+          scope: options.scope,
+          key: options.key ?? `effect:${effectId}`
+        });
       };
 
       run();
@@ -328,6 +349,17 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     if (typeof cleanup === "function") {
       registryCleanups.set(id, cleanup);
     }
+  }
+
+  function scheduleCallback(fn, options = {}) {
+    const scheduler = options.scheduler;
+    if (!scheduler || options.phase === "sync") {
+      return fn();
+    }
+    return scheduler.enqueue(options.phase ?? "effect", fn, {
+      scope: options.scope,
+      key: options.key
+    });
   }
 }
 

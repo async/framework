@@ -1,5 +1,6 @@
 import { Loader } from "./loader.js";
 import { createHandlerRegistry } from "./handlers.js";
+import { createScheduler } from "./scheduler.js";
 import { createSignalRegistry } from "./signals.js";
 import { applyServerResult } from "./server.js";
 import { createRegistryStore } from "./registry-store.js";
@@ -121,12 +122,15 @@ export function createRouter({
   partials,
   fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
   routeEndpoint = "/__async/route",
-  attributes
+  attributes,
+  scheduler
 } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? loader?.signals ?? createSignalRegistry();
   const handlerRegistry = handlers ?? loader?.handlers ?? createHandlerRegistry();
+  const schedulerInstance = scheduler ?? loader?.scheduler ?? createScheduler();
+  const ownsScheduler = !scheduler && !loader?.scheduler;
   const attributeConfig = normalizeAttributeConfig(attributes ?? loader?.attributes);
   const loaderInstance =
     loader ??
@@ -136,6 +140,7 @@ export function createRouter({
       handlers: handlerRegistry,
       server,
       cache,
+      scheduler: schedulerInstance,
       attributes: attributeConfig
     });
   const ownsLoader = !loader;
@@ -155,12 +160,13 @@ export function createRouter({
     server,
     cache,
     partials,
+    scheduler: schedulerInstance,
     attributes: attributeConfig,
 
     start() {
       assertActive();
       loaderInstance.router = api;
-      signalRegistry._setContext?.({ router: api, loader: loaderInstance, server, cache });
+      signalRegistry._setContext?.({ router: api, loader: loaderInstance, server, cache, scheduler: schedulerInstance });
       if (ownsLoader) {
         loaderInstance.start();
       }
@@ -224,6 +230,9 @@ export function createRouter({
         cleanup();
       }
       cleanups.clear();
+      if (ownsScheduler) {
+        schedulerInstance.destroy();
+      }
     }
   };
 
@@ -329,13 +338,16 @@ export function createRouter({
       loader: loaderInstance,
       router: api,
       cache,
+      scheduler: schedulerInstance,
       abort: navigation?.abort
     });
+    await schedulerInstance.flush();
     if (!isActiveNavigation(navigation)) {
       return;
     }
     if (result?.html != null && !result.boundary && !result.redirect) {
       loaderInstance.swap(boundary, result.html);
+      await schedulerInstance.flush();
     }
     if (result?.redirect || options.history === false) {
       return;
@@ -380,6 +392,7 @@ export function createRouter({
       loader: loaderInstance,
       server,
       cache,
+      scheduler: schedulerInstance,
       abort: navigation?.abort
     };
   }

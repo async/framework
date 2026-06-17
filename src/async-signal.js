@@ -90,7 +90,8 @@ export function asyncSignal(id, fn) {
               router: context.router,
               loader: context.loader,
               cache: context.cache,
-              abort: activeAbort
+              abort: activeAbort,
+              scheduler: context.scheduler
             });
           }
           return server;
@@ -103,6 +104,9 @@ export function asyncSignal(id, fn) {
         },
         get cache() {
           return registry._context?.().cache;
+        },
+        get scheduler() {
+          return registry._context?.().scheduler;
         },
         get version() {
           return runVersion;
@@ -180,11 +184,20 @@ export function asyncSignal(id, fn) {
     _bindRegistry(nextRegistry, nextId) {
       registry = nextRegistry;
       registeredId = nextId;
-      queueMicrotask(() => {
+      const start = () => {
         if (registry === nextRegistry && status === "idle") {
           state.refresh();
         }
-      });
+      };
+      const scheduler = registry._context?.().scheduler;
+      if (scheduler) {
+        scheduler.enqueue("async", start, {
+          scope: registeredId,
+          key: `asyncSignal:${registeredId}:initial`
+        });
+      } else {
+        queueMicrotask(start);
+      }
     },
 
     _dispose() {
@@ -220,9 +233,24 @@ export function asyncSignal(id, fn) {
     for (const dependency of dependencies) {
       const dependencyId = String(dependency).split(".")[0];
       if (dependencyId && dependencyId !== registeredId) {
-        dependencyCleanups.add(registry.subscribe(dependency, () => state.refresh()));
+        dependencyCleanups.add(registry.subscribe(dependency, () => scheduleRefresh()));
       }
     }
+  }
+
+  function scheduleRefresh() {
+    if (activeAbort && !activeAbort.aborted) {
+      activeAbort.cancel(new Error(`Async signal "${registeredId}" dependency changed.`));
+    }
+    const scheduler = registry?._context?.().scheduler;
+    if (!scheduler) {
+      state.refresh();
+      return;
+    }
+    scheduler.enqueue("async", () => state.refresh(), {
+      scope: registeredId,
+      key: `asyncSignal:${registeredId}:refresh`
+    });
   }
 
   function notify() {

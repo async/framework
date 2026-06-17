@@ -10,5 +10,6 @@ export { Loader, AsyncLoader } from "./loader.js";
 export { createPartialRegistry } from "./partials.js";
 export { createRegistryStore } from "./registry-store.js";
 export { createRouteRegistry, createRouter, defineRoute, route } from "./router.js";
+export { createScheduler } from "./scheduler.js";
 export { createServerProxy, createServerRegistry } from "./server.js";
 export { computed, createSignal, createSignalRegistry, effect, signal } from "./signals.js";

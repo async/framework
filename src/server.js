@@ -93,13 +93,14 @@ export function createServerProxy({
   loader,
   router,
   cache,
+  scheduler,
   headers = {}
 } = {}) {
   if (typeof fetchImpl !== "function") {
     throw new TypeError("createServerProxy(...) requires fetch to be available.");
   }
 
-  const defaults = { signals, loader, router, cache };
+  const defaults = { signals, loader, router, cache, scheduler };
 
   async function run(id, args = [], context = {}) {
     assertServerId(id);

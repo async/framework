@@ -4,6 +4,7 @@ import { createHandlerRegistry } from "./handlers.js";
 import { Loader } from "./loader.js";
 import { createPartialRegistry } from "./partials.js";
 import { createRouteRegistry, createRouter } from "./router.js";
+import { createScheduler } from "./scheduler.js";
 import { createServerRegistry } from "./server.js";
 import { createSignal, createSignalRegistry } from "./signals.js";
 import { createRegistryStore } from "./registry-store.js";
@@ -57,6 +58,10 @@ export function defineApp(initial) {
 export function createApp(appOrDefinition = Async, options = {}) {
   const app = isAppHub(appOrDefinition) ? appOrDefinition : defineApp(appOrDefinition ?? {});
   const target = options.target ?? "browser";
+  const scheduler = options.scheduler ?? options.loader?.scheduler ?? createScheduler({
+    strategy: target === "server" ? "manual" : "microtask"
+  });
+  const ownsScheduler = !options.scheduler && !options.loader?.scheduler;
   const attributes = normalizeAttributeConfig(options.attributes);
   const registry = options.registry ?? app.registry.view({ target });
   const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal" });
@@ -91,6 +96,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     },
     loader,
     router,
+    scheduler,
     attributes,
 
     start() {
@@ -107,12 +113,13 @@ export function createApp(appOrDefinition = Async, options = {}) {
           handlers,
           server,
           cache: browserCache,
+          scheduler,
           attributes
         });
         runtime.loader = loader;
 
         configureServerContext({ cache: browserCache });
-        signals._setContext?.({ server, loader, cache: browserCache });
+        signals._setContext?.({ server, loader, cache: browserCache, scheduler });
 
         loader.start();
 
@@ -128,6 +135,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
             server,
             cache: browserCache,
             partials,
+            scheduler,
             fetch: options.fetch,
             routeEndpoint: options.routeEndpoint,
             attributes
@@ -139,7 +147,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
         }
       } else {
         configureServerContext({ cache: serverCache });
-        signals._setContext?.({ server, cache: serverCache });
+        signals._setContext?.({ server, cache: serverCache, scheduler });
       }
 
       return runtime;
@@ -153,9 +161,10 @@ export function createApp(appOrDefinition = Async, options = {}) {
     async render(url) {
       assertActive();
       configureServerContext({ cache: serverCache });
-      signals._setContext?.({ server, cache: serverCache });
+      signals._setContext?.({ server, cache: serverCache, scheduler });
       const matched = routes.match(url);
       if (!matched) {
+        await scheduler.flush();
         return {
           html: renderDocument("", { status: 404, signals, browserCache, boundary: options.boundary ?? "route", attributes }),
           status: 404,
@@ -175,6 +184,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
             cache: serverCache,
             browserCache,
             partials,
+            scheduler,
             request: options.request,
             locals: options.locals
           })
@@ -188,6 +198,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
       if (result.cache?.browser) {
         browserCache.restore(result.cache.browser);
       }
+
+      await scheduler.flush();
 
       const status = result.status ?? 200;
       return {
@@ -207,6 +219,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
       router?.destroy?.();
       loader?.destroy?.();
       signals.destroy?.();
+      if (ownsScheduler) {
+        scheduler.destroy();
+      }
     },
 
     _applyUse(normalized) {
@@ -227,6 +242,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       loader,
       router,
       cache,
+      scheduler,
       request: options.request,
       locals: options.locals
     });

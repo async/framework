@@ -113,10 +113,15 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
     html,
     attach(target) {
       for (const hook of attachHooks) {
-        const cleanup = hook(target);
-        if (typeof cleanup === "function") {
-          cleanups.push(cleanup);
-        }
+        runtime.scheduler?.enqueue("lifecycle", () => {
+          const cleanup = hook(target);
+          if (typeof cleanup === "function") {
+            cleanups.push(cleanup);
+          }
+        }, {
+          scope,
+          key: `attach:${attachHooks.indexOf(hook)}`
+        }) ?? runAttachHook(hook, target);
       }
     },
     mount(target) {
@@ -124,7 +129,17 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
     },
     visible(target, observeVisible) {
       for (const hook of visibleHooks) {
-        const cleanup = observeVisible(target, hook);
+        const cleanup = observeVisible(target, () => {
+          runtime.scheduler?.enqueue("lifecycle", () => {
+            const hookCleanup = hook(target);
+            if (typeof hookCleanup === "function") {
+              cleanups.push(hookCleanup);
+            }
+          }, {
+            scope,
+            key: `visible:${visibleHooks.indexOf(hook)}`
+          }) ?? runVisibleHook(hook, target);
+        });
         if (typeof cleanup === "function") {
           cleanups.push(cleanup);
         }
@@ -134,6 +149,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
       while (destroyHooks.length > 0) {
         destroyHooks.pop()?.();
       }
+      runtime.scheduler?.markScopeDestroyed(scope);
       while (cleanups.length > 0) {
         cleanups.pop()?.();
       }
@@ -142,10 +158,24 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
       }
     }
   };
+
+  function runAttachHook(hook, target) {
+    const cleanup = hook(target);
+    if (typeof cleanup === "function") {
+      cleanups.push(cleanup);
+    }
+  }
+
+  function runVisibleHook(hook, target) {
+    const cleanup = hook(target);
+    if (typeof cleanup === "function") {
+      cleanups.push(cleanup);
+    }
+  }
 }
 
 function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks, renderScopedTemplate }) {
-  const { signals, handlers, loader, server, router, cache } = runtime;
+  const { signals, handlers, loader, server, router, cache, scheduler } = runtime;
   const generatedHandlers = new WeakMap();
   let generatedHandlerCounter = 0;
   let generatedSignalCounter = 0;
@@ -157,6 +187,7 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     server,
     router,
     cache,
+    scheduler,
 
     signal(name, initial) {
       if (arguments.length === 1) {
@@ -201,7 +232,11 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     },
 
     effect(fn) {
-      const cleanup = signals.effect(() => fn.call(context));
+      const cleanup = signals.effect(() => fn.call(context), {
+        scheduler,
+        phase: "effect",
+        scope
+      });
       cleanups.push(cleanup);
       return cleanup;
     },

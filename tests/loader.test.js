@@ -66,6 +66,7 @@ test("Loader binds text, values, attributes, classes, and input writes", async (
   signals.set("selected", true);
   signals.set("buttonClasses", ["compact", { ready: false, active: true }, ["nested"]]);
   signals.set("registeredClasses", { registered: false, changed: true });
+  await delay(0);
   assert.equal(text.textContent, "Headphones");
   assert.equal(button.classList.contains("selected"), true);
   assert.equal(button.classList.contains("base"), true);

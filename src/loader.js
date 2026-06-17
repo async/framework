@@ -1,15 +1,18 @@
 import { renderComponent } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
+import { createScheduler } from "./scheduler.js";
 import { createSignalRegistry, isSignalRef } from "./signals.js";
 import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attributes.js";
 
 const inlineBindingPrefix = "__async:inline:";
 
-export function Loader({ root, signals, handlers, server, router, cache, attributes } = {}) {
+export function Loader({ root, signals, handlers, server, router, cache, attributes, scheduler } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
   const handlerRegistry = handlers ?? createHandlerRegistry();
+  const schedulerInstance = scheduler ?? createScheduler();
+  const ownsScheduler = !scheduler;
   const attributeConfig = normalizeAttributeConfig(attributes);
   const cleanups = new Set();
   const eventBindings = new WeakMap();
@@ -30,6 +33,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     server,
     router,
     cache,
+    scheduler: schedulerInstance,
     attributes: attributeConfig,
 
     start() {
@@ -69,6 +73,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         server: api.server,
         router: api.router,
         cache: api.cache,
+        scheduler: schedulerInstance,
         attributes: attributeConfig
       });
       cleanupChildren(target);
@@ -89,6 +94,9 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         runCleanup(cleanup);
       }
       cleanups.clear();
+      if (ownsScheduler) {
+        schedulerInstance.destroy();
+      }
     },
 
     _observeVisible(target, fn) {
@@ -106,13 +114,14 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     }
   };
 
-  signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache });
+  signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache, scheduler: schedulerInstance });
   api.server?._setContext?.({
     signals: signalRegistry,
     handlers: handlerRegistry,
     loader: api,
     router: api.router,
-    cache: api.cache
+    cache: api.cache,
+    scheduler: schedulerInstance
   });
 
   function bindEventAttributes(scope) {
@@ -144,18 +153,19 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
 
     const listener = async (event) => {
       try {
-        await handlerRegistry.run(ref, {
+        await schedulerInstance.batch(() => handlerRegistry.run(ref, {
           signals: signalRegistry,
           handlers: handlerRegistry,
           loader: api,
           server: api.server,
           router: api.router,
           cache: api.cache,
+          scheduler: schedulerInstance,
           event,
           element,
           el: element,
           root: rootNode
-        });
+        }));
       } catch (error) {
         dispatchAsyncError(element, error);
       }
@@ -271,7 +281,12 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
 
     const read = () => readBinding(path, options);
     apply(read());
-    addCleanup(subscribeBinding(path, () => apply(read())), element);
+    addCleanup(subscribeBinding(path, () => {
+      schedulerInstance.enqueue("binding", () => apply(read()), {
+        scope: element,
+        key
+      });
+    }), element);
   }
 
   function bindValueWriter(element, path) {
@@ -332,7 +347,12 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         const state = {
           id,
           templates,
-          cleanup: signalRegistry.subscribe(`${id}.$status`, () => renderBoundary(boundary))
+          cleanup: signalRegistry.subscribe(`${id}.$status`, () => {
+            schedulerInstance.enqueue("binding", () => renderBoundary(boundary), {
+              scope: boundary,
+              key: `boundary:${id}`
+            });
+          })
         };
         boundaryState.set(boundary, state);
         addCleanup(state.cleanup, boundary);
@@ -372,7 +392,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
       }
       mountedElements.add(element);
       for (const ref of refs) {
-        runPseudo(element, ref);
+        scheduleLifecycle(element, () => runPseudo(element, ref), `attach:${ref}`);
       }
     }
 
@@ -385,7 +405,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         continue;
       }
       visibleElements.add(element);
-      addCleanup(observeVisible(element, () => runPseudo(element, ref)), element);
+      addCleanup(observeVisible(element, () => scheduleLifecycle(element, () => runPseudo(element, ref), `visible:${ref}`)), element);
     }
   }
 
@@ -409,6 +429,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         server: api.server,
         router: api.router,
         cache: api.cache,
+        scheduler: schedulerInstance,
         element,
         el: element,
         root: rootNode
@@ -427,10 +448,13 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     const ownerWindow = target.ownerDocument?.defaultView ?? globalThis;
     const Observer = ownerWindow.IntersectionObserver ?? globalThis.IntersectionObserver;
     if (!Observer) {
-      queueMicrotask(() => {
+      schedulerInstance.enqueue("lifecycle", () => {
         if (!destroyed) {
           fn(target);
         }
+      }, {
+        scope: target,
+        key: "visible:fallback"
       });
       return () => {};
     }
@@ -485,6 +509,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     }
     for (const element of elementsIn(node)) {
       runScopedCleanups(element);
+      schedulerInstance.markScopeDestroyed(element);
     }
   }
 
@@ -506,6 +531,13 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     } else {
       scopedCleanups.delete(element);
     }
+  }
+
+  function scheduleLifecycle(element, fn, key) {
+    schedulerInstance.enqueue("lifecycle", fn, {
+      scope: element,
+      key
+    });
   }
 
   return api;
