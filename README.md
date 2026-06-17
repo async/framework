@@ -100,7 +100,7 @@ production:
 | `framework.min.js` | ESM | Compact browser module bundle |
 | `framework.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
 | `framework.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
-| `framework.ts` | TypeScript source facade | TS-aware runtimes and higher-layer tooling |
+| `framework.ts` | Bundled TypeScript source | TS-aware runtimes and higher-layer tooling |
 | `framework.d.ts` | Type declarations | TypeScript declarations for the public API |
 
 ```html
@@ -215,6 +215,7 @@ import {
   delay,
   effect,
   html,
+  readSnapshot,
   route,
   signal
 } from "@async/framework";
@@ -410,6 +411,10 @@ await delay(250, this.abort);
 
 If a dependency read through `this.signals.get(...)` changes, the async signal
 reruns and the previous run is aborted.
+
+Dependency reads are captured while the async signal function starts running.
+Read signal dependencies before the first `await`; reads that happen later are
+ordinary reads and do not create refresh subscriptions.
 
 ## HTML Protocol
 
@@ -819,9 +824,15 @@ hydrate, diff, patch, or rerender:
 ```js
 createApp(browserApp, {
   root: document,
-  snapshot,
   server: createServerProxy({ endpoint: "/__async/server" })
 }).start();
+```
+
+If an `async:snapshot` script is present under the root or document,
+`createApp(...)` reads it automatically. You can also inspect it directly:
+
+```js
+const snapshot = readSnapshot(document);
 ```
 
 ## Components

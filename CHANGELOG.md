@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Added router navigation abort/version guards so stale route partials cannot
+  clobber newer navigations, and route partial contexts receive `this.abort`.
+- Added ranked route matching so static and dynamic routes win over wildcard
+  fallbacks regardless of registration order.
+- Added `readSnapshot(...)` and automatic browser activation from SSR snapshot
+  scripts.
+- Fixed repeated server result application when proxy/server envelopes pass
+  through namespace or handler callers.
+- Added in-flight `cache.getOrSet(...)` deduplication and clear proxy errors for
+  `File`, `Blob`, and `FormData` values that the JSON transport cannot send.
+- Changed `framework.ts` from a source facade to a bundled TypeScript source
+  entrypoint.
+
 ## 0.6.0 - 2026-06-17
 
 - Added `Loader` as the canonical public loader factory, including
