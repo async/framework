@@ -14,21 +14,16 @@ export default definePipeline({
   },
 
   sync: {
-    github: {
-      packagePreviews: true
-    },
+    github: true,
     tasks: {
       prefix: "pipeline",
       runners: ["package"],
       targets: [{ package: "@async/framework" }],
-      jobs: ["pages", "publish", "publish-github", "release-doctor", "snapshot", "verify"],
+      jobs: ["pages", "publish", "release-doctor", "verify"],
       tasks: ["docs.site"],
       scripts: {
         "github:check": "github check",
         "github:generate": "github generate",
-        "publish:github:main": "publish github main --package .",
-        "publish:github:pr": "publish github pr --package .",
-        "publish:github:release": "publish github release --package .",
         "publish:npm": "publish npm --package .",
         "release:doctor": "release doctor --package .",
         "release:ensure": "release ensure --package .",
@@ -81,14 +76,6 @@ export default definePipeline({
       run: sh`npm pack --dry-run --ignore-scripts`
     }),
 
-    snapshot: task({
-      description: "Publish a main-branch GitHub Packages snapshot after verification.",
-      dependsOn: ["pack"],
-      inputs: ["source"],
-      cache: false,
-      run: sh`pnpm async-pipeline publish github main --package ${packagePath}`
-    }),
-
     "release-ensure": task({
       description: "Create or verify the release tag and GitHub Release before package publishing.",
       dependsOn: ["pack"],
@@ -97,17 +84,9 @@ export default definePipeline({
       run: sh`pnpm async-pipeline release ensure --package ${packagePath}`
     }),
 
-    "publish-github": task({
-      description: "Publish the stable GitHub Packages mirror before npm.",
-      dependsOn: ["release-ensure"],
-      inputs: ["source"],
-      cache: false,
-      run: sh`pnpm async-pipeline publish github release --package ${packagePath}`
-    }),
-
     publish: task({
       description: "Publish the verified release to npm, then run release doctor.",
-      dependsOn: ["publish-github"],
+      dependsOn: ["release-ensure"],
       inputs: ["source"],
       cache: false,
       run: [
@@ -133,38 +112,10 @@ export default definePipeline({
 
     pages: job({
       target: "docs.site",
-      trigger: ["pr", "main", "manual"],
+      trigger: ["manual"],
       github: {
         pages: {
           build: { kind: "static", path: ".async/pages" }
-        }
-      }
-    }),
-
-    snapshot: job({
-      target: "snapshot",
-      trigger: ["main"],
-      env: {
-        GITHUB_TOKEN: env.secret("GITHUB_TOKEN")
-      },
-      github: {
-        permissions: {
-          contents: "write",
-          packages: "write"
-        }
-      }
-    }),
-
-    "publish-github": job({
-      target: "publish-github",
-      trigger: ["manual"],
-      env: {
-        GITHUB_TOKEN: env.secret("GITHUB_TOKEN")
-      },
-      github: {
-        permissions: {
-          contents: "write",
-          packages: "write"
         }
       }
     }),

@@ -26,16 +26,8 @@
           "value": "async-pipeline run publish"
         },
         {
-          "name": "pipeline:publish-github",
-          "value": "async-pipeline run publish-github"
-        },
-        {
           "name": "pipeline:release-doctor",
           "value": "async-pipeline run release-doctor"
-        },
-        {
-          "name": "pipeline:snapshot",
-          "value": "async-pipeline run snapshot"
         },
         {
           "name": "pipeline:verify",
@@ -52,18 +44,6 @@
         {
           "name": "pipeline:github:generate",
           "value": "async-pipeline github generate"
-        },
-        {
-          "name": "pipeline:publish:github:main",
-          "value": "async-pipeline publish github main --package ."
-        },
-        {
-          "name": "pipeline:publish:github:pr",
-          "value": "async-pipeline publish github pr --package ."
-        },
-        {
-          "name": "pipeline:publish:github:release",
-          "value": "async-pipeline publish github release --package ."
         },
         {
           "name": "pipeline:publish:npm",
@@ -98,16 +78,8 @@
       "value": "async-pipeline run publish"
     },
     {
-      "name": "pipeline:publish-github",
-      "value": "async-pipeline run publish-github"
-    },
-    {
       "name": "pipeline:release-doctor",
       "value": "async-pipeline run release-doctor"
-    },
-    {
-      "name": "pipeline:snapshot",
-      "value": "async-pipeline run snapshot"
     },
     {
       "name": "pipeline:verify",
@@ -124,18 +96,6 @@
     {
       "name": "pipeline:github:generate",
       "value": "async-pipeline github generate"
-    },
-    {
-      "name": "pipeline:publish:github:main",
-      "value": "async-pipeline publish github main --package ."
-    },
-    {
-      "name": "pipeline:publish:github:pr",
-      "value": "async-pipeline publish github pr --package ."
-    },
-    {
-      "name": "pipeline:publish:github:release",
-      "value": "async-pipeline publish github release --package ."
     },
     {
       "name": "pipeline:publish:npm",
@@ -158,6 +118,6 @@
       "value": "async-pipeline sync generate"
     }
   ],
-  "hash": "sha256:6fce080ffc63019e04afbbbb73958fa4e1f066c6f94d5fbce0cefdddb03f5bcf",
-  "generatedAt": "2026-06-17T06:02:34.012Z"
+  "hash": "sha256:7d099417f0ce8e0120da48fc2282a8f7fdc1e29b39c17731385badb56bba35b2",
+  "generatedAt": "2026-06-17T06:08:08.520Z"
 }

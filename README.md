@@ -284,10 +284,12 @@ pnpm run pipeline:release:doctor
 pnpm run release:check
 ```
 
-GitHub Pages deploys through the generated `pages` job. Stable releases use the
-generated `publish` job: it verifies the package, creates or verifies the tag
-and GitHub Release, publishes the GitHub Packages mirror, publishes npm with
-provenance, then runs release doctor.
+GitHub Pages builds through the generated `pages` job. This private repository
+needs GitHub Pages support enabled before the generated job can deploy.
+
+Stable releases use the generated `publish` job: it verifies the package,
+creates or verifies the tag and GitHub Release, publishes npm with provenance,
+then runs release doctor.
 
 ## Status
 
