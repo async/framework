@@ -95,7 +95,8 @@ const __asyncSignalModule = (() => {
                 router: context.router,
                 loader: context.loader,
                 cache: context.cache,
-                abort: activeAbort
+                abort: activeAbort,
+                scheduler: context.scheduler
               });
             }
             return server;
@@ -108,6 +109,9 @@ const __asyncSignalModule = (() => {
           },
           get cache() {
             return registry._context?.().cache;
+          },
+          get scheduler() {
+            return registry._context?.().scheduler;
           },
           get version() {
             return runVersion;
@@ -185,11 +189,20 @@ const __asyncSignalModule = (() => {
       _bindRegistry(nextRegistry, nextId) {
         registry = nextRegistry;
         registeredId = nextId;
-        queueMicrotask(() => {
+        const start = () => {
           if (registry === nextRegistry && status === "idle") {
             state.refresh();
           }
-        });
+        };
+        const scheduler = registry._context?.().scheduler;
+        if (scheduler) {
+          scheduler.enqueue("async", start, {
+            scope: registeredId,
+            key: `asyncSignal:${registeredId}:initial`
+          });
+        } else {
+          queueMicrotask(start);
+        }
       },
 
       _dispose() {
@@ -225,9 +238,24 @@ const __asyncSignalModule = (() => {
       for (const dependency of dependencies) {
         const dependencyId = String(dependency).split(".")[0];
         if (dependencyId && dependencyId !== registeredId) {
-          dependencyCleanups.add(registry.subscribe(dependency, () => state.refresh()));
+          dependencyCleanups.add(registry.subscribe(dependency, () => scheduleRefresh()));
         }
       }
+    }
+
+    function scheduleRefresh() {
+      if (activeAbort && !activeAbort.aborted) {
+        activeAbort.cancel(new Error(`Async signal "${registeredId}" dependency changed.`));
+      }
+      const scheduler = registry?._context?.().scheduler;
+      if (!scheduler) {
+        state.refresh();
+        return;
+      }
+      scheduler.enqueue("async", () => state.refresh(), {
+        scope: registeredId,
+        key: `asyncSignal:${registeredId}:refresh`
+      });
     }
 
     function notify() {
@@ -866,7 +894,8 @@ const __signalsModule = (() => {
             server: registry._context?.().server,
             router: registry._context?.().router,
             loader: registry._context?.().loader,
-            cache: registry._context?.().cache
+            cache: registry._context?.().cache,
+            scheduler: registry._context?.().scheduler
           }));
         });
       }
@@ -894,6 +923,8 @@ const __signalsModule = (() => {
     const registryCleanups = new Map();
     const runtimeContext = {};
     const boundEntries = new Set();
+    let subscriptionCounter = 0;
+    let effectCounter = 0;
 
     const registry = attachRegistryInspection({
       register(id, signalLike) {
@@ -969,17 +1000,21 @@ const __signalsModule = (() => {
         return createRef(registry, id);
       },
 
-      subscribe(path, fn) {
+      subscribe(path, fn, options = {}) {
         if (typeof fn !== "function") {
           throw new TypeError("subscribe(path, fn) requires a function.");
         }
         const parsed = parsePath(path, entries);
         const entry = requireEntry(entries, parsed.id);
+        const subscriptionId = ++subscriptionCounter;
         return entry.subscribe(() => {
-          fn(registry.get(parsed.path), {
+          scheduleCallback(() => fn(registry.get(parsed.path), {
             id: parsed.id,
             path: parsed.path,
             signal: entry
+          }), {
+            ...options,
+            key: options.key ?? `signal:${parsed.path}:${subscriptionId}`
           });
         });
       },
@@ -997,10 +1032,12 @@ const __signalsModule = (() => {
         return registry.ref(id);
       },
 
-      effect(fn) {
+      effect(fn, options = {}) {
         let cleanup;
         let dependencyCleanups = [];
         let stopped = false;
+        const scheduler = options.scheduler;
+        const effectId = ++effectCounter;
 
         const run = () => {
           if (stopped) {
@@ -1019,10 +1056,22 @@ const __signalsModule = (() => {
             server: runtimeContext.server,
             router: runtimeContext.router,
             loader: runtimeContext.loader,
-            cache: runtimeContext.cache
+            cache: runtimeContext.cache,
+            scheduler: runtimeContext.scheduler
           }));
           cleanup = outcome.value;
-          dependencyCleanups = outcome.dependencies.map((dependency) => registry.subscribe(dependency, run));
+          dependencyCleanups = outcome.dependencies.map((dependency) => registry.subscribe(dependency, scheduleRun));
+        };
+
+        const scheduleRun = () => {
+          if (!scheduler) {
+            run();
+            return;
+          }
+          scheduler.enqueue(options.phase ?? "effect", run, {
+            scope: options.scope,
+            key: options.key ?? `effect:${effectId}`
+          });
         };
 
         run();
@@ -1098,6 +1147,17 @@ const __signalsModule = (() => {
       if (typeof cleanup === "function") {
         registryCleanups.set(id, cleanup);
       }
+    }
+
+    function scheduleCallback(fn, options = {}) {
+      const scheduler = options.scheduler;
+      if (!scheduler || options.phase === "sync") {
+        return fn();
+      }
+      return scheduler.enqueue(options.phase ?? "effect", fn, {
+        scope: options.scope,
+        key: options.key
+      });
     }
   }
 
@@ -1565,10 +1625,15 @@ const __componentModule = (() => {
       html,
       attach(target) {
         for (const hook of attachHooks) {
-          const cleanup = hook(target);
-          if (typeof cleanup === "function") {
-            cleanups.push(cleanup);
-          }
+          runtime.scheduler?.enqueue("lifecycle", () => {
+            const cleanup = hook(target);
+            if (typeof cleanup === "function") {
+              cleanups.push(cleanup);
+            }
+          }, {
+            scope,
+            key: `attach:${attachHooks.indexOf(hook)}`
+          }) ?? runAttachHook(hook, target);
         }
       },
       mount(target) {
@@ -1576,7 +1641,17 @@ const __componentModule = (() => {
       },
       visible(target, observeVisible) {
         for (const hook of visibleHooks) {
-          const cleanup = observeVisible(target, hook);
+          const cleanup = observeVisible(target, () => {
+            runtime.scheduler?.enqueue("lifecycle", () => {
+              const hookCleanup = hook(target);
+              if (typeof hookCleanup === "function") {
+                cleanups.push(hookCleanup);
+              }
+            }, {
+              scope,
+              key: `visible:${visibleHooks.indexOf(hook)}`
+            }) ?? runVisibleHook(hook, target);
+          });
           if (typeof cleanup === "function") {
             cleanups.push(cleanup);
           }
@@ -1586,6 +1661,7 @@ const __componentModule = (() => {
         while (destroyHooks.length > 0) {
           destroyHooks.pop()?.();
         }
+        runtime.scheduler?.markScopeDestroyed(scope);
         while (cleanups.length > 0) {
           cleanups.pop()?.();
         }
@@ -1594,10 +1670,24 @@ const __componentModule = (() => {
         }
       }
     };
+
+    function runAttachHook(hook, target) {
+      const cleanup = hook(target);
+      if (typeof cleanup === "function") {
+        cleanups.push(cleanup);
+      }
+    }
+
+    function runVisibleHook(hook, target) {
+      const cleanup = hook(target);
+      if (typeof cleanup === "function") {
+        cleanups.push(cleanup);
+      }
+    }
   }
 
   function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks, renderScopedTemplate }) {
-    const { signals, handlers, loader, server, router, cache } = runtime;
+    const { signals, handlers, loader, server, router, cache, scheduler } = runtime;
     const generatedHandlers = new WeakMap();
     let generatedHandlerCounter = 0;
     let generatedSignalCounter = 0;
@@ -1609,6 +1699,7 @@ const __componentModule = (() => {
       server,
       router,
       cache,
+      scheduler,
 
       signal(name, initial) {
         if (arguments.length === 1) {
@@ -1653,7 +1744,11 @@ const __componentModule = (() => {
       },
 
       effect(fn) {
-        const cleanup = signals.effect(() => fn.call(context));
+        const cleanup = signals.effect(() => fn.call(context), {
+          scheduler,
+          phase: "effect",
+          scope
+        });
         cleanups.push(cleanup);
         return cleanup;
       },
@@ -1869,13 +1964,14 @@ const __serverModule = (() => {
     loader,
     router,
     cache,
+    scheduler,
     headers = {}
   } = {}) {
     if (typeof fetchImpl !== "function") {
       throw new TypeError("createServerProxy(...) requires fetch to be available.");
     }
 
-    const defaults = { signals, loader, router, cache };
+    const defaults = { signals, loader, router, cache, scheduler };
 
     async function run(id, args = [], context = {}) {
       assertServerId(id);
@@ -2417,18 +2513,321 @@ const __handlersModule = (() => {
   return { createHandlerRegistry, parseHandlerRef, isHandlerToken };
 })();
 
+const __schedulerModule = (() => {
+  const defaultPhases = ["binding", "lifecycle", "effect", "async", "post"];
+
+  function createScheduler(options = {}) {
+    const phases = [...(options.phases ?? defaultPhases)];
+    const queues = new Map(phases.map((phase) => [phase, []]));
+    const keyedJobs = new Map();
+    const destroyedScopes = new Set();
+    const objectScopeIds = new WeakMap();
+    const onError = typeof options.onError === "function" ? options.onError : undefined;
+    const maxDepth = options.maxDepth ?? 100;
+    const strategy = options.strategy ?? "microtask";
+    let destroyed = false;
+    let flushing = false;
+    let scheduled = false;
+    let batchDepth = 0;
+    let jobCounter = 0;
+    let scopeCounter = 0;
+
+    const api = {
+      strategy,
+      phases,
+
+      batch(fn) {
+        if (typeof fn !== "function") {
+          throw new TypeError("scheduler.batch(fn) requires a function.");
+        }
+        assertActive();
+        batchDepth += 1;
+        let asyncBatch = false;
+        try {
+          const value = fn();
+          if (value && typeof value.then === "function") {
+            asyncBatch = true;
+            return value.finally(() => {
+              batchDepth -= 1;
+              requestFlush();
+            });
+          }
+          return value;
+        } finally {
+          if (!asyncBatch && batchDepth > 0) {
+            batchDepth -= 1;
+            requestFlush();
+          }
+        }
+      },
+
+      enqueue(phase, fn, options = {}) {
+        assertActive();
+        assertPhase(phase);
+        if (typeof fn !== "function") {
+          throw new TypeError("scheduler.enqueue(phase, fn) requires a function.");
+        }
+        const scope = options.scope;
+        if (scope !== undefined && destroyedScopes.has(scope)) {
+          return noop;
+        }
+
+        const dedupeKey = options.key === undefined ? undefined : `${phase}:${scopeKey(scope)}:${String(options.key)}`;
+        if (dedupeKey && keyedJobs.has(dedupeKey)) {
+          return keyedJobs.get(dedupeKey).cancel;
+        }
+
+        const job = {
+          id: ++jobCounter,
+          phase,
+          fn,
+          scope,
+          boundary: options.boundary,
+          key: dedupeKey,
+          canceled: false,
+          cancel() {
+            job.canceled = true;
+            if (job.key) {
+              keyedJobs.delete(job.key);
+            }
+          }
+        };
+        queues.get(phase).push(job);
+        if (job.key) {
+          keyedJobs.set(job.key, job);
+        }
+        requestFlush();
+        return job.cancel;
+      },
+
+      afterFlush(fn, options = {}) {
+        return api.enqueue("post", fn, options);
+      },
+
+      async flush() {
+        assertActive();
+        if (flushing) {
+          return;
+        }
+        scheduled = false;
+        flushing = true;
+        let depth = 0;
+        try {
+          while (hasJobs()) {
+            depth += 1;
+            if (depth > maxDepth) {
+              throw new Error(`Scheduler exceeded maxDepth ${maxDepth}.`);
+            }
+            for (const phase of phases) {
+              await flushPhase(phase);
+            }
+          }
+        } finally {
+          flushing = false;
+          if (hasJobs()) {
+            requestFlush();
+          }
+        }
+      },
+
+      async flushScope(scope) {
+        assertActive();
+        if (flushing) {
+          return;
+        }
+        scheduled = false;
+        flushing = true;
+        let depth = 0;
+        try {
+          while (hasJobsForScope(scope)) {
+            depth += 1;
+            if (depth > maxDepth) {
+              throw new Error(`Scheduler exceeded maxDepth ${maxDepth}.`);
+            }
+            for (const phase of phases) {
+              await flushPhase(phase, scope);
+            }
+          }
+        } finally {
+          flushing = false;
+          if (hasJobs()) {
+            requestFlush();
+          }
+        }
+      },
+
+      cancelScope(scope) {
+        if (scope === undefined) {
+          return api;
+        }
+        for (const queue of queues.values()) {
+          for (const job of queue) {
+            if (job.scope === scope) {
+              job.cancel();
+            }
+          }
+        }
+        return api;
+      },
+
+      markScopeDestroyed(scope) {
+        if (scope !== undefined) {
+          destroyedScopes.add(scope);
+          api.cancelScope(scope);
+        }
+        return api;
+      },
+
+      inspect() {
+        const counts = {};
+        for (const [phase, queue] of queues) {
+          counts[phase] = queue.filter((job) => !job.canceled).length;
+        }
+        return {
+          strategy,
+          phases: [...phases],
+          pending: counts,
+          scopesDestroyed: destroyedScopes.size,
+          flushing,
+          scheduled
+        };
+      },
+
+      destroy() {
+        destroyed = true;
+        for (const queue of queues.values()) {
+          for (const job of queue) {
+            job.cancel();
+          }
+          queue.length = 0;
+        }
+        keyedJobs.clear();
+        destroyedScopes.clear();
+      }
+    };
+
+    return api;
+
+    function requestFlush() {
+      if (strategy === "manual" || destroyed || flushing || batchDepth > 0 || scheduled) {
+        return;
+      }
+      scheduled = true;
+      scheduleMicrotask(() => {
+        if (!destroyed) {
+          void api.flush();
+        }
+      });
+    }
+
+    async function flushPhase(phase, scope) {
+      const queue = queues.get(phase);
+      const remaining = [];
+      const runnable = [];
+
+      for (const job of queue.splice(0)) {
+        if (job.canceled) {
+          continue;
+        }
+        if (scope !== undefined && job.scope !== scope) {
+          remaining.push(job);
+          continue;
+        }
+        runnable.push(job);
+      }
+
+      queue.push(...remaining);
+
+      for (const job of runnable) {
+        if (job.key) {
+          keyedJobs.delete(job.key);
+        }
+        if (job.canceled || (job.scope !== undefined && destroyedScopes.has(job.scope))) {
+          continue;
+        }
+        try {
+          await job.fn();
+        } catch (error) {
+          if (onError) {
+            onError(error, job);
+          } else {
+            throw error;
+          }
+        }
+      }
+    }
+
+    function hasJobs() {
+      for (const queue of queues.values()) {
+        if (queue.some((job) => !job.canceled)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function hasJobsForScope(scope) {
+      for (const queue of queues.values()) {
+        if (queue.some((job) => !job.canceled && job.scope === scope)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function assertActive() {
+      if (destroyed) {
+        throw new Error("Scheduler has been destroyed.");
+      }
+    }
+
+    function assertPhase(phase) {
+      if (!queues.has(phase)) {
+        throw new Error(`Unknown scheduler phase "${phase}".`);
+      }
+    }
+
+    function scopeKey(scope) {
+      if (scope === undefined) {
+        return "global";
+      }
+      if ((typeof scope === "object" && scope !== null) || typeof scope === "function") {
+        if (!objectScopeIds.has(scope)) {
+          objectScopeIds.set(scope, `scope:${++scopeCounter}`);
+        }
+        return objectScopeIds.get(scope);
+      }
+      return String(scope);
+    }
+  }
+
+  function scheduleMicrotask(fn) {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(fn);
+      return;
+    }
+    Promise.resolve().then(fn);
+  }
+
+  function noop() {}
+  return { createScheduler };
+})();
+
 const __loaderModule = (() => {
   const { renderComponent } = __componentModule;
   const { createHandlerRegistry } = __handlersModule;
+  const { createScheduler } = __schedulerModule;
   const { createSignalRegistry, isSignalRef } = __signalsModule;
   const { matchAttribute, normalizeAttributeConfig, readAttribute } = __attributesModule;
   const inlineBindingPrefix = "__async:inline:";
 
-  function Loader({ root, signals, handlers, server, router, cache, attributes } = {}) {
+  function Loader({ root, signals, handlers, server, router, cache, attributes, scheduler } = {}) {
     const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
     const rootNode = root ?? documentRef;
     const signalRegistry = signals ?? createSignalRegistry();
     const handlerRegistry = handlers ?? createHandlerRegistry();
+    const schedulerInstance = scheduler ?? createScheduler();
+    const ownsScheduler = !scheduler;
     const attributeConfig = normalizeAttributeConfig(attributes);
     const cleanups = new Set();
     const eventBindings = new WeakMap();
@@ -2449,6 +2848,7 @@ const __loaderModule = (() => {
       server,
       router,
       cache,
+      scheduler: schedulerInstance,
       attributes: attributeConfig,
 
       start() {
@@ -2488,6 +2888,7 @@ const __loaderModule = (() => {
           server: api.server,
           router: api.router,
           cache: api.cache,
+          scheduler: schedulerInstance,
           attributes: attributeConfig
         });
         cleanupChildren(target);
@@ -2508,6 +2909,9 @@ const __loaderModule = (() => {
           runCleanup(cleanup);
         }
         cleanups.clear();
+        if (ownsScheduler) {
+          schedulerInstance.destroy();
+        }
       },
 
       _observeVisible(target, fn) {
@@ -2525,13 +2929,14 @@ const __loaderModule = (() => {
       }
     };
 
-    signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache });
+    signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache, scheduler: schedulerInstance });
     api.server?._setContext?.({
       signals: signalRegistry,
       handlers: handlerRegistry,
       loader: api,
       router: api.router,
-      cache: api.cache
+      cache: api.cache,
+      scheduler: schedulerInstance
     });
 
     function bindEventAttributes(scope) {
@@ -2563,18 +2968,19 @@ const __loaderModule = (() => {
 
       const listener = async (event) => {
         try {
-          await handlerRegistry.run(ref, {
+          await schedulerInstance.batch(() => handlerRegistry.run(ref, {
             signals: signalRegistry,
             handlers: handlerRegistry,
             loader: api,
             server: api.server,
             router: api.router,
             cache: api.cache,
+            scheduler: schedulerInstance,
             event,
             element,
             el: element,
             root: rootNode
-          });
+          }));
         } catch (error) {
           dispatchAsyncError(element, error);
         }
@@ -2690,7 +3096,12 @@ const __loaderModule = (() => {
 
       const read = () => readBinding(path, options);
       apply(read());
-      addCleanup(subscribeBinding(path, () => apply(read())), element);
+      addCleanup(subscribeBinding(path, () => {
+        schedulerInstance.enqueue("binding", () => apply(read()), {
+          scope: element,
+          key
+        });
+      }), element);
     }
 
     function bindValueWriter(element, path) {
@@ -2751,7 +3162,12 @@ const __loaderModule = (() => {
           const state = {
             id,
             templates,
-            cleanup: signalRegistry.subscribe(`${id}.$status`, () => renderBoundary(boundary))
+            cleanup: signalRegistry.subscribe(`${id}.$status`, () => {
+              schedulerInstance.enqueue("binding", () => renderBoundary(boundary), {
+                scope: boundary,
+                key: `boundary:${id}`
+              });
+            })
           };
           boundaryState.set(boundary, state);
           addCleanup(state.cleanup, boundary);
@@ -2791,7 +3207,7 @@ const __loaderModule = (() => {
         }
         mountedElements.add(element);
         for (const ref of refs) {
-          runPseudo(element, ref);
+          scheduleLifecycle(element, () => runPseudo(element, ref), `attach:${ref}`);
         }
       }
 
@@ -2804,7 +3220,7 @@ const __loaderModule = (() => {
           continue;
         }
         visibleElements.add(element);
-        addCleanup(observeVisible(element, () => runPseudo(element, ref)), element);
+        addCleanup(observeVisible(element, () => scheduleLifecycle(element, () => runPseudo(element, ref), `visible:${ref}`)), element);
       }
     }
 
@@ -2828,6 +3244,7 @@ const __loaderModule = (() => {
           server: api.server,
           router: api.router,
           cache: api.cache,
+          scheduler: schedulerInstance,
           element,
           el: element,
           root: rootNode
@@ -2846,10 +3263,13 @@ const __loaderModule = (() => {
       const ownerWindow = target.ownerDocument?.defaultView ?? globalThis;
       const Observer = ownerWindow.IntersectionObserver ?? globalThis.IntersectionObserver;
       if (!Observer) {
-        queueMicrotask(() => {
+        schedulerInstance.enqueue("lifecycle", () => {
           if (!destroyed) {
             fn(target);
           }
+        }, {
+          scope: target,
+          key: "visible:fallback"
         });
         return () => {};
       }
@@ -2904,6 +3324,7 @@ const __loaderModule = (() => {
       }
       for (const element of elementsIn(node)) {
         runScopedCleanups(element);
+        schedulerInstance.markScopeDestroyed(element);
       }
     }
 
@@ -2925,6 +3346,13 @@ const __loaderModule = (() => {
       } else {
         scopedCleanups.delete(element);
       }
+    }
+
+    function scheduleLifecycle(element, fn, key) {
+      schedulerInstance.enqueue("lifecycle", fn, {
+        scope: element,
+        key
+      });
     }
 
     return api;
@@ -3257,6 +3685,7 @@ const __partialsModule = (() => {
 const __routerModule = (() => {
   const { Loader } = __loaderModule;
   const { createHandlerRegistry } = __handlersModule;
+  const { createScheduler } = __schedulerModule;
   const { createSignalRegistry } = __signalsModule;
   const { applyServerResult } = __serverModule;
   const { createRegistryStore } = __registryStoreModule;
@@ -3377,12 +3806,15 @@ const __routerModule = (() => {
     partials,
     fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
     routeEndpoint = "/__async/route",
-    attributes
+    attributes,
+    scheduler
   } = {}) {
     const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
     const rootNode = root ?? documentRef;
     const signalRegistry = signals ?? loader?.signals ?? createSignalRegistry();
     const handlerRegistry = handlers ?? loader?.handlers ?? createHandlerRegistry();
+    const schedulerInstance = scheduler ?? loader?.scheduler ?? createScheduler();
+    const ownsScheduler = !scheduler && !loader?.scheduler;
     const attributeConfig = normalizeAttributeConfig(attributes ?? loader?.attributes);
     const loaderInstance =
       loader ??
@@ -3392,6 +3824,7 @@ const __routerModule = (() => {
         handlers: handlerRegistry,
         server,
         cache,
+        scheduler: schedulerInstance,
         attributes: attributeConfig
       });
     const ownsLoader = !loader;
@@ -3411,12 +3844,13 @@ const __routerModule = (() => {
       server,
       cache,
       partials,
+      scheduler: schedulerInstance,
       attributes: attributeConfig,
 
       start() {
         assertActive();
         loaderInstance.router = api;
-        signalRegistry._setContext?.({ router: api, loader: loaderInstance, server, cache });
+        signalRegistry._setContext?.({ router: api, loader: loaderInstance, server, cache, scheduler: schedulerInstance });
         if (ownsLoader) {
           loaderInstance.start();
         }
@@ -3480,6 +3914,9 @@ const __routerModule = (() => {
           cleanup();
         }
         cleanups.clear();
+        if (ownsScheduler) {
+          schedulerInstance.destroy();
+        }
       }
     };
 
@@ -3585,13 +4022,16 @@ const __routerModule = (() => {
         loader: loaderInstance,
         router: api,
         cache,
+        scheduler: schedulerInstance,
         abort: navigation?.abort
       });
+      await schedulerInstance.flush();
       if (!isActiveNavigation(navigation)) {
         return;
       }
       if (result?.html != null && !result.boundary && !result.redirect) {
         loaderInstance.swap(boundary, result.html);
+        await schedulerInstance.flush();
       }
       if (result?.redirect || options.history === false) {
         return;
@@ -3636,6 +4076,7 @@ const __routerModule = (() => {
         loader: loaderInstance,
         server,
         cache,
+        scheduler: schedulerInstance,
         abort: navigation?.abort
       };
     }
@@ -3822,6 +4263,7 @@ const __appModule = (() => {
   const { Loader } = __loaderModule;
   const { createPartialRegistry } = __partialsModule;
   const { createRouteRegistry, createRouter } = __routerModule;
+  const { createScheduler } = __schedulerModule;
   const { createServerRegistry } = __serverModule;
   const { createSignal, createSignalRegistry } = __signalsModule;
   const { createRegistryStore } = __registryStoreModule;
@@ -3874,6 +4316,10 @@ const __appModule = (() => {
   function createApp(appOrDefinition = Async, options = {}) {
     const app = isAppHub(appOrDefinition) ? appOrDefinition : defineApp(appOrDefinition ?? {});
     const target = options.target ?? "browser";
+    const scheduler = options.scheduler ?? options.loader?.scheduler ?? createScheduler({
+      strategy: target === "server" ? "manual" : "microtask"
+    });
+    const ownsScheduler = !options.scheduler && !options.loader?.scheduler;
     const attributes = normalizeAttributeConfig(options.attributes);
     const registry = options.registry ?? app.registry.view({ target });
     const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal" });
@@ -3908,6 +4354,7 @@ const __appModule = (() => {
       },
       loader,
       router,
+      scheduler,
       attributes,
 
       start() {
@@ -3924,12 +4371,13 @@ const __appModule = (() => {
             handlers,
             server,
             cache: browserCache,
+            scheduler,
             attributes
           });
           runtime.loader = loader;
 
           configureServerContext({ cache: browserCache });
-          signals._setContext?.({ server, loader, cache: browserCache });
+          signals._setContext?.({ server, loader, cache: browserCache, scheduler });
 
           loader.start();
 
@@ -3945,6 +4393,7 @@ const __appModule = (() => {
               server,
               cache: browserCache,
               partials,
+              scheduler,
               fetch: options.fetch,
               routeEndpoint: options.routeEndpoint,
               attributes
@@ -3956,7 +4405,7 @@ const __appModule = (() => {
           }
         } else {
           configureServerContext({ cache: serverCache });
-          signals._setContext?.({ server, cache: serverCache });
+          signals._setContext?.({ server, cache: serverCache, scheduler });
         }
 
         return runtime;
@@ -3970,9 +4419,10 @@ const __appModule = (() => {
       async render(url) {
         assertActive();
         configureServerContext({ cache: serverCache });
-        signals._setContext?.({ server, cache: serverCache });
+        signals._setContext?.({ server, cache: serverCache, scheduler });
         const matched = routes.match(url);
         if (!matched) {
+          await scheduler.flush();
           return {
             html: renderDocument("", { status: 404, signals, browserCache, boundary: options.boundary ?? "route", attributes }),
             status: 404,
@@ -3992,6 +4442,7 @@ const __appModule = (() => {
               cache: serverCache,
               browserCache,
               partials,
+              scheduler,
               request: options.request,
               locals: options.locals
             })
@@ -4005,6 +4456,8 @@ const __appModule = (() => {
         if (result.cache?.browser) {
           browserCache.restore(result.cache.browser);
         }
+
+        await scheduler.flush();
 
         const status = result.status ?? 200;
         return {
@@ -4024,6 +4477,9 @@ const __appModule = (() => {
         router?.destroy?.();
         loader?.destroy?.();
         signals.destroy?.();
+        if (ownsScheduler) {
+          scheduler.destroy();
+        }
       },
 
       _applyUse(normalized) {
@@ -4044,6 +4500,7 @@ const __appModule = (() => {
         loader,
         router,
         cache,
+        scheduler,
         request: options.request,
         locals: options.locals
       });
@@ -4310,6 +4767,7 @@ const { createRouteRegistry: createRouteRegistry } = __routerModule;
 const { createRouter: createRouter } = __routerModule;
 const { defineRoute: defineRoute } = __routerModule;
 const { route: route } = __routerModule;
+const { createScheduler: createScheduler } = __schedulerModule;
 const { createServerProxy: createServerProxy } = __serverModule;
 const { createServerRegistry: createServerRegistry } = __serverModule;
 const { computed: computed } = __signalsModule;
@@ -4318,4 +4776,4 @@ const { createSignalRegistry: createSignalRegistry } = __signalsModule;
 const { effect: effect } = __signalsModule;
 const { signal: signal } = __signalsModule;
 
-export { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };
+export { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createScheduler, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };

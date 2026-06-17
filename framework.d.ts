@@ -40,6 +40,45 @@ export interface TemplateResult {
   readonly values: readonly unknown[];
 }
 
+export type SchedulerStrategy = "microtask" | "manual";
+export type SchedulerPhase = "binding" | "lifecycle" | "effect" | "async" | "post" | string;
+export interface SchedulerJob {
+  id: number;
+  phase: SchedulerPhase;
+  scope?: unknown;
+  boundary?: string;
+  key?: string;
+  canceled: boolean;
+  cancel(): void;
+}
+export interface SchedulerOptions {
+  strategy?: SchedulerStrategy;
+  phases?: SchedulerPhase[];
+  maxDepth?: number;
+  onError?(error: unknown, job: SchedulerJob): void;
+}
+export interface SchedulerInspection {
+  strategy: SchedulerStrategy;
+  phases: SchedulerPhase[];
+  pending: Record<string, number>;
+  scopesDestroyed: number;
+  flushing: boolean;
+  scheduled: boolean;
+}
+export interface Scheduler {
+  strategy: SchedulerStrategy;
+  phases: SchedulerPhase[];
+  batch<T>(fn: () => T): T;
+  enqueue(phase: SchedulerPhase, job: () => MaybePromise<unknown>, options?: { scope?: unknown; boundary?: string; key?: string }): Cleanup;
+  flush(): Promise<void>;
+  flushScope(scope: unknown): Promise<void>;
+  afterFlush(job: () => MaybePromise<unknown>, options?: { scope?: unknown; boundary?: string; key?: string }): Cleanup;
+  cancelScope(scope: unknown): this;
+  markScopeDestroyed(scope: unknown): this;
+  destroy(): void;
+  inspect(): SchedulerInspection;
+}
+
 export interface Signal<T = unknown> {
   readonly kind: "signal";
   value: T;
@@ -113,6 +152,7 @@ export interface AsyncSignalContext {
   router?: Router;
   loader?: LoaderInstance;
   cache?: CacheRegistry;
+  scheduler?: Scheduler;
   refresh(): Promise<unknown>;
 }
 
@@ -149,6 +189,7 @@ export interface HandlerContext {
   loader?: LoaderInstance;
   router?: Router;
   cache?: CacheRegistry;
+  scheduler?: Scheduler;
   event?: Event;
   element?: Element;
   el?: Element;
@@ -192,6 +233,7 @@ export interface ServerContext {
   locals?: unknown;
   abort?: AbortSignal;
   cache?: CacheRegistry;
+  scheduler?: Scheduler;
   server: ServerNamespace;
   [key: string]: unknown;
 }
@@ -216,6 +258,7 @@ export interface ServerProxyOptions {
   loader?: LoaderInstance;
   router?: Router;
   cache?: CacheRegistry;
+  scheduler?: Scheduler;
   headers?: Record<string, string>;
 }
 
@@ -263,6 +306,7 @@ export interface PartialContext {
   browserCache?: CacheRegistry;
   partials: PartialRegistry;
   abort?: AbortSignal;
+  scheduler?: Scheduler;
   request?: Request;
   locals?: unknown;
   [key: string]: unknown;
@@ -315,6 +359,7 @@ export interface RouterOptions {
   fetch?: typeof fetch;
   routeEndpoint?: string;
   attributes?: AttributeConfig;
+  scheduler?: Scheduler;
 }
 
 export interface Router {
@@ -328,6 +373,7 @@ export interface Router {
   server?: ServerNamespace;
   cache?: CacheRegistry;
   partials?: PartialRegistry;
+  scheduler: Scheduler;
   attributes: NormalizedAttributeConfig;
   start(): this;
   match(url: string | URL): RouteMatch | null;
@@ -346,6 +392,7 @@ export interface ComponentContext {
   server?: ServerNamespace;
   router?: Router;
   cache?: CacheRegistry;
+  scheduler?: Scheduler;
   signal<T = unknown>(initial: T): SignalRef<T>;
   signal<T = unknown>(name: string, initial: T): SignalRef<T>;
   computed<T = unknown>(name: string, fn: (this: ComponentContext) => T): SignalRef<T>;
@@ -382,6 +429,7 @@ export interface LoaderOptions {
   server?: ServerNamespace;
   router?: Router;
   cache?: CacheRegistry;
+  scheduler?: Scheduler;
   attributes?: AttributeConfig;
 }
 
@@ -392,6 +440,7 @@ export interface LoaderInstance {
   server?: ServerNamespace;
   router?: Router;
   cache?: CacheRegistry;
+  scheduler: Scheduler;
   attributes: NormalizedAttributeConfig;
   start(): this;
   scan(rootOrFragment?: Document | Element | DocumentFragment): this;
@@ -473,6 +522,7 @@ export interface CreateAppOptions extends LoaderOptions {
   routeEndpoint?: string;
   request?: Request;
   locals?: unknown;
+  scheduler?: Scheduler;
 }
 
 export interface RenderResult {
@@ -495,6 +545,7 @@ export interface AppRuntime {
   browser: { cache: CacheRegistry };
   loader?: LoaderInstance;
   router?: Router;
+  scheduler: Scheduler;
   attributes: NormalizedAttributeConfig;
   start(): this;
   use(type: Parameters<AppHub["use"]>[0], entries?: unknown): this;
@@ -524,6 +575,7 @@ export interface AsyncNamespace extends AppHub {
   createRegistryStore: typeof createRegistryStore;
   createRouteRegistry: typeof createRouteRegistry;
   createRouter: typeof createRouter;
+  createScheduler: typeof createScheduler;
   defineRoute: typeof defineRoute;
   route: typeof route;
   createServerProxy: typeof createServerProxy;
@@ -556,11 +608,12 @@ export declare function createPartialRegistry(initialMap?: Record<string, Partia
 export declare function createRegistryStore(initial?: AppDefinition, options?: { target?: RuntimeTarget; backing?: unknown }): RegistryStore;
 export declare function createRouteRegistry(initialMap?: Record<string, RouteDefinition | string>, options?: { registry?: RegistryStore; type?: "route" }): RouteRegistry;
 export declare function createRouter(options?: RouterOptions): Router;
+export declare function createScheduler(options?: SchedulerOptions): Scheduler;
 export declare function defineRoute(partial: string, options?: Omit<RouteDefinition, "partial">): RouteDefinition;
 export declare const route: typeof defineRoute;
 export declare function createServerProxy(options?: ServerProxyOptions): ServerNamespace;
 export declare function createServerRegistry(initialMap?: Record<string, ServerFunction>, options?: { registry?: RegistryStore; type?: "server" }): ServerNamespace;
-export declare function computed<T = unknown>(fn: (this: { signals: SignalRegistry; id: string; server?: ServerNamespace; router?: Router; loader?: LoaderInstance; cache?: CacheRegistry }) => T): ComputedSignal<T>;
+export declare function computed<T = unknown>(fn: (this: { signals: SignalRegistry; id: string; server?: ServerNamespace; router?: Router; loader?: LoaderInstance; cache?: CacheRegistry; scheduler?: Scheduler }) => T): ComputedSignal<T>;
 export declare function createSignal<T = unknown>(initial: T): Signal<T>;
 export declare function createSignalRegistry(initialMap?: SignalMap, options?: { registry?: RegistryStore; type?: "signal" }): SignalRegistry;
 export declare function effect(fn: () => unknown): EffectDefinition;
