@@ -5,6 +5,11 @@
 - Reset `@async/framework` to Layer 1 AsyncLoader.
 - Added signals, async signals, delegated handlers, component fragment helpers,
   and out-of-order boundary swaps.
+- Added Layer 2 command events, server calls, route partials, and client router
+  primitives.
+- Added `Async.use(...)`, app runtimes, `createSignal`, `defineRoute`,
+  `defineComponent`, split browser/server cache registries, and SSR render
+  activation helpers.
 - Added no-build static examples and Node test coverage.
 - Added generated `@async/pipeline` verification, GitHub Pages, and release
   workflow support.

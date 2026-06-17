@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AsyncLoader Server Call</title>
+  </head>
+  <body>
+    <main data-async-container>
+      <form on:submit="preventDefault; server.serverCall.products.save(serverCall.productId, $form)">
+        <label>
+          Title
+          <input name="title" value="Keyboard">
+        </label>
+        <button type="submit">Save</button>
+      </form>
+      <p>Saved: <strong data-async-text="serverCall.savedTitle"></strong></p>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

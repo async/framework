@@ -1,16 +1,17 @@
-import { AsyncLoader, createHandlerRegistry, createSignalRegistry, signal } from "../../src/index.js";
+import { Async, createSignal } from "../../src/index.js";
 
-const signals = createSignalRegistry({
-  count: signal(0)
-});
-
-const handlers = createHandlerRegistry({
-  increment() {
-    this.signals.update("count", (count) => count + 1);
+Async.use({
+  signal: {
+    counter: createSignal({ count: 0 })
   },
-  decrement() {
-    this.signals.update("count", (count) => count - 1);
+  handler: {
+    "counter.increment"() {
+      this.signals.update("counter.count", (count) => count + 1);
+    },
+    "counter.decrement"() {
+      this.signals.update("counter.count", (count) => count - 1);
+    }
   }
 });
 
-AsyncLoader({ root: document.body, signals, handlers }).start();
+Async.start({ root: document.body, router: false });

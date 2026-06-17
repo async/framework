@@ -1,8 +1,9 @@
 # @async/framework
 
-Layer 1 AsyncLoader for no-build web apps: signals, async signals, delegated
-handlers, scoped fragment components, and out-of-order boundary swaps without a
-virtual DOM.
+Layer 1 AsyncLoader plus small Layer 2 app, routing, server, cache, and SSR
+primitives for no-build web apps: signals, async signals, delegated command
+events, scoped fragment components, server calls, route partials, and
+out-of-order boundary swaps without a virtual DOM.
 
 ```bash
 pnpm add @async/framework
@@ -19,26 +20,25 @@ pnpm add @async/framework
 
 ```js
 import {
-  AsyncLoader,
-  createHandlerRegistry,
-  createSignalRegistry,
-  signal
+  Async,
+  createSignal
 } from "@async/framework";
 
-const signals = createSignalRegistry({
-  count: signal(0)
-});
-
-const handlers = createHandlerRegistry({
-  increment() {
-    this.signals.update("count", (count) => count + 1);
+Async.use({
+  signal: {
+    count: createSignal(0)
   },
-  decrement() {
-    this.signals.update("count", (count) => count - 1);
+  handler: {
+    increment() {
+      this.signals.update("count", (count) => count + 1);
+    },
+    decrement() {
+      this.signals.update("count", (count) => count - 1);
+    }
   }
 });
 
-AsyncLoader({ root: document, signals, handlers }).start();
+Async.start({ root: document });
 ```
 
 ## What It Is
@@ -49,9 +49,11 @@ runtime small and explicit:
 - No build step for consumers.
 - No virtual DOM, diff path, hydration runtime, or component rerender loop.
 - Signals are the state boundary.
+- `Async.use(...)` registers app declarations before or after startup.
 - Handlers live in a registry and run through delegated DOM events.
 - Async signals use native `AbortSignal` cancellation and suppress stale async
   completions.
+- Browser and server cache declarations are structurally split.
 - Boundaries can be swapped out of order and rescanned, which keeps server
   streaming and partial HTML replacement simple.
 
@@ -72,25 +74,109 @@ and package lifecycle tooling. Browser consumers import ESM directly.
 ```js
 import {
   AsyncLoader,
+  Async,
   asyncSignal,
+  createApp,
+  createCacheRegistry,
+  createComponentRegistry,
   component,
   computed,
+  createSignal,
   createHandlerRegistry,
+  createPartialRegistry,
+  createRouteRegistry,
+  createRouter,
+  createServerProxy,
+  createServerRegistry,
   createSignalRegistry,
+  defineApp,
+  defineCache,
+  defineComponent,
+  defineRoute,
   delay,
   effect,
   html,
+  route,
   signal
 } from "@async/framework";
 ```
+
+### App Hub
+
+`Async` is an exported app hub singleton. It is not installed on `globalThis`
+unless you assign it there yourself.
+
+```js
+import {
+  Async,
+  createSignal,
+  defineCache,
+  defineRoute
+} from "@async/framework";
+
+Async.use({
+  signal: {
+    count: createSignal(0)
+  },
+  handler: {
+    increment() {
+      this.signals.update("count", (count) => count + 1);
+    }
+  },
+  server: {
+    async "products.get"(id) {
+      return this.cache.getOrSet(`products:${id}`, () => db.products.get(id));
+    }
+  },
+  route: {
+    "/products/:id": defineRoute("product.page")
+  },
+  cache: {
+    browser: {
+      product: defineCache({ ttl: 60_000 })
+    },
+    server: {
+      "products.get": defineCache({ ttl: 30_000 })
+    }
+  }
+});
+
+Async.start({ root: document });
+```
+
+You can also create isolated app hubs and runtimes:
+
+```js
+const app = defineApp();
+app.use("signal", { count: createSignal(0) });
+
+const runtime = createApp(app, { root: document }).start();
+runtime.use("handler", {
+  increment() {
+    this.signals.update("count", (count) => count + 1);
+  }
+});
+```
+
+Naming rules:
+
+| Shape | Meaning |
+| --- | --- |
+| `define*` | Declaration or app shape that can be registered before runtime |
+| `create*` | Runtime instance or mutable runtime primitive |
+| `Async.use(...)` | App-level declaration registration |
+| `registry.register(...)` | Low-level registration on a concrete runtime registry |
+
+Singular registry keys are canonical: `signal`, `handler`, `server`,
+`partial`, `route`, `component`, and nested `cache.browser` / `cache.server`.
 
 ### Signals
 
 ```js
 const signals = createSignalRegistry();
 
-signals.register("count", signal(0));
-signals.register("products", signal([]));
+signals.register("count", createSignal(0));
+signals.register("products", createSignal([]));
 
 signals.get("count");
 signals.set("count", 1);
@@ -103,18 +189,20 @@ Initializer maps are supported:
 
 ```js
 const signals = createSignalRegistry({
-  count: signal(0),
-  products: signal([])
+  count: createSignal(0),
+  products: createSignal([])
 });
 ```
 
 Nested paths read through the first registered signal id:
 
 ```js
-signals.register("product", signal({ title: "Keyboard" }));
+signals.register("product", createSignal({ title: "Keyboard" }));
 signals.get("product.title");
 signals.set("product.title", "Headphones");
 ```
+
+`signal(...)` remains a compatibility alias for `createSignal(...)`.
 
 ### Async Signals
 
@@ -123,7 +211,7 @@ normal signal value.
 
 ```js
 const signals = createSignalRegistry({
-  productId: signal("sku-1")
+  productId: createSignal("sku-1")
 });
 
 const product = signals.asyncSignal("product", async function () {
@@ -162,8 +250,9 @@ AsyncLoader scans regular HTML attributes:
 | Attribute | Behavior |
 | --- | --- |
 | `data-async-container` | Marks a scannable app root |
-| `on:click="selectProduct"` | Delegated handler call |
-| `on:submit="save preventDefault"` | Handler plus built-in token |
+| `on:click="selectProduct"` | Delegated command event |
+| `on:submit="preventDefault; save"` | Sequential command chain |
+| `on:click="server.cart.add(productId)"` | Server command with signal args |
 | `data-async-text="product.title"` | Text binding |
 | `data-async-value="productId"` | Form value binding with writeback |
 | `data-async-attr:disabled="product.$loading"` | Attribute binding |
@@ -187,6 +276,220 @@ AsyncLoader scans regular HTML attributes:
 </section>
 ```
 
+### Command Events
+
+`on:*` works with any native DOM event name. `on:mount` and `on:visible` are
+reserved pseudo-events with cleanup support.
+
+Command chains use semicolons and are awaited sequentially:
+
+```html
+<form on:submit="preventDefault; server.products.save(productId, $form)">
+  <input name="title">
+  <button>Save</button>
+</form>
+```
+
+Plain commands resolve through the handler registry. Built-ins are registered by
+default:
+
+```txt
+preventDefault
+stopPropagation
+stopImmediatePropagation
+```
+
+`server.<id>(...)` resolves through the server registry or client proxy. Bare
+arguments read signals. `$*` arguments read event locals:
+
+| Argument | Value |
+| --- | --- |
+| `productId` | `signals.get("productId")` |
+| `cart.quantity` | `signals.get("cart.quantity")` |
+| `$value` | Current element value |
+| `$checked` | Current element checked state |
+| `$form` | Current form as a plain object |
+| `$dataset` | Current element dataset as a plain object |
+| `$event` | Raw DOM event, client-only |
+| `$el` | Current element, client-only |
+
+`$event` and `$el` are intentionally not serializable and cannot be passed to
+`server.*(...)` commands.
+
+Inline commands are not JavaScript. There is no `eval`, assignment, branching,
+arithmetic, or inline `await`. Complex logic belongs in a registered handler:
+
+```js
+handlers.register("addToCart", async function () {
+  const productId = this.signals.get("productId");
+  const result = await this.server.cart.add(productId);
+  this.signals.set("cart", result.cart);
+});
+```
+
+### Server Calls
+
+Server registries run locally on the server and proxies call an HTTP endpoint
+from the browser. Both expose the same dotted call shape.
+
+```js
+const server = createServerRegistry({
+  "cart.add"(productId, quantity) {
+    return {
+      value: { ok: true },
+      signals: {
+        cartCount: 3
+      }
+    };
+  }
+});
+```
+
+Client proxy:
+
+```js
+const server = createServerProxy({
+  endpoint: "/__async/server",
+  signals,
+  loader,
+  router
+});
+
+await server.cart.add("sku-1", 2);
+```
+
+Server responses can include `value`, `signals`, `boundary`, `html`, `redirect`,
+or `error`. Signal patches are applied before boundary swaps and redirects.
+
+### Router And Partials
+
+Partials are server-rendered fragment functions. They return HTML, `html`
+templates, DOM fragments, or a response envelope.
+
+```js
+const partials = createPartialRegistry({
+  "product.page": async function ({ id }) {
+    const product = await this.server.products.get(id);
+    return html`<h1>${product.title}</h1>`;
+  }
+});
+```
+
+The router swaps route partials into a boundary:
+
+```js
+const router = createRouter({
+  mode: "ssr-spa",
+  root: document,
+  boundary: "route",
+  routes: createRouteRegistry({
+    "/": defineRoute("home"),
+    "/products/:id": defineRoute("product.page")
+  }),
+  loader,
+  signals,
+  server,
+  partials
+}).start();
+```
+
+`route(...)` remains a compatibility alias for `defineRoute(...)`.
+
+Router modes:
+
+| Mode | Behavior |
+| --- | --- |
+| `spa` | Intercepts same-origin links and GET forms, then swaps route HTML |
+| `ssr-spa` | Starts from server HTML, then uses SPA navigation |
+| `mpa` | Does not intercept navigation |
+| `ssr` | Leaves navigation to the server document flow |
+
+### Cache
+
+Cache declarations are split by runtime target:
+
+```js
+Async.use({
+  cache: {
+    browser: {
+      product: defineCache({ ttl: 60_000 })
+    },
+    server: {
+      "products.get": defineCache({ ttl: 30_000 })
+    }
+  },
+  server: {
+    async "products.get"(id) {
+      return this.cache.getOrSet(`products:${id}`, () => db.products.get(id));
+    }
+  }
+});
+```
+
+Browser handlers and browser async signals receive `runtime.browser.cache`.
+Server functions and server partials receive `runtime.server.cache`. Server
+cache config and contents are never serialized to the browser. Browser cache is
+seeded only by explicit SSR response data.
+
+Runtime cache registries support:
+
+```js
+cache.register("product", defineCache({ ttl: 60_000 }));
+cache.get("product:sku-1");
+cache.set("product:sku-1", product);
+await cache.getOrSet("product:sku-1", () => loadProduct());
+cache.delete("product:sku-1");
+cache.clear("product:");
+```
+
+### SSR Flow
+
+SSR uses related app definitions: a server runtime with server functions,
+server cache, partials, and route rendering; and a browser runtime with DOM
+handlers, browser cache, signals, and usually a server proxy.
+
+```js
+const serverRuntime = createApp(serverApp, {
+  target: "server",
+  request
+});
+
+const response = await serverRuntime.render("/products/123");
+```
+
+`runtime.render(url)` returns:
+
+```js
+{
+  html,
+  status,
+  signals,
+  cache: {
+    browser: {}
+  }
+}
+```
+
+The returned HTML includes a route boundary plus a JSON snapshot:
+
+```html
+<section data-async-boundary="route">
+  <!-- server-rendered route partial -->
+</section>
+<script type="application/json" data-async-snapshot>{}</script>
+```
+
+Browser activation scans the existing HTML and attaches events. It does not
+hydrate, diff, patch, or rerender:
+
+```js
+createApp(browserApp, {
+  root: document,
+  snapshot,
+  server: createServerProxy({ endpoint: "/__async/server" })
+}).start();
+```
+
 ## Components
 
 Components are scoped fragment functions. They return strings or `html`
@@ -194,7 +497,7 @@ templates; AsyncLoader inserts and scans the result. There is no virtual node
 type and no rerender loop.
 
 ```js
-const Toggle = component(function Toggle() {
+const Toggle = defineComponent(function Toggle() {
   const selected = this.signal("selected", false);
   const toggle = this.handler("toggle", function () {
     selected.update((value) => !value);
@@ -219,6 +522,8 @@ const Toggle = component(function Toggle() {
 const loader = AsyncLoader({ root: document });
 loader.mount(document.querySelector("#app"), Toggle);
 ```
+
+`component(...)` remains a compatibility alias for `defineComponent(...)`.
 
 Component helpers:
 
@@ -263,6 +568,11 @@ rescans the inserted fragment.
 | [`examples/product`](./examples/product) | Async signal loading, ready, and error boundaries |
 | [`examples/components`](./examples/components) | Scoped fragment components and lifecycle hooks |
 | [`examples/streaming`](./examples/streaming) | Boundary swaps with rescanned handlers |
+| [`examples/server-call`](./examples/server-call) | Command events calling server functions |
+| [`examples/router`](./examples/router) | SSR-SPA route boundary swaps |
+| [`examples/partials`](./examples/partials) | Server-rendered partial fragments |
+| [`examples/cache`](./examples/cache) | Browser/server cache declarations |
+| [`examples/ssr`](./examples/ssr) | Server render output and browser activation snapshot |
 
 ## Pipeline
 
@@ -293,6 +603,6 @@ then runs release doctor.
 
 ## Status
 
-Layer 1 is intentionally small. Bundling, lazy chunk manifests, JSX lowering,
-TSRX lowering, server resource compilation, and higher-level resumability
-metadata are deferred to later layers.
+The core runtime is intentionally small. Bundling, lazy chunk manifests, JSX
+lowering, TSRX lowering, server resource compilation, and higher-level
+resumability metadata are deferred to later layers.

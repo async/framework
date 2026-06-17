@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AsyncLoader Router</title>
+  </head>
+  <body>
+    <main data-async-container>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/products/sku-1">Product</a>
+      </nav>
+      <section data-async-boundary="route">
+        <h1>Home</h1>
+        <p>Cart: <strong data-async-text="routerDemo.cartCount"></strong></p>
+      </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

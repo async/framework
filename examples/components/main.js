@@ -1,6 +1,6 @@
-import { AsyncLoader, component, html } from "../../src/index.js";
+import { AsyncLoader, defineComponent, html } from "../../src/index.js";
 
-const Toggle = component(function Toggle() {
+const Toggle = defineComponent(function Toggle() {
   const selected = this.signal("selected", false);
   const toggle = this.handler("toggle", function () {
     selected.update((value) => !value);

@@ -1,31 +1,30 @@
-import { AsyncLoader, createHandlerRegistry, createSignalRegistry, signal } from "../../src/index.js";
+import { Async, createSignal } from "../../src/index.js";
 
-const signals = createSignalRegistry({
-  title: signal("Streamed Keyboard"),
-  selected: signal(false)
-});
-
-const loader = AsyncLoader({
-  root: document.body,
-  signals,
-  handlers: createHandlerRegistry({
-    streamProduct() {
+Async.use({
+  signal: {
+    streamingDemo: createSignal({
+      title: "Streamed Keyboard",
+      selected: false
+    })
+  },
+  handler: {
+    "streamingDemo.streamProduct"() {
       this.loader.swap(
         "product",
         `
           <article>
-            <h1 data-async-text="title"></h1>
-            <button type="button" on:click="select" data-async-class:selected="selected">
+            <h1 data-async-text="streamingDemo.title"></h1>
+            <button type="button" on:click="streamingDemo.select" data-async-class:selected="streamingDemo.selected">
               Select
             </button>
           </article>
         `
       );
     },
-    select() {
-      this.signals.set("selected", true);
+    "streamingDemo.select"() {
+      this.signals.set("streamingDemo.selected", true);
     }
-  })
+  }
 });
 
-loader.start();
+Async.start({ root: document.body, router: false });

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AsyncLoader Partials</title>
+  </head>
+  <body>
+    <main data-async-container>
+      <button type="button" on:click="partialsDemo.loadProduct">Load product</button>
+      <section data-async-boundary="product"></section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

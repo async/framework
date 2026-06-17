@@ -5,10 +5,10 @@ import { join } from "node:path";
 const site = {
   title: "@async/framework",
   repo: "framework",
-  stage: "Layer 1",
-  description: "No-build AsyncLoader runtime with signals, async signals, delegated handlers, scoped fragments, and streaming boundaries.",
-  lead: "Plain HTML plus ESM for reactive islands, async loading state, and out-of-order HTML swaps without a virtual DOM.",
-  quickstart: "pnpm add @async/framework\n\nimport { AsyncLoader, createSignalRegistry, signal } from '@async/framework';\n\nconst signals = createSignalRegistry({ count: signal(0) });\nAsyncLoader({ root: document, signals }).start();"
+  stage: "Layer 1 + Layer 2",
+  description: "No-build AsyncLoader runtime with signals, app declarations, command events, server calls, route partials, cache split, and SSR activation.",
+  lead: "Plain HTML plus ESM for reactive islands, async loading state, route fragments, and out-of-order HTML swaps without a virtual DOM.",
+  quickstart: "pnpm add @async/framework\n\nimport { Async, createSignal } from '@async/framework';\n\nAsync.use({\n  signal: { count: createSignal(0) },\n  handler: {\n    increment() {\n      this.signals.update('count', (count) => count + 1);\n    }\n  }\n});\n\nAsync.start({ root: document });"
 };
 
 const outDir = ".async/pages";
@@ -16,7 +16,7 @@ const asyncProjects = [
   ["@async/db", "https://async.github.io/db/", "Data workflow"],
   ["@async/json", "https://async.github.io/json/", "JSON database engine"],
   ["@async/web", "https://async.github.io/web/", "Web runtime"],
-  ["@async/framework", "https://async.github.io/framework/", "AsyncLoader runtime"],
+  ["@async/framework", "https://async.github.io/framework/", "Async app runtime"],
   ["@async/pipeline", "https://async.github.io/pipeline/", "Pipeline workflows"],
   ["@async/dispatch", "https://async.github.io/dispatch/", "Goal-first coordination"],
   ["@async/auto-git", "https://async.github.io/auto-git/", "Git handoffs"],

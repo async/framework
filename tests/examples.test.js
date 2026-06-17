@@ -7,7 +7,7 @@ import { Window } from "happy-dom";
 import { delay } from "../src/index.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const examples = ["counter", "product", "components", "streaming"];
+const examples = ["counter", "product", "components", "streaming", "server-call", "router", "partials", "cache", "ssr"];
 
 for (const name of examples) {
   test(`example ${name} has runnable static HTML and JS entrypoints`, async () => {

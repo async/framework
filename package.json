@@ -1,7 +1,7 @@
 {
   "name": "@async/framework",
   "version": "0.1.0",
-  "description": "No-build AsyncLoader runtime with signals, async signals, delegated handlers, scoped fragments, and streaming boundaries.",
+  "description": "No-build AsyncLoader app runtime with signals, command events, server calls, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "packageManager": "pnpm@11.1.0",
   "engines": {
@@ -20,6 +20,10 @@
     "signals",
     "async-loader",
     "no-build",
+    "router",
+    "server-functions",
+    "ssr",
+    "cache",
     "streaming",
     "web-framework"
   ],

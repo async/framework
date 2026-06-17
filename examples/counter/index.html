@@ -6,9 +6,9 @@
   </head>
   <body data-async-container>
     <main>
-      <p>Count: <strong data-async-text="count"></strong></p>
-      <button type="button" on:click="decrement">-</button>
-      <button type="button" on:click="increment">+</button>
+      <p>Count: <strong data-async-text="counter.count"></strong></p>
+      <button type="button" on:click="counter.decrement">-</button>
+      <button type="button" on:click="counter.increment">+</button>
     </main>
     <script type="module" src="./main.js"></script>
   </body>
