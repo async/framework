@@ -1,7 +1,7 @@
 {
   "name": "@async/framework",
   "version": "0.1.0",
-  "description": "Layer 1 AsyncLoader runtime with signals, async signals, delegated handlers, and out-of-order boundary swaps.",
+  "description": "No-build AsyncLoader runtime with signals, async signals, delegated handlers, scoped fragments, and streaming boundaries.",
   "type": "module",
   "packageManager": "pnpm@11.1.0",
   "engines": {
@@ -11,11 +11,25 @@
     "type": "git",
     "url": "git+https://github.com/async/framework.git"
   },
+  "homepage": "https://async.github.io/framework/",
+  "bugs": {
+    "url": "https://github.com/async/framework/issues"
+  },
+  "keywords": [
+    "async",
+    "signals",
+    "async-loader",
+    "no-build",
+    "streaming",
+    "web-framework"
+  ],
   "license": "MIT",
   "exports": {
     ".": "./src/index.js"
   },
   "files": [
+    "CHANGELOG.md",
+    "README.md",
     "src",
     "examples",
     "LICENSE",
@@ -23,13 +37,28 @@
   ],
   "scripts": {
     "async-pipeline": "async-pipeline",
+    "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",
     "pack:check": "npm pack --dry-run --ignore-scripts",
     "pipeline:github:check": "async-pipeline github check",
+    "pipeline:github:generate": "async-pipeline github generate",
+    "pipeline:pages": "async-pipeline run pages",
+    "pipeline:publish": "async-pipeline run publish",
+    "pipeline:publish-github": "async-pipeline run publish-github",
+    "pipeline:publish:github:main": "async-pipeline publish github main --package .",
+    "pipeline:publish:github:pr": "async-pipeline publish github pr --package .",
+    "pipeline:publish:github:release": "async-pipeline publish github release --package .",
+    "pipeline:publish:npm": "async-pipeline publish npm --package .",
+    "pipeline:release-doctor": "async-pipeline run release-doctor",
+    "pipeline:release:doctor": "async-pipeline release doctor --package .",
+    "pipeline:release:ensure": "async-pipeline release ensure --package .",
+    "pipeline:snapshot": "async-pipeline run snapshot",
     "pipeline:sync:check": "async-pipeline sync check",
+    "pipeline:sync:generate": "async-pipeline sync generate",
+    "pipeline:task:docs.site": "async-pipeline run-task docs.site",
     "pipeline:verify": "async-pipeline run verify",
-    "release:check": "pnpm run pipeline:verify -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
+    "release:check": "pnpm run pipeline:verify -- --force && pnpm run pipeline:pages -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {

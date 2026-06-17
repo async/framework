@@ -1,4 +1,6 @@
-import { definePipeline, job, sh, task, trigger } from "@async/pipeline";
+import { definePipeline, env, job, sh, task, trigger } from "@async/pipeline";
+
+const packagePath = ".";
 
 export default definePipeline({
   name: "async-framework",
@@ -7,12 +9,33 @@ export default definePipeline({
   triggers: {
     pr: trigger.github({ events: ["pull_request"] }),
     main: trigger.github({ events: ["push"], branches: ["main"] }),
+    release: trigger.github({ events: ["release"], types: ["published"] }),
     manual: trigger.manual()
   },
 
   sync: {
-    github: true,
-    tasks: true
+    github: {
+      packagePreviews: true
+    },
+    tasks: {
+      prefix: "pipeline",
+      runners: ["package"],
+      targets: [{ package: "@async/framework" }],
+      jobs: ["pages", "publish", "publish-github", "release-doctor", "snapshot", "verify"],
+      tasks: ["docs.site"],
+      scripts: {
+        "github:check": "github check",
+        "github:generate": "github generate",
+        "publish:github:main": "publish github main --package .",
+        "publish:github:pr": "publish github pr --package .",
+        "publish:github:release": "publish github release --package .",
+        "publish:npm": "publish npm --package .",
+        "release:doctor": "release doctor --package .",
+        "release:ensure": "release ensure --package .",
+        "sync:check": "sync check",
+        "sync:generate": "sync generate"
+      }
+    }
   },
 
   namedInputs: {
@@ -20,12 +43,22 @@ export default definePipeline({
       "src/**/*.js",
       "tests/**/*.js",
       "examples/**/*",
+      "README.md",
+      "CHANGELOG.md",
       "package.json",
       "pipeline.ts"
     ]
   },
 
   tasks: {
+    "docs.site": task({
+      description: "Build the standardized GitHub Pages documentation site.",
+      inputs: ["README.md", "CHANGELOG.md", "scripts/build-pages.js"],
+      outputs: [".async/pages/**"],
+      cache: true,
+      run: sh`pnpm run docs:build`
+    }),
+
     test: task({
       inputs: ["source"],
       cache: "file:local",
@@ -42,17 +75,135 @@ export default definePipeline({
 
     pack: task({
       description: "Prove the package can be packed without consumer build steps.",
-      dependsOn: ["examples"],
+      dependsOn: ["examples", "docs.site"],
       inputs: ["source"],
       cache: false,
       run: sh`npm pack --dry-run --ignore-scripts`
+    }),
+
+    snapshot: task({
+      description: "Publish a main-branch GitHub Packages snapshot after verification.",
+      dependsOn: ["pack"],
+      inputs: ["source"],
+      cache: false,
+      run: sh`pnpm async-pipeline publish github main --package ${packagePath}`
+    }),
+
+    "release-ensure": task({
+      description: "Create or verify the release tag and GitHub Release before package publishing.",
+      dependsOn: ["pack"],
+      inputs: ["source"],
+      cache: false,
+      run: sh`pnpm async-pipeline release ensure --package ${packagePath}`
+    }),
+
+    "publish-github": task({
+      description: "Publish the stable GitHub Packages mirror before npm.",
+      dependsOn: ["release-ensure"],
+      inputs: ["source"],
+      cache: false,
+      run: sh`pnpm async-pipeline publish github release --package ${packagePath}`
+    }),
+
+    publish: task({
+      description: "Publish the verified release to npm, then run release doctor.",
+      dependsOn: ["publish-github"],
+      inputs: ["source"],
+      cache: false,
+      run: [
+        sh`pnpm async-pipeline publish npm --package ${packagePath}`,
+        sh`pnpm async-pipeline release doctor --package ${packagePath}`
+      ]
+    }),
+
+    "release-doctor": task({
+      description: "Diagnose release consistency for the current version.",
+      dependsOn: ["pack"],
+      inputs: ["source"],
+      cache: false,
+      run: sh`pnpm async-pipeline release doctor --package ${packagePath}`
     })
   },
 
   jobs: {
     verify: job({
       target: "pack",
-      trigger: ["pr", "main", "manual"]
+      trigger: ["pr", "main", "release", "manual"]
+    }),
+
+    pages: job({
+      target: "docs.site",
+      trigger: ["pr", "main", "manual"],
+      github: {
+        pages: {
+          build: { kind: "static", path: ".async/pages" }
+        }
+      }
+    }),
+
+    snapshot: job({
+      target: "snapshot",
+      trigger: ["main"],
+      env: {
+        GITHUB_TOKEN: env.secret("GITHUB_TOKEN")
+      },
+      github: {
+        permissions: {
+          contents: "write",
+          packages: "write"
+        }
+      }
+    }),
+
+    "publish-github": job({
+      target: "publish-github",
+      trigger: ["manual"],
+      env: {
+        GITHUB_TOKEN: env.secret("GITHUB_TOKEN")
+      },
+      github: {
+        permissions: {
+          contents: "write",
+          packages: "write"
+        }
+      }
+    }),
+
+    publish: job({
+      target: "publish",
+      trigger: ["manual", "release"],
+      environment: {
+        name: "npm-publish",
+        url: "https://www.npmjs.com/package/@async/framework"
+      },
+      requires: {
+        provenance: true
+      },
+      env: {
+        NODE_AUTH_TOKEN: env.secret("npm_token"),
+        GITHUB_TOKEN: env.secret("GITHUB_TOKEN")
+      },
+      github: {
+        permissions: {
+          contents: "write",
+          packages: "write"
+        }
+      }
+    }),
+
+    "release-doctor": job({
+      description: "Diagnose release consistency for the current version.",
+      target: "release-doctor",
+      trigger: ["manual"],
+      env: {
+        GITHUB_TOKEN: env.secret("GITHUB_TOKEN")
+      },
+      github: {
+        permissions: {
+          contents: "read",
+          packages: "read"
+        }
+      }
     })
   }
 });
