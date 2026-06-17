@@ -1,7 +1,7 @@
 {
   "name": "@async/framework",
   "version": "0.7.0",
-  "description": "No-build Loader app runtime with signals, command events, server calls, route partials, cache split, SSR activation, and streaming boundaries.",
+  "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "packageManager": "pnpm@11.1.0",
   "engines": {
@@ -28,49 +28,64 @@
     "web-framework"
   ],
   "license": "MIT",
-  "types": "./framework.d.ts",
-  "unpkg": "./framework.umd.min.js",
-  "jsdelivr": "./framework.umd.min.js",
+  "types": "./server.d.ts",
+  "unpkg": "./browser.umd.min.js",
+  "jsdelivr": "./browser.umd.min.js",
   "exports": {
     ".": {
-      "types": "./framework.d.ts",
-      "unpkg": "./framework.umd.min.js",
-      "browser": "./framework.js",
+      "types": "./server.d.ts",
+      "browser": "./browser.js",
+      "node": "./src/index.js",
       "import": "./src/index.js",
       "default": "./src/index.js"
     },
-    "./framework.js": {
-      "types": "./framework.d.ts",
-      "default": "./framework.js"
+    "./browser": {
+      "types": "./browser.d.ts",
+      "unpkg": "./browser.umd.min.js",
+      "browser": "./browser.js",
+      "import": "./src/browser.js",
+      "default": "./src/browser.js"
     },
-    "./framework.min.js": {
-      "types": "./framework.d.ts",
-      "default": "./framework.min.js"
+    "./server": {
+      "types": "./server.d.ts",
+      "node": "./src/index.js",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
     },
-    "./framework.umd.js": {
-      "types": "./framework.d.ts",
-      "default": "./framework.umd.js"
+    "./browser.js": {
+      "types": "./browser.d.ts",
+      "default": "./browser.js"
     },
-    "./framework.umd.min.js": {
-      "types": "./framework.d.ts",
-      "default": "./framework.umd.min.js"
+    "./browser.min.js": {
+      "types": "./browser.d.ts",
+      "default": "./browser.min.js"
     },
-    "./framework.ts": {
-      "types": "./framework.d.ts",
-      "default": "./framework.ts"
+    "./browser.umd.js": {
+      "types": "./browser.d.ts",
+      "default": "./browser.umd.js"
     },
-    "./framework.d.ts": "./framework.d.ts",
+    "./browser.umd.min.js": {
+      "types": "./browser.d.ts",
+      "default": "./browser.umd.min.js"
+    },
+    "./browser.ts": {
+      "types": "./browser.d.ts",
+      "default": "./browser.ts"
+    },
+    "./browser.d.ts": "./browser.d.ts",
+    "./server.d.ts": "./server.d.ts",
     "./package.json": "./package.json"
   },
   "files": [
     "CHANGELOG.md",
     "README.md",
-    "framework.d.ts",
-    "framework.js",
-    "framework.min.js",
-    "framework.umd.js",
-    "framework.umd.min.js",
-    "framework.ts",
+    "browser.d.ts",
+    "browser.js",
+    "browser.min.js",
+    "browser.umd.js",
+    "browser.umd.min.js",
+    "browser.ts",
+    "server.d.ts",
     "src",
     "examples",
     "LICENSE",

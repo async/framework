@@ -1,90 +1,6 @@
-import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
-
 const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
 const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
 const appliedServerValues = new WeakSet();
-
-export function createServerRegistry(initialMap = {}, options = {}) {
-  const registryStore = options.registry ?? createRegistryStore();
-  const type = options.type ?? "server";
-  const entries = registryStore._map(type);
-  const defaults = {};
-
-  const registry = attachRegistryInspection({
-    register(id, fn) {
-      assertServerId(id);
-      if (typeof fn !== "function") {
-        throw new TypeError(`Server function "${id}" must be a function.`);
-      }
-      if (entries.has(id)) {
-        throw new Error(`Server function "${id}" is already registered.`);
-      }
-      entries.set(id, fn);
-      return id;
-    },
-
-    registerMany(map) {
-      for (const [id, fn] of Object.entries(map ?? {})) {
-        registry.register(id, fn);
-      }
-      return registry;
-    },
-
-    unregister(id) {
-      assertServerId(id);
-      return entries.delete(id);
-    },
-
-    resolve(id) {
-      assertServerId(id);
-      return entries.get(id);
-    },
-
-    async run(id, args = [], context = {}) {
-      assertServerId(id);
-      const fn = registry.resolve(id);
-      if (!fn) {
-        throw new Error(`Server function "${id}" is not registered.`);
-      }
-
-      let runContext;
-      const server = createServerNamespace((childId, childArgs, childContext = {}) => {
-        return registry.run(childId, childArgs, { ...runContext, ...childContext });
-      }, {}, () => runContext);
-
-      const mergedContext = {
-        ...defaults,
-        ...context,
-        cache: defaults.cache ?? context.cache
-      };
-
-      runContext = {
-        ...mergedContext,
-        id,
-        args,
-        input: mergedContext.input,
-        signals: createSignalReader(mergedContext.signals),
-        abort: mergedContext.abort,
-        cache: mergedContext.cache,
-        server
-      };
-
-      return fn.call(runContext, ...args);
-    },
-
-    _setContext(context = {}) {
-      Object.assign(defaults, context);
-      return registry;
-    },
-
-    _adoptMany() {
-      return registry;
-    }
-  }, registryStore, type);
-
-  registry.registerMany(initialMap);
-  return createServerNamespace((id, args, context) => registry.run(id, args, context), registry, () => defaults);
-}
 
 export function createServerProxy({
   endpoint = "/__async/server",
@@ -230,7 +146,7 @@ export function defaultInput(context = {}) {
   };
 }
 
-function createServerNamespace(run, root = {}, contextProvider = () => ({})) {
+export function createServerNamespace(run, root = {}, contextProvider = () => ({})) {
   const cache = new Map();
 
   function namespace(parts) {
@@ -312,7 +228,7 @@ function readSignal(signals, path) {
   return signals.get(path);
 }
 
-function createSignalReader(signals) {
+export function createSignalReader(signals) {
   if (!signals || typeof signals.get === "function") {
     return signals;
   }
@@ -434,7 +350,7 @@ function toError(value) {
   return new Error(String(value));
 }
 
-function assertServerId(id) {
+export function assertServerId(id) {
   if (typeof id !== "string" || id.length === 0) {
     throw new TypeError("Server function id must be a non-empty string.");
   }

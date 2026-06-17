@@ -74,7 +74,7 @@ test("registry lint excludes generated root bundles", async () => {
         }
       });
     `);
-    await writeFixture(root, "framework.umd.js", `
+    await writeFixture(root, "browser.umd.js", `
       Async.use({
         handler: {
           save() {

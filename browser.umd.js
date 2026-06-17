@@ -1880,92 +1880,9 @@
   })();
 
   const __serverModule = (() => {
-    const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
     const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
     const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
     const appliedServerValues = new WeakSet();
-
-    function createServerRegistry(initialMap = {}, options = {}) {
-      const registryStore = options.registry ?? createRegistryStore();
-      const type = options.type ?? "server";
-      const entries = registryStore._map(type);
-      const defaults = {};
-
-      const registry = attachRegistryInspection({
-        register(id, fn) {
-          assertServerId(id);
-          if (typeof fn !== "function") {
-            throw new TypeError(`Server function "${id}" must be a function.`);
-          }
-          if (entries.has(id)) {
-            throw new Error(`Server function "${id}" is already registered.`);
-          }
-          entries.set(id, fn);
-          return id;
-        },
-
-        registerMany(map) {
-          for (const [id, fn] of Object.entries(map ?? {})) {
-            registry.register(id, fn);
-          }
-          return registry;
-        },
-
-        unregister(id) {
-          assertServerId(id);
-          return entries.delete(id);
-        },
-
-        resolve(id) {
-          assertServerId(id);
-          return entries.get(id);
-        },
-
-        async run(id, args = [], context = {}) {
-          assertServerId(id);
-          const fn = registry.resolve(id);
-          if (!fn) {
-            throw new Error(`Server function "${id}" is not registered.`);
-          }
-
-          let runContext;
-          const server = createServerNamespace((childId, childArgs, childContext = {}) => {
-            return registry.run(childId, childArgs, { ...runContext, ...childContext });
-          }, {}, () => runContext);
-
-          const mergedContext = {
-            ...defaults,
-            ...context,
-            cache: defaults.cache ?? context.cache
-          };
-
-          runContext = {
-            ...mergedContext,
-            id,
-            args,
-            input: mergedContext.input,
-            signals: createSignalReader(mergedContext.signals),
-            abort: mergedContext.abort,
-            cache: mergedContext.cache,
-            server
-          };
-
-          return fn.call(runContext, ...args);
-        },
-
-        _setContext(context = {}) {
-          Object.assign(defaults, context);
-          return registry;
-        },
-
-        _adoptMany() {
-          return registry;
-        }
-      }, registryStore, type);
-
-      registry.registerMany(initialMap);
-      return createServerNamespace((id, args, context) => registry.run(id, args, context), registry, () => defaults);
-    }
 
     function createServerProxy({
       endpoint = "/__async/server",
@@ -2320,7 +2237,7 @@
         throw new TypeError("Server function id must be a non-empty string.");
       }
     }
-    return { createServerRegistry, createServerProxy, resolveServerCommandArguments, applyServerResult, unwrapServerResult, defaultInput };
+    return { createServerProxy, resolveServerCommandArguments, applyServerResult, unwrapServerResult, defaultInput, createServerNamespace, createSignalReader, assertServerId };
   })();
 
   const __handlersModule = (() => {
@@ -4274,15 +4191,16 @@
     const { createPartialRegistry } = __partialsModule;
     const { createRouteRegistry, createRouter } = __routerModule;
     const { createScheduler } = __schedulerModule;
-    const { createServerRegistry } = __serverModule;
+    const { createServerNamespace } = __serverModule;
     const { createSignal, createSignalRegistry } = __signalsModule;
     const { createRegistryStore } = __registryStoreModule;
     const { attributeName, normalizeAttributeConfig } = __attributesModule;
     const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
 
-    function defineApp(initial) {
+    function defineApp(initial, options = {}) {
       const registry = createRegistryStore(undefined, { target: "browser" });
       const runtimes = new Set();
+      const createRuntime = options.createRuntime ?? createApp;
 
       const app = {
         registry,
@@ -4301,7 +4219,7 @@
         },
 
         start(options = {}) {
-          const runtime = createApp(app, options).start();
+          const runtime = createRuntime(app, options).start();
           app.runtime = runtime;
           return runtime;
         },
@@ -4336,7 +4254,8 @@
       const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler" });
       const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
       const browserCache = createCacheRegistry(undefined, { registry, type: "cache.browser" });
-      const server = options.server ?? createServerRegistry(undefined, { registry, type: "server" });
+      const serverFactory = options.serverFactory ?? createServerReferenceRegistry;
+      const server = options.server ?? serverFactory(undefined, { registry, type: "server" });
       const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial" });
       const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
       const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component" });
@@ -4453,8 +4372,7 @@
                 browserCache,
                 partials,
                 scheduler,
-                request: options.request,
-                locals: options.locals
+                ...currentRequestContext()
               })
             : { html: "" };
 
@@ -4511,9 +4429,20 @@
           router,
           cache,
           scheduler,
-          request: options.request,
-          locals: options.locals
+          requestContext: options.requestContext,
+          ...currentRequestContext()
         });
+      }
+
+      function currentRequestContext() {
+        const context = readRequestContextLike(options.requestContext);
+        return {
+          requestContext: context,
+          request: context.request ?? options.request,
+          headers: context.headers ?? options.headers,
+          cookies: context.cookies ?? options.cookies,
+          locals: context.locals ?? options.locals
+        };
       }
 
       function assertActive() {
@@ -4669,6 +4598,77 @@
       }
     }
 
+    function createServerReferenceRegistry(initialMap = {}, options = {}) {
+      const registry = options.registry ?? createRegistryStore();
+      const type = options.type ?? "server";
+      const defaults = {};
+
+      const reference = {
+        registry,
+
+        register(id, value) {
+          registry.register(type, id, value);
+          return id;
+        },
+
+        registerMany(map) {
+          for (const [id, value] of Object.entries(map ?? {})) {
+            reference.register(id, value);
+          }
+          return reference;
+        },
+
+        unregister(id) {
+          return registry.unregister(type, id);
+        },
+
+        resolve() {
+          return undefined;
+        },
+
+        async run(id) {
+          throw new Error(`Server command "${id}" cannot run without a server proxy or server registry.`);
+        },
+
+        keys() {
+          return registry.keys(type);
+        },
+
+        entries() {
+          return registry.entries(type);
+        },
+
+        inspect() {
+          return registry.entries(type);
+        },
+
+        _setContext(context = {}) {
+          Object.assign(defaults, context);
+          return reference;
+        },
+
+        _adoptMany() {
+          return reference;
+        }
+      };
+
+      reference.registerMany(initialMap);
+      return createServerNamespace((id, args, context) => reference.run(id, args, context), reference, () => defaults);
+    }
+
+    function readRequestContextLike(store) {
+      if (!store) {
+        return {};
+      }
+      if (typeof store.get === "function") {
+        return store.get() ?? {};
+      }
+      if (typeof store.getStore === "function") {
+        return store.getStore() ?? {};
+      }
+      return {};
+    }
+
     function normalizeEntries(type, entries = {}) {
       if (type !== "signal") {
         return { ...(entries ?? {}) };
@@ -4778,14 +4778,16 @@
   const { defineRoute: defineRoute } = __routerModule;
   const { route: route } = __routerModule;
   const { createScheduler: createScheduler } = __schedulerModule;
+  const { applyServerResult: applyServerResult } = __serverModule;
   const { createServerProxy: createServerProxy } = __serverModule;
-  const { createServerRegistry: createServerRegistry } = __serverModule;
+  const { resolveServerCommandArguments: resolveServerCommandArguments } = __serverModule;
+  const { unwrapServerResult: unwrapServerResult } = __serverModule;
   const { computed: computed } = __signalsModule;
   const { createSignal: createSignal } = __signalsModule;
   const { createSignalRegistry: createSignalRegistry } = __signalsModule;
   const { effect: effect } = __signalsModule;
   const { signal: signal } = __signalsModule;
-  const api = { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createScheduler, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };
+  const api = { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createScheduler, applyServerResult, createServerProxy, resolveServerCommandArguments, unwrapServerResult, computed, createSignal, createSignalRegistry, effect, signal };
   assertNoUmdNamespaceConflicts(api, Async);
   Object.assign(Async, api);
   Async.Async = Async;

@@ -5,16 +5,17 @@ import { Loader } from "./loader.js";
 import { createPartialRegistry } from "./partials.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createScheduler } from "./scheduler.js";
-import { createServerRegistry } from "./server.js";
+import { createServerNamespace } from "./server.js";
 import { createSignal, createSignalRegistry } from "./signals.js";
 import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
 
 const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
 
-export function defineApp(initial) {
+export function defineApp(initial, options = {}) {
   const registry = createRegistryStore(undefined, { target: "browser" });
   const runtimes = new Set();
+  const createRuntime = options.createRuntime ?? createApp;
 
   const app = {
     registry,
@@ -33,7 +34,7 @@ export function defineApp(initial) {
     },
 
     start(options = {}) {
-      const runtime = createApp(app, options).start();
+      const runtime = createRuntime(app, options).start();
       app.runtime = runtime;
       return runtime;
     },
@@ -68,7 +69,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
   const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler" });
   const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
   const browserCache = createCacheRegistry(undefined, { registry, type: "cache.browser" });
-  const server = options.server ?? createServerRegistry(undefined, { registry, type: "server" });
+  const serverFactory = options.serverFactory ?? createServerReferenceRegistry;
+  const server = options.server ?? serverFactory(undefined, { registry, type: "server" });
   const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial" });
   const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
   const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component" });
@@ -185,8 +187,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
             browserCache,
             partials,
             scheduler,
-            request: options.request,
-            locals: options.locals
+            ...currentRequestContext()
           })
         : { html: "" };
 
@@ -243,9 +244,20 @@ export function createApp(appOrDefinition = Async, options = {}) {
       router,
       cache,
       scheduler,
-      request: options.request,
-      locals: options.locals
+      requestContext: options.requestContext,
+      ...currentRequestContext()
     });
+  }
+
+  function currentRequestContext() {
+    const context = readRequestContextLike(options.requestContext);
+    return {
+      requestContext: context,
+      request: context.request ?? options.request,
+      headers: context.headers ?? options.headers,
+      cookies: context.cookies ?? options.cookies,
+      locals: context.locals ?? options.locals
+    };
   }
 
   function assertActive() {
@@ -399,6 +411,77 @@ function attachServerCache(server, cache) {
   } catch {
     // Proxies that reject assignment can still receive cache through _setContext.
   }
+}
+
+function createServerReferenceRegistry(initialMap = {}, options = {}) {
+  const registry = options.registry ?? createRegistryStore();
+  const type = options.type ?? "server";
+  const defaults = {};
+
+  const reference = {
+    registry,
+
+    register(id, value) {
+      registry.register(type, id, value);
+      return id;
+    },
+
+    registerMany(map) {
+      for (const [id, value] of Object.entries(map ?? {})) {
+        reference.register(id, value);
+      }
+      return reference;
+    },
+
+    unregister(id) {
+      return registry.unregister(type, id);
+    },
+
+    resolve() {
+      return undefined;
+    },
+
+    async run(id) {
+      throw new Error(`Server command "${id}" cannot run without a server proxy or server registry.`);
+    },
+
+    keys() {
+      return registry.keys(type);
+    },
+
+    entries() {
+      return registry.entries(type);
+    },
+
+    inspect() {
+      return registry.entries(type);
+    },
+
+    _setContext(context = {}) {
+      Object.assign(defaults, context);
+      return reference;
+    },
+
+    _adoptMany() {
+      return reference;
+    }
+  };
+
+  reference.registerMany(initialMap);
+  return createServerNamespace((id, args, context) => reference.run(id, args, context), reference, () => defaults);
+}
+
+function readRequestContextLike(store) {
+  if (!store) {
+    return {};
+  }
+  if (typeof store.get === "function") {
+    return store.get() ?? {};
+  }
+  if (typeof store.getStore === "function") {
+    return store.getStore() ?? {};
+  }
+  return {};
 }
 
 function normalizeEntries(type, entries = {}) {

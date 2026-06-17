@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createRequestContextStore,
   createHandlerRegistry,
   createServerProxy,
   createServerRegistry,
   createSignalRegistry,
+  delay,
   signal
 } from "../src/index.js";
 
@@ -22,6 +24,25 @@ test("server registry runs functions with this.server for local fan-out", async 
 
   assert.deepEqual(await server.run("math.two"), { value: 2 });
   assert.equal(await server.math.two(), 2);
+});
+
+test("server request context store isolates overlapping async calls", async () => {
+  const requestContext = createRequestContextStore();
+  const server = createServerRegistry({
+    async "request.id"() {
+      await delay(1);
+      return this.locals.id;
+    }
+  });
+  server._setContext({ requestContext });
+
+  const [left, right] = await Promise.all([
+    requestContext.run({ locals: { id: "left" } }, () => server.request.id()),
+    requestContext.run({ locals: { id: "right" } }, () => server.request.id())
+  ]);
+
+  assert.equal(left, "left");
+  assert.equal(right, "right");
 });
 
 test("server proxy posts args, input, signals, and applies returned signal patches", async () => {

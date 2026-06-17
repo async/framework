@@ -78,12 +78,13 @@ export async function lintRegistry(options = {}) {
     root,
     includes: includeDirs,
     excludes: [
-      "framework.js",
-      "framework.min.js",
-      "framework.umd.js",
-      "framework.umd.min.js",
-      "framework.ts",
-      "framework.d.ts"
+      "browser.js",
+      "browser.min.js",
+      "browser.umd.js",
+      "browser.umd.min.js",
+      "browser.ts",
+      "browser.d.ts",
+      "server.d.ts"
     ],
     cache: {
       path: relative(root, cachePath),
@@ -321,7 +322,8 @@ function shouldSkip(relativePath) {
     relativePath.startsWith(".git/") ||
     relativePath.startsWith(".async/") ||
     relativePath.startsWith("node_modules/") ||
-    /^framework(?:\.min|\.umd|\.umd\.min)?\.(?:js|ts|d\.ts)$/.test(relativePath)
+    /^browser(?:\.min|\.umd|\.umd\.min)?\.(?:js|ts|d\.ts)$/.test(relativePath) ||
+    relativePath === "server.d.ts"
   );
 }
 

@@ -2,16 +2,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
-import * as bundle from "../framework.js";
-import * as minBundle from "../framework.min.js";
-import * as source from "../src/index.js";
+import * as bundle from "../browser.js";
+import * as minBundle from "../browser.min.js";
+import * as source from "../src/browser.js";
 
-test("root ESM bundles export the public runtime API", () => {
+test("browser ESM bundles export the public browser runtime API", () => {
   assert.deepEqual(Object.keys(bundle).sort(), Object.keys(source).sort());
   assert.deepEqual(Object.keys(minBundle).sort(), Object.keys(source).sort());
   assert.equal(source.Loader, source.AsyncLoader);
   assert.equal(bundle.Loader, bundle.AsyncLoader);
   assert.equal(minBundle.Loader, minBundle.AsyncLoader);
+  assert.equal(bundle.createServerRegistry, undefined);
 });
 
 test("ESM Async export stays the app hub", () => {
@@ -30,18 +31,37 @@ test("UMD helper exports do not conflict with app hub fields", () => {
   assert.deepEqual(conflicts, []);
 });
 
-test("root ESM bundles are standalone without relative imports", () => {
-  for (const file of ["framework.js", "framework.min.js"]) {
+test("browser ESM bundles are standalone without relative imports", () => {
+  for (const file of ["browser.js", "browser.min.js"]) {
     const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
     assert.doesNotMatch(contents, /^\s*import\s/m);
     assert.doesNotMatch(contents, /from\s+["']\.\//);
-    assert.match(contents, /^export\s+{/m);
+    assert.match(contents, /\bexport\s+{/);
   }
 });
 
-test("root UMD bundles expose the public runtime API", () => {
-  for (const file of ["framework.umd.js", "framework.umd.min.js"]) {
+test("browser minified bundles do not contain newlines", () => {
+  for (const file of ["browser.min.js", "browser.umd.min.js"]) {
+    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+
+    assert.equal(contents.includes("\n"), false);
+  }
+});
+
+test("browser bundles do not include server-only registry code", () => {
+  for (const file of ["browser.js", "browser.min.js", "browser.umd.js", "browser.umd.min.js"]) {
+    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+
+    assert.doesNotMatch(contents, /createServerRegistry/);
+    assert.doesNotMatch(contents, /createRequestContextStore/);
+    assert.doesNotMatch(contents, /node:async_hooks/);
+    assert.doesNotMatch(contents, /Server function "\\$\\{id\\}" must be a function/);
+  }
+});
+
+test("browser UMD bundles expose the public browser runtime API", () => {
+  for (const file of ["browser.umd.js", "browser.umd.min.js"]) {
     const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
     const browserContext = {};
     vm.runInNewContext(contents, browserContext, { filename: file });
@@ -75,34 +95,53 @@ test("root UMD bundles expose the public runtime API", () => {
 });
 
 test("root UMD bundle rejects namespace conflicts before assignment", () => {
-  const contents = readFileSync(new URL("../framework.umd.js", import.meta.url), "utf8");
+  const contents = readFileSync(new URL("../browser.umd.js", import.meta.url), "utf8");
   const conflicting = contents.replace("const api = { ", "const api = { use: asyncSignal, ");
 
   assert.throws(
-    () => vm.runInNewContext(conflicting, {}, { filename: "framework.umd.conflict.js" }),
+    () => vm.runInNewContext(conflicting, {}, { filename: "browser.umd.conflict.js" }),
     /UMD Async namespace export conflict: use/
   );
 });
 
-test("root framework.ts is a bundled TypeScript entrypoint", async () => {
-  const contents = readFileSync(new URL("../framework.ts", import.meta.url), "utf8");
-  const tsBundle = await import("../framework.ts");
+test("root package and explicit subpath exports resolve correctly", async () => {
+  const rootPackage = await import("@async/framework");
+  const browserPackage = await import("@async/framework/browser");
+  const serverPackage = await import("@async/framework/server");
+
+  assert.equal(typeof rootPackage.createServerRegistry, "function");
+  assert.equal(typeof rootPackage.createRequestContextStore, "function");
+  assert.equal(browserPackage.createServerRegistry, undefined);
+  assert.equal(browserPackage.createRequestContextStore, undefined);
+  assert.equal(typeof browserPackage.createServerProxy, "function");
+  assert.equal(typeof serverPackage.createServerRegistry, "function");
+  assert.equal(typeof serverPackage.createRequestContextStore, "function");
+});
+
+test("root browser.ts is a bundled TypeScript entrypoint", async () => {
+  const contents = readFileSync(new URL("../browser.ts", import.meta.url), "utf8");
+  const tsBundle = await import("../browser.ts");
 
   assert.deepEqual(Object.keys(tsBundle).sort(), Object.keys(source).sort());
   assert.doesNotMatch(contents, /^\s*import\s/m);
   assert.doesNotMatch(contents, /from\s+["']\.\//);
-  assert.match(contents, /Bundled TypeScript source entry/);
+  assert.match(contents, /Bundled browser TypeScript source entry/);
   assert.match(contents, /^export\s+{/m);
 });
 
-test("root framework.d.ts declares the public runtime API", () => {
-  const declarations = readFileSync(new URL("../framework.d.ts", import.meta.url), "utf8");
+test("browser and server declarations expose the right public APIs", () => {
+  const browserDeclarations = readFileSync(new URL("../browser.d.ts", import.meta.url), "utf8");
+  const serverDeclarations = readFileSync(new URL("../server.d.ts", import.meta.url), "utf8");
 
   for (const key of Object.keys(source)) {
-    assert.match(declarations, new RegExp(`\\b${key}\\b`));
+    assert.match(browserDeclarations, new RegExp(`\\b${key}\\b`));
   }
-  assert.match(declarations, /declare global/);
-  assert.match(declarations, /export declare const Async: AppHub/);
-  assert.match(declarations, /const Async: AsyncNamespace/);
-  assert.match(declarations, /const AsyncFramework: AsyncNamespace/);
+  assert.doesNotMatch(browserDeclarations, /createServerRegistry/);
+  assert.doesNotMatch(browserDeclarations, /createRequestContextStore/);
+  assert.match(serverDeclarations, /createServerRegistry/);
+  assert.match(serverDeclarations, /createRequestContextStore/);
+  assert.match(browserDeclarations, /declare global/);
+  assert.match(browserDeclarations, /export declare const Async: AppHub/);
+  assert.match(browserDeclarations, /const Async: AsyncNamespace/);
+  assert.match(browserDeclarations, /const AsyncFramework: AsyncNamespace/);
 });

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Split browser and server entrypoints with `@async/framework/browser`,
+  `@async/framework/server`, browser-only CDN bundles, and server-only local
+  function registry exports.
+- Added `createRequestContextStore(...)` for Node request-scoped server
+  function context using `AsyncLocalStorage`.
 - Added the Layer 1.5 scheduler for deterministic signal binding, lifecycle,
   effect, async, and post-flush phases.
 - Added browser microtask scheduling by default and manual scheduler flushing for

@@ -92,18 +92,18 @@ and package lifecycle tooling. Browser consumers import ESM directly.
 
 ## CDN
 
-The package ships root CDN artifacts for UNPKG and can be loaded without a
+The package ships browser CDN artifacts for UNPKG and can be loaded without a
 build step. Use `@latest` for quick prototypes, and pin an exact version in
 production:
 
 | File | Format | Use |
 | --- | --- | --- |
-| `framework.js` | ESM | Readable browser module bundle |
-| `framework.min.js` | ESM | Compact browser module bundle |
-| `framework.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
-| `framework.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
-| `framework.ts` | Bundled TypeScript source | TS-aware runtimes and higher-layer tooling |
-| `framework.d.ts` | Type declarations | TypeScript declarations for the public API |
+| `browser.js` | ESM | Readable browser module bundle |
+| `browser.min.js` | ESM | Compact browser module bundle |
+| `browser.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
+| `browser.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
+| `browser.ts` | Bundled TypeScript source | TS-aware runtimes and higher-layer tooling |
+| `browser.d.ts` | Type declarations | TypeScript declarations for the browser API |
 
 ```html
 <main async:container>
@@ -115,7 +115,7 @@ production:
   import {
     Async,
     createSignal
-  } from "https://unpkg.com/@async/framework@latest/framework.js";
+  } from "https://unpkg.com/@async/framework@latest/browser.js";
 
   Async.use({
     signal: {
@@ -138,7 +138,7 @@ For a plain script tag, use the UMD bundle. In this UMD-only global form,
 call `Async.Loader(...)` directly.
 
 ```html
-<script src="https://unpkg.com/@async/framework@latest/framework.umd.min.js"></script>
+<script src="https://unpkg.com/@async/framework@latest/browser.umd.min.js"></script>
 <script>
   Async.use({
     signal: {
@@ -161,7 +161,7 @@ You can also use an import map so app code imports `@async/framework` by name:
 <script type="importmap">
 {
   "imports": {
-    "@async/framework": "https://unpkg.com/@async/framework@latest/framework.js"
+    "@async/framework": "https://unpkg.com/@async/framework@latest/browser.js"
   }
 }
 </script>
@@ -189,6 +189,10 @@ You can also use an import map so app code imports `@async/framework` by name:
 
 ## Core API
 
+For npm consumers, `@async/framework` uses conditional exports: browser-aware
+tooling receives the browser entry, while Node receives the server-capable
+entry. Use explicit subpaths when the target matters.
+
 ```js
 import {
   Async,
@@ -208,7 +212,6 @@ import {
   createRouter,
   createScheduler,
   createServerProxy,
-  createServerRegistry,
   createSignalRegistry,
   defineAttributeConfig,
   defineApp,
@@ -221,7 +224,16 @@ import {
   readSnapshot,
   route,
   signal
-} from "@async/framework";
+} from "@async/framework/browser";
+```
+
+Server-only APIs live behind the server entry:
+
+```js
+import {
+  createRequestContextStore,
+  createServerRegistry
+} from "@async/framework/server";
 ```
 
 `Loader` is the canonical loader factory. `AsyncLoader` remains as a
@@ -666,6 +678,10 @@ Server registries run locally on the server and proxies call an HTTP endpoint
 from the browser. Both expose the same dotted call shape.
 
 ```js
+import {
+  createServerRegistry
+} from "@async/framework/server";
+
 const server = createServerRegistry({
   "cart.add"(productId, quantity) {
     return {
@@ -681,6 +697,10 @@ const server = createServerRegistry({
 Client proxy:
 
 ```js
+import {
+  createServerProxy
+} from "@async/framework/browser";
+
 const server = createServerProxy({
   endpoint: "/__async/server",
   signals,
@@ -1069,7 +1089,7 @@ pnpm run release:check
 such as signals, handlers, server functions, partials, routes, and components.
 It writes `.async/registry-manifest.json` plus a per-file cache at
 `.async/registry-lint-cache.json`, skips generated root bundles such as
-`framework.umd.min.js`, and fails only when the same registry type and id are
+`browser.umd.min.js`, and fails only when the same registry type and id are
 declared with different normalized content. Duplicate declarations with the
 same content are reported as dedupe candidates, not errors.
 
