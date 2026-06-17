@@ -41,7 +41,8 @@ export default definePipeline({
       "README.md",
       "CHANGELOG.md",
       "package.json",
-      "pipeline.ts"
+      "pipeline.ts",
+      "scripts/**/*.js"
     ]
   },
 
@@ -91,7 +92,7 @@ export default definePipeline({
       cache: false,
       run: [
         sh`pnpm async-pipeline publish npm --package ${packagePath}`,
-        sh`pnpm async-pipeline release doctor --package ${packagePath}`
+        sh`node scripts/release-doctor.js`
       ]
     }),
 
@@ -100,7 +101,7 @@ export default definePipeline({
       dependsOn: ["pack"],
       inputs: ["source"],
       cache: false,
-      run: sh`pnpm async-pipeline release doctor --package ${packagePath}`
+      run: sh`node scripts/release-doctor.js`
     })
   },
 

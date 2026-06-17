@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-06-17
+
+- Fixed the generated release pipeline for the no-build package by verifying
+  npm and GitHub Release parity without requiring a GitHub Packages mirror.
+
 ## 0.2.0 - 2026-06-17
 
 - Added `csr` router mode for client-side first route rendering plus local SPA
