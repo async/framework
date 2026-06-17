@@ -15,6 +15,7 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
   const registryStore = registry ?? createRegistryStore();
   const definitions = registryStore._map(type);
   const entries = registryStore._map(`${type}.entries`);
+  const pending = new Map();
 
   const registryApi = attachRegistryInspection({
     register(id, definition = defineCache()) {
@@ -76,24 +77,47 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
       if (cached !== undefined) {
         return cached;
       }
-      const value = await fn();
-      registryApi.set(key, value, options);
-      return value;
+      if (pending.has(key)) {
+        return pending.get(key);
+      }
+      let promise;
+      promise = Promise.resolve()
+        .then(fn)
+        .then((value) => {
+          if (pending.get(key) === promise) {
+            registryApi.set(key, value, options);
+          }
+          return value;
+        })
+        .finally(() => {
+          if (pending.get(key) === promise) {
+            pending.delete(key);
+          }
+        });
+      pending.set(key, promise);
+      return promise;
     },
 
     delete(key) {
       assertKey(key);
+      pending.delete(key);
       return entries.delete(key);
     },
 
     clear(prefix) {
       if (prefix === undefined) {
         entries.clear();
+        pending.clear();
         return registryApi;
       }
       for (const key of [...entries.keys()]) {
         if (key.startsWith(prefix)) {
           entries.delete(key);
+        }
+      }
+      for (const key of [...pending.keys()]) {
+        if (key.startsWith(prefix)) {
+          pending.delete(key);
         }
       }
       return registryApi;
