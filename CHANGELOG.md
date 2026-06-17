@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-06-17
 
 - Added router navigation abort/version guards so stale route partials cannot
   clobber newer navigations, and route partial contexts receive `this.abort`.

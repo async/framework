@@ -1,6 +1,6 @@
 {
   "name": "@async/framework",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "No-build Loader app runtime with signals, command events, server calls, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "packageManager": "pnpm@11.1.0",
