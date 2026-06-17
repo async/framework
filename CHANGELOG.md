@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.2 - 2026-06-17
+
+- Fixed intercepted router link, form, and popstate navigation failures so they
+  update router error state and do not create unhandled promise rejections.
+- Preserved native same-document hash link behavior and made malformed encoded
+  dynamic route params fall back to the raw segment instead of throwing.
+- Hardened rootless detach cleanup, lazy descriptor import retry, server JSON
+  transport validation, and `cache.getOrSet(...)` handling for cached
+  `undefined` values.
+- Expanded regression coverage for scheduler reentrancy, boundary receiver
+  patch shapes, root lifecycle, lazy descriptors, server transport edge cases,
+  component lifecycle ordering, and installed package export-map shape.
+- Bundle size from bundled TypeScript source: `browser.ts` 173,774 B raw /
+  32,727 B gzip -> `browser.min.js` 73,680 B raw / 22,047 B gzip
+  (-100,094 B raw, -10,680 B gzip).
+
 ## 0.10.1 - 2026-06-17
 
 - Added Terser-powered browser bundle minification and pointed legacy
