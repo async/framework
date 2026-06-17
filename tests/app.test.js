@@ -10,6 +10,7 @@ import {
   defineRoute,
   delay,
   html,
+  readSnapshot,
   route,
   signal
 } from "../src/index.js";
@@ -350,6 +351,84 @@ test("browser runtime restores SSR signal and browser cache snapshots", () => {
   assert.equal(document.querySelector("output").textContent, "sku-1");
   assert.deepEqual(runtime.browser.cache.get("product:sku-1"), { title: "Keyboard" });
   runtime.destroy();
+});
+
+test("browser runtime can read and apply SSR snapshot scripts automatically", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main>
+      <output signal:text="productId"></output>
+      <script type="application/json" async:snapshot>
+        {
+          "signals": {
+            "productId": "sku-2"
+          },
+          "cache": {
+            "browser": {
+              "product:sku-2": { "title": "Mouse" }
+            }
+          }
+        }
+      </script>
+    </main>
+  `;
+  const app = defineApp({
+    signal: {
+      productId: createSignal(null)
+    },
+    cache: {
+      browser: {
+        product: defineCache({ ttl: 1000 })
+      }
+    }
+  });
+
+  assert.deepEqual(readSnapshot(document.body).signals, { productId: "sku-2" });
+
+  const runtime = createApp(app, {
+    root: document.body,
+    router: false
+  }).start();
+
+  assert.equal(document.querySelector("output").textContent, "sku-2");
+  assert.deepEqual(runtime.browser.cache.get("product:sku-2"), { title: "Mouse" });
+  runtime.destroy();
+});
+
+test("readSnapshot supports configured async data attributes", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <script type="application/json" data-async-snapshot>
+      {
+        "signals": {
+          "productId": "sku-3"
+        }
+      }
+    </script>
+  `;
+
+  assert.deepEqual(readSnapshot(document.body, {
+    attributes: {
+      async: "data-async-"
+    }
+  }), {
+    signals: {
+      productId: "sku-3"
+    }
+  });
+});
+
+test("readSnapshot reports malformed snapshot JSON with an Async-specific error", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<script type="application/json" async:snapshot>{bad json</script>`;
+
+  assert.throws(
+    () => readSnapshot(document.body),
+    /Could not parse Async snapshot/
+  );
 });
 
 test("app runtime starts a CSR router from registered routes and partials", async () => {

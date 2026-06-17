@@ -1,5 +1,5 @@
 export { asyncSignal } from "./async-signal.js";
-export { Async, createApp, defineApp } from "./app.js";
+export { Async, createApp, defineApp, readSnapshot } from "./app.js";
 export { attributeName, defineAttributeConfig } from "./attributes.js";
 export { createCacheRegistry, defineCache } from "./cache.js";
 export { component, createComponentRegistry, defineComponent } from "./component.js";

@@ -73,7 +73,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
   let started = false;
   let destroyed = false;
 
-  applySnapshot(signals, browserCache, options.snapshot);
+  applySnapshot(signals, browserCache, options.snapshot ?? (target === "browser" ? readSnapshot(options.root, { attributes }) : undefined));
   attachServerCache(server, serverCache);
 
   const runtime = {
@@ -240,6 +240,38 @@ export function createApp(appOrDefinition = Async, options = {}) {
 }
 
 export const Async = defineApp();
+
+export function readSnapshot(root = globalThis.document, { attributes } = {}) {
+  const attributeConfig = normalizeAttributeConfig(attributes);
+  const snapshotAttr = attributeName(attributeConfig, "async", "snapshot");
+  const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
+  const rootNode = root ?? documentRef;
+  if (!rootNode?.querySelectorAll && !documentRef?.querySelectorAll) {
+    return {};
+  }
+
+  for (const searchRoot of new Set([rootNode, documentRef])) {
+    if (!searchRoot?.querySelectorAll) {
+      continue;
+    }
+    for (const script of searchRoot.querySelectorAll("script[type='application/json'], script")) {
+      if (!script.hasAttribute?.(snapshotAttr)) {
+        continue;
+      }
+      const source = script.textContent?.trim() ?? "";
+      if (!source) {
+        return {};
+      }
+      try {
+        return JSON.parse(source);
+      } catch (cause) {
+        throw new Error(`Could not parse Async snapshot: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+    }
+  }
+
+  return {};
+}
 
 function applyUseToRuntime(runtime, normalized) {
   applyRegistryUse(runtime.signals, runtime.registry, normalized.signal);
