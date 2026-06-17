@@ -14,8 +14,8 @@ const Toggle = defineComponent(function Toggle() {
     <button
       type="button"
       on:click="${toggle}"
-      data-async-class:selected="${selected.id}"
-      data-async-attr:aria-pressed="${selected.id}"
+      signal:class:selected="${selected.id}"
+      signal:attr:aria-pressed="${selected.id}"
     >
       Toggle
     </button>

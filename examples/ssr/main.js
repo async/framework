@@ -56,7 +56,7 @@ serverApp.use({
           <article>
             <h1>${product.title}</h1>
             <p>${product.id}</p>
-            <button type="button" on:click="ssrDemo.selectProduct" data-async-class:selected="ssrDemo.selected">
+            <button type="button" on:click="ssrDemo.selectProduct" signal:class:selected="ssrDemo.selected">
               Select
             </button>
           </article>
@@ -80,7 +80,7 @@ serverRuntime.destroy();
 
 document.querySelector("#app").innerHTML = response.html;
 
-const snapshot = JSON.parse(document.querySelector("[data-async-snapshot]").textContent);
+const snapshot = JSON.parse(document.querySelector("[async\\:snapshot]").textContent);
 const browserApp = defineApp(sharedDefinition());
 createApp(browserApp, {
   root: document,

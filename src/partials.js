@@ -1,9 +1,12 @@
 import { isTemplateResult, renderTemplate } from "./html.js";
+import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
-export function createPartialRegistry(initialMap = {}) {
-  const entries = new Map();
+export function createPartialRegistry(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "partial";
+  const entries = registryStore._map(type);
 
-  const registry = {
+  const registry = attachRegistryInspection({
     register(id, fn) {
       assertId(id);
       if (typeof fn !== "function") {
@@ -44,8 +47,12 @@ export function createPartialRegistry(initialMap = {}) {
       };
       const result = await fn.call(partialContext, props);
       return normalizePartialResult(result);
+    },
+
+    _adoptMany() {
+      return registry;
     }
-  };
+  }, registryStore, type);
 
   registry.registerMany(initialMap);
   return registry;

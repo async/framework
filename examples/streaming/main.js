@@ -13,8 +13,8 @@ Async.use({
         "product",
         `
           <article>
-            <h1 data-async-text="streamingDemo.title"></h1>
-            <button type="button" on:click="streamingDemo.select" data-async-class:selected="streamingDemo.selected">
+            <h1 signal:text="streamingDemo.title"></h1>
+            <button type="button" on:click="streamingDemo.select" signal:class:selected="streamingDemo.selected">
               Select
             </button>
           </article>

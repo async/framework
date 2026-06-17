@@ -47,10 +47,10 @@ test("component helpers create scoped signals, handlers, effects, children, and 
 
     return html`
       <section>
-        <button type="button" on:click="${toggle}" data-async-class:selected="${selected.id}">
+        <button type="button" on:click="${toggle}" signal:class:selected="${selected.id}">
           Toggle
         </button>
-        <output data-async-text="${label.id}"></output>
+        <output signal:text="${label.id}"></output>
         ${this.render(Child)}
       </section>
     `;

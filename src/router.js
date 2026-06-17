@@ -2,6 +2,8 @@ import { AsyncLoader } from "./loader.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { createSignalRegistry } from "./signals.js";
 import { applyServerResult } from "./server.js";
+import { createRegistryStore } from "./registry-store.js";
+import { normalizeAttributeConfig } from "./attributes.js";
 
 export function defineRoute(partial, options = {}) {
   return {
@@ -12,16 +14,22 @@ export function defineRoute(partial, options = {}) {
 
 export const route = defineRoute;
 
-export function createRouteRegistry(initialMap = {}) {
+export function createRouteRegistry(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "route";
+  const entries = registryStore._map(type);
   const routes = [];
 
   const registry = {
+    registry: registryStore,
+
     register(pattern, definition) {
       assertPattern(pattern);
       if (routes.some((candidate) => candidate.pattern === pattern)) {
         throw new Error(`Route "${pattern}" is already registered.`);
       }
       const nextRoute = normalizeRoute(pattern, definition);
+      entries.set(pattern, nextRoute.definition);
       routes.push(nextRoute);
       return nextRoute;
     },
@@ -55,11 +63,38 @@ export function createRouteRegistry(initialMap = {}) {
 
     entries() {
       return routes.map(({ pattern, definition }) => ({ pattern, route: definition }));
+    },
+
+    keys() {
+      return [...entries.keys()];
+    },
+
+    inspect() {
+      return registryStore.entries(type);
+    },
+
+    _adoptMany(map = {}) {
+      for (const pattern of Object.keys(map ?? {})) {
+        adoptRoute(pattern, entries.get(pattern));
+      }
+      return registry;
     }
   };
 
+  for (const [pattern, definition] of entries) {
+    adoptRoute(pattern, definition);
+  }
   registry.registerMany(initialMap);
   return registry;
+
+  function adoptRoute(pattern, definition) {
+    if (routes.some((candidate) => candidate.pattern === pattern)) {
+      return;
+    }
+    const nextRoute = normalizeRoute(pattern, definition);
+    entries.set(pattern, nextRoute.definition);
+    routes.push(nextRoute);
+  }
 }
 
 export function createRouter({
@@ -74,12 +109,14 @@ export function createRouter({
   cache,
   partials,
   fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
-  routeEndpoint = "/__async/route"
+  routeEndpoint = "/__async/route",
+  attributes
 } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? loader?.signals ?? createSignalRegistry();
   const handlerRegistry = handlers ?? loader?.handlers ?? createHandlerRegistry();
+  const attributeConfig = normalizeAttributeConfig(attributes ?? loader?.attributes);
   const loaderInstance =
     loader ??
     AsyncLoader({
@@ -87,7 +124,8 @@ export function createRouter({
       signals: signalRegistry,
       handlers: handlerRegistry,
       server,
-      cache
+      cache,
+      attributes: attributeConfig
     });
   const ownsLoader = !loader;
   const cleanups = new Set();
@@ -104,6 +142,7 @@ export function createRouter({
     server,
     cache,
     partials,
+    attributes: attributeConfig,
 
     start() {
       assertActive();

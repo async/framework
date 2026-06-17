@@ -6,10 +6,10 @@
     <title>AsyncLoader Cache</title>
   </head>
   <body>
-    <main data-async-container>
+    <main async:container>
       <button type="button" on:click="cacheDemo.loadProduct">Load product</button>
-      <p>Product: <strong data-async-text="cacheDemo.title"></strong></p>
-      <p>Server calls: <strong data-async-text="cacheDemo.calls"></strong></p>
+      <p>Product: <strong signal:text="cacheDemo.title"></strong></p>
+      <p>Server calls: <strong signal:text="cacheDemo.calls"></strong></p>
     </main>
     <script type="module" src="./main.js"></script>
   </body>

@@ -1,10 +1,14 @@
+import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
+
 const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
 
-export function createServerRegistry(initialMap = {}) {
-  const entries = new Map();
+export function createServerRegistry(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "server";
+  const entries = registryStore._map(type);
   const defaults = {};
 
-  const registry = {
+  const registry = attachRegistryInspection({
     register(id, fn) {
       assertServerId(id);
       if (typeof fn !== "function") {
@@ -64,8 +68,12 @@ export function createServerRegistry(initialMap = {}) {
     _setContext(context = {}) {
       Object.assign(defaults, context);
       return registry;
+    },
+
+    _adoptMany() {
+      return registry;
     }
-  };
+  }, registryStore, type);
 
   registry.registerMany(initialMap);
   return createServerNamespace((id, args, context) => registry.run(id, args, context), registry);

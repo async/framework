@@ -1,12 +1,14 @@
 import { renderComponent } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { createSignalRegistry } from "./signals.js";
+import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attributes.js";
 
-export function AsyncLoader({ root, signals, handlers, server, router, cache } = {}) {
+export function AsyncLoader({ root, signals, handlers, server, router, cache, attributes } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
   const handlerRegistry = handlers ?? createHandlerRegistry();
+  const attributeConfig = normalizeAttributeConfig(attributes);
   const cleanups = new Set();
   const eventBindings = new WeakMap();
   const signalBindings = new WeakMap();
@@ -23,6 +25,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
     server,
     router,
     cache,
+    attributes: attributeConfig,
 
     start() {
       assertActive();
@@ -41,7 +44,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
 
     swap(boundaryId, fragmentOrTemplate) {
       assertActive();
-      const boundary = findBoundary(rootNode, boundaryId);
+      const boundary = findBoundary(rootNode, boundaryId, attributeConfig);
       if (!boundary) {
         throw new Error(`Boundary "${boundaryId}" was not found.`);
       }
@@ -58,7 +61,8 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
         loader: api,
         server: api.server,
         router: api.router,
-        cache: api.cache
+        cache: api.cache,
+        attributes: attributeConfig
       });
       target.replaceChildren(toFragment(rendered.html, target.ownerDocument));
       api.scan(target);
@@ -87,15 +91,15 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
   signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache });
 
   function bindEventAttributes(scope) {
-    for (const element of selectAll(scope, "[data-async-container], *")) {
+    for (const element of elementsIn(scope)) {
       if (typeof element.getAttributeNames !== "function") {
         continue;
       }
       for (const name of element.getAttributeNames()) {
-        if (!name.startsWith("on:")) {
+        const eventName = matchAttribute(name, attributeConfig, "on");
+        if (!eventName) {
           continue;
         }
-        const eventName = name.slice(3);
         if (eventName === "mount" || eventName === "visible") {
           continue;
         }
@@ -137,33 +141,39 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
   }
 
   function bindSignalAttributes(scope) {
-    for (const element of selectAll(scope, "[data-async-text]")) {
-      bindSignal(element, `text:${element.getAttribute("data-async-text")}`, element.getAttribute("data-async-text"), (value) => {
-        element.textContent = value ?? "";
-      });
-    }
-
-    for (const element of selectAll(scope, "[data-async-value]")) {
-      const path = element.getAttribute("data-async-value");
-      bindSignal(element, `value:${path}`, path, (value) => {
-        if ("value" in element && element.value !== String(value ?? "")) {
-          element.value = value ?? "";
-        } else if (!("value" in element)) {
-          element.setAttribute("value", value ?? "");
-        }
-      });
-      bindValueWriter(element, path);
-    }
-
-    for (const element of selectAll(scope, "*")) {
+    for (const element of elementsIn(scope)) {
       for (const name of element.getAttributeNames?.() ?? []) {
-        if (name.startsWith("data-async-attr:")) {
-          const attr = name.slice("data-async-attr:".length);
+        const signalName = matchAttribute(name, attributeConfig, "signal");
+        if (!signalName) {
+          continue;
+        }
+        if (signalName === "text") {
+          const path = element.getAttribute(name);
+          bindSignal(element, `text:${path}`, path, (value) => {
+            element.textContent = value ?? "";
+          });
+          continue;
+        }
+        if (signalName === "value") {
+          const path = element.getAttribute(name);
+          bindSignal(element, `value:${path}`, path, (value) => {
+            if ("value" in element && element.value !== String(value ?? "")) {
+              element.value = value ?? "";
+            } else if (!("value" in element)) {
+              element.setAttribute("value", value ?? "");
+            }
+          });
+          bindValueWriter(element, path);
+          continue;
+        }
+        if (signalName.startsWith("attr:")) {
+          const attr = signalName.slice("attr:".length);
           const path = element.getAttribute(name);
           bindSignal(element, `attr:${attr}:${path}`, path, (value) => updateAttribute(element, attr, value));
+          continue;
         }
-        if (name.startsWith("data-async-class:")) {
-          const className = name.slice("data-async-class:".length);
+        if (signalName.startsWith("class:")) {
+          const className = signalName.slice("class:".length);
           const path = element.getAttribute(name);
           bindSignal(element, `class:${className}:${path}`, path, (value) => {
             element.classList.toggle(className, Boolean(value));
@@ -196,13 +206,16 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
   }
 
   function bindBoundaries(scope) {
-    for (const boundary of selectAll(scope, "[data-async-boundary]")) {
+    for (const boundary of elementsIn(scope)) {
       if (renderingBoundaries.has(boundary)) {
         continue;
       }
-      const id = boundary.getAttribute("data-async-boundary");
+      const id = readAttribute(boundary, attributeConfig, "async", "boundary");
+      if (id == null) {
+        continue;
+      }
       if (!boundaryState.has(boundary)) {
-        const templates = collectBoundaryTemplates(boundary, id);
+        const templates = collectBoundaryTemplates(boundary, id, attributeConfig);
         if (Object.keys(templates).length === 0 || !signalRegistry.has(id)) {
           continue;
         }
@@ -238,20 +251,28 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
   }
 
   function runPseudoEvents(scope) {
-    for (const element of selectAll(scope, "[on\\:mount]")) {
+    for (const element of elementsIn(scope)) {
+      const ref = readAttribute(element, attributeConfig, "on", "mount");
+      if (ref == null) {
+        continue;
+      }
       if (mountedElements.has(element)) {
         continue;
       }
       mountedElements.add(element);
-      runPseudo(element, element.getAttribute("on:mount"));
+      runPseudo(element, ref);
     }
 
-    for (const element of selectAll(scope, "[on\\:visible]")) {
+    for (const element of elementsIn(scope)) {
+      const ref = readAttribute(element, attributeConfig, "on", "visible");
+      if (ref == null) {
+        continue;
+      }
       if (visibleElements.has(element)) {
         continue;
       }
       visibleElements.add(element);
-      cleanups.add(observeVisible(element, () => runPseudo(element, element.getAttribute("on:visible"))));
+      cleanups.add(observeVisible(element, () => runPseudo(element, ref)));
     }
   }
 
@@ -309,16 +330,16 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache } =
   return api;
 }
 
-function collectBoundaryTemplates(boundary, id) {
+function collectBoundaryTemplates(boundary, id, attributeConfig) {
   const templates = {};
   for (const template of [...boundary.children].filter((child) => child.tagName === "TEMPLATE")) {
-    if (template.getAttribute("data-async-loading") === id) {
+    if (readAttribute(template, attributeConfig, "async", "loading") === id) {
       templates.loading = template;
     }
-    if (template.getAttribute("data-async-ready") === id) {
+    if (readAttribute(template, attributeConfig, "async", "ready") === id) {
       templates.ready = template;
     }
-    if (template.getAttribute("data-async-error") === id) {
+    if (readAttribute(template, attributeConfig, "async", "error") === id) {
       templates.error = template;
     }
   }
@@ -358,12 +379,17 @@ function selectAll(scope, selector) {
   return elements;
 }
 
-function findBoundary(root, boundaryId) {
-  const selector = `[data-async-boundary="${String(boundaryId).replaceAll('"', '\\"')}"]`;
-  if (root?.nodeType === 1 && root.matches?.(selector)) {
-    return root;
+function elementsIn(scope) {
+  return selectAll(scope, "*");
+}
+
+function findBoundary(root, boundaryId, attributeConfig) {
+  for (const element of elementsIn(root)) {
+    if (readAttribute(element, attributeConfig, "async", "boundary") === String(boundaryId)) {
+      return element;
+    }
   }
-  return root?.querySelector?.(selector);
+  return null;
 }
 
 function toFragment(value, documentRef) {

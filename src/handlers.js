@@ -4,6 +4,7 @@ import {
   resolveServerCommandArguments,
   unwrapServerResult
 } from "./server.js";
+import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
 const builtInTokens = new Set(["preventDefault", "stopPropagation", "stopImmediatePropagation"]);
 const builtInHandlers = {
@@ -18,10 +19,12 @@ const builtInHandlers = {
   }
 };
 
-export function createHandlerRegistry(initialMap = {}) {
-  const handlers = new Map();
+export function createHandlerRegistry(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "handler";
+  const handlers = registryStore._map(type);
 
-  const registry = {
+  const registry = attachRegistryInspection({
     register(id, fn) {
       assertId(id);
       if (typeof fn !== "function") {
@@ -90,12 +93,28 @@ export function createHandlerRegistry(initialMap = {}) {
       }
 
       return results;
-    }
-  };
+    },
 
-  registry.registerMany(builtInHandlers);
+    _adoptMany() {
+      return registry;
+    }
+  }, registryStore, type);
+
+  registerBuiltIns(registry, handlers);
   registry.registerMany(initialMap);
   return registry;
+}
+
+function registerBuiltIns(registry, handlers) {
+  for (const [id, fn] of Object.entries(builtInHandlers)) {
+    if (!handlers.has(id)) {
+      registry.register(id, fn);
+      continue;
+    }
+    if (handlers.get(id) !== fn) {
+      throw new Error(`Handler "${id}" is already registered.`);
+    }
+  }
 }
 
 export function parseHandlerRef(ref) {

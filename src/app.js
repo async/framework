@@ -6,17 +6,21 @@ import { createPartialRegistry } from "./partials.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createServerRegistry } from "./server.js";
 import { createSignal, createSignalRegistry } from "./signals.js";
+import { createRegistryStore } from "./registry-store.js";
+import { attributeName, normalizeAttributeConfig } from "./attributes.js";
 
 const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component"]);
 
 export function defineApp(initial) {
-  const declarations = emptyDeclarations();
+  const registry = createRegistryStore(undefined, { target: "browser" });
   const runtimes = new Set();
 
   const app = {
+    registry,
+
     use(typeOrModule, entries) {
       const normalized = normalizeUse(typeOrModule, entries);
-      appendDeclarations(declarations, normalized);
+      appendDeclarations(registry, normalized);
       for (const runtime of runtimes) {
         runtime._applyUse(normalized);
       }
@@ -24,7 +28,7 @@ export function defineApp(initial) {
     },
 
     snapshot() {
-      return cloneDeclarations(declarations);
+      return registry.rawSnapshot();
     },
 
     start(options = {}) {
@@ -53,15 +57,16 @@ export function defineApp(initial) {
 export function createApp(appOrDefinition = Async, options = {}) {
   const app = isAppHub(appOrDefinition) ? appOrDefinition : defineApp(appOrDefinition ?? {});
   const target = options.target ?? "browser";
-  const snapshot = app.snapshot();
-  const signals = options.signals ?? createSignalRegistry(snapshot.signal);
-  const handlers = options.handlers ?? createHandlerRegistry(snapshot.handler);
-  const serverCache = createCacheRegistry(snapshot.cache.server);
-  const browserCache = createCacheRegistry(snapshot.cache.browser);
-  const server = options.server ?? createServerRegistry(snapshot.server);
-  const partials = options.partials ?? createPartialRegistry(snapshot.partial);
-  const routes = options.routes ?? createRouteRegistry(snapshot.route);
-  const components = options.components ?? createComponentRegistry(snapshot.component);
+  const attributes = normalizeAttributeConfig(options.attributes);
+  const registry = options.registry ?? app.registry.view({ target });
+  const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal" });
+  const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler" });
+  const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
+  const browserCache = createCacheRegistry(undefined, { registry, type: "cache.browser" });
+  const server = options.server ?? createServerRegistry(undefined, { registry, type: "server" });
+  const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial" });
+  const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
+  const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component" });
   let loader = options.loader;
   let router = options.router;
   let detach = () => {};
@@ -73,6 +78,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
   const runtime = {
     app,
+    registry,
     target,
     signals,
     handlers,
@@ -85,6 +91,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     },
     loader,
     router,
+    attributes,
 
     start() {
       assertActive();
@@ -99,7 +106,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
           signals,
           handlers,
           server,
-          cache: browserCache
+          cache: browserCache,
+          attributes
         });
         runtime.loader = loader;
 
@@ -121,7 +129,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
             cache: browserCache,
             partials,
             fetch: options.fetch,
-            routeEndpoint: options.routeEndpoint
+            routeEndpoint: options.routeEndpoint,
+            attributes
           });
           runtime.router = router;
           loader.router = router;
@@ -148,7 +157,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       const matched = routes.match(url);
       if (!matched) {
         return {
-          html: renderDocument("", { status: 404, signals, browserCache, boundary: options.boundary ?? "route" }),
+          html: renderDocument("", { status: 404, signals, browserCache, boundary: options.boundary ?? "route", attributes }),
           status: 404,
           signals: signals.snapshot(),
           cache: { browser: browserCache.snapshot() }
@@ -182,7 +191,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
       const status = result.status ?? 200;
       return {
-        html: renderDocument(result.html, { status, signals, browserCache, boundary: result.boundary ?? options.boundary ?? "route" }),
+        html: renderDocument(result.html, { status, signals, browserCache, boundary: result.boundary ?? options.boundary ?? "route", attributes }),
         status,
         signals: signals.snapshot(),
         cache: { browser: browserCache.snapshot() }
@@ -233,16 +242,25 @@ export function createApp(appOrDefinition = Async, options = {}) {
 export const Async = defineApp();
 
 function applyUseToRuntime(runtime, normalized) {
-  runtime.signals.registerMany(normalized.signal);
-  runtime.handlers.registerMany(normalized.handler);
-  if (typeof runtime.server.registerMany === "function") {
-    runtime.server.registerMany(normalized.server);
+  applyRegistryUse(runtime.signals, runtime.registry, normalized.signal);
+  applyRegistryUse(runtime.handlers, runtime.registry, normalized.handler);
+  applyRegistryUse(runtime.server, runtime.registry, normalized.server);
+  applyRegistryUse(runtime.partials, runtime.registry, normalized.partial);
+  applyRegistryUse(runtime.routes, runtime.registry, normalized.route);
+  applyRegistryUse(runtime.components, runtime.registry, normalized.component);
+  applyRegistryUse(runtime.browser.cache, runtime.registry, normalized.cache.browser);
+  applyRegistryUse(runtime.server.cache, runtime.registry, normalized.cache.server);
+}
+
+function applyRegistryUse(registry, runtimeRegistry, entries) {
+  if (!entries || Object.keys(entries).length === 0) {
+    return;
   }
-  runtime.partials.registerMany(normalized.partial);
-  runtime.routes.registerMany(normalized.route);
-  runtime.components.registerMany(normalized.component);
-  runtime.browser.cache.registerMany(normalized.cache.browser);
-  runtime.server.cache.registerMany(normalized.cache.server);
+  if (registry?.registry === runtimeRegistry) {
+    registry._adoptMany?.(entries);
+    return;
+  }
+  registry?.registerMany?.(entries);
 }
 
 function emptyDeclarations() {
@@ -267,7 +285,7 @@ function normalizeUse(typeOrModule, entries) {
     if (!registryTypes.has(typeOrModule)) {
       throw new Error(`Unknown Async registry type "${typeOrModule}".`);
     }
-    normalized[typeOrModule] = { ...(entries ?? {}) };
+    normalized[typeOrModule] = normalizeEntries(typeOrModule, entries);
     return normalized;
   }
 
@@ -284,7 +302,7 @@ function normalizeUse(typeOrModule, entries) {
     if (!registryTypes.has(type)) {
       throw new Error(`Unknown Async registry type "${type}".`);
     }
-    normalized[type] = { ...(value ?? {}) };
+    normalized[type] = normalizeEntries(type, value);
   }
 
   return normalized;
@@ -292,38 +310,20 @@ function normalizeUse(typeOrModule, entries) {
 
 function appendDeclarations(target, source) {
   for (const type of registryTypes) {
-    addEntries(target[type], source[type], type);
+    addEntries(target, type, source[type]);
   }
-  addEntries(target.cache.browser, source.cache.browser, "cache.browser");
-  addEntries(target.cache.server, source.cache.server, "cache.server");
+  addEntries(target, "cache.browser", source.cache.browser);
+  addEntries(target, "cache.server", source.cache.server);
 }
 
-function addEntries(target, source, label) {
+function addEntries(registry, type, source) {
   for (const [id, value] of Object.entries(source ?? {})) {
-    if (Object.hasOwn(target, id)) {
-      throw new Error(`${label} "${id}" is already registered.`);
-    }
-    target[id] = value;
+    registry.register(type, id, value);
   }
-}
-
-function cloneDeclarations(source) {
-  return {
-    signal: { ...source.signal },
-    handler: { ...source.handler },
-    server: { ...source.server },
-    partial: { ...source.partial },
-    route: { ...source.route },
-    component: { ...source.component },
-    cache: {
-      browser: { ...source.cache.browser },
-      server: { ...source.cache.server }
-    }
-  };
 }
 
 function isAppHub(value) {
-  return Boolean(value && typeof value.use === "function" && typeof value.snapshot === "function");
+  return Boolean(value && typeof value.use === "function" && typeof value.snapshot === "function" && value.registry);
 }
 
 function applySnapshot(signals, browserCache, snapshot = {}) {
@@ -353,6 +353,24 @@ function attachServerCache(server, cache) {
   }
 }
 
+function normalizeEntries(type, entries = {}) {
+  if (type !== "signal") {
+    return { ...(entries ?? {}) };
+  }
+  const normalized = {};
+  for (const [id, value] of Object.entries(entries ?? {})) {
+    normalized[id] = normalizeSignalDeclaration(value);
+  }
+  return normalized;
+}
+
+function normalizeSignalDeclaration(value) {
+  if (value && typeof value === "object" && typeof value.subscribe === "function") {
+    return value;
+  }
+  return createSignal(value);
+}
+
 function isLocalServerRegistry(server) {
   return typeof server?.registerMany === "function";
 }
@@ -361,14 +379,16 @@ function shouldStartRouter(routes, options) {
   return Boolean(options.routerOptions || options.mode || routes.entries().length > 0);
 }
 
-function renderDocument(routeHtml, { signals, browserCache, boundary }) {
+function renderDocument(routeHtml, { signals, browserCache, boundary, attributes }) {
   const snapshot = {
     signals: signals.snapshot(),
     cache: {
       browser: browserCache.snapshot()
     }
   };
-  return `<section data-async-boundary="${escapeAttribute(boundary)}">${routeHtml ?? ""}</section><script type="application/json" data-async-snapshot>${escapeScriptJson(snapshot)}</script>`;
+  const boundaryAttr = attributeName(attributes, "async", "boundary");
+  const snapshotAttr = attributeName(attributes, "async", "snapshot");
+  return `<section ${boundaryAttr}="${escapeAttribute(boundary)}">${routeHtml ?? ""}</section><script type="application/json" ${snapshotAttr}>${escapeScriptJson(snapshot)}</script>`;
 }
 
 function escapeAttribute(value) {

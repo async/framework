@@ -1,4 +1,5 @@
 import { asyncSignal as createAsyncSignal, isAsyncSignal } from "./async-signal.js";
+import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
 const signalKind = Symbol.for("@async/framework.signal");
 const computedKind = Symbol.for("@async/framework.computed");
@@ -116,12 +117,15 @@ export function effect(fn) {
   };
 }
 
-export function createSignalRegistry(initialMap = {}) {
-  const entries = new Map();
+export function createSignalRegistry(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "signal";
+  const entries = registryStore._map(type);
   const registryCleanups = new Set();
   const runtimeContext = {};
+  const boundEntries = new Set();
 
-  const registry = {
+  const registry = attachRegistryInspection({
     register(id, signalLike) {
       assertId(id);
       if (entries.has(id)) {
@@ -129,12 +133,7 @@ export function createSignalRegistry(initialMap = {}) {
       }
       const entry = normalizeSignal(signalLike);
       entries.set(id, entry);
-      if (typeof entry._bindRegistry === "function") {
-        const cleanup = entry._bindRegistry(registry, id);
-        if (typeof cleanup === "function") {
-          registryCleanups.add(cleanup);
-        }
-      }
+      bindEntry(id, entry);
       return registry.ref(id);
     },
 
@@ -289,11 +288,34 @@ export function createSignalRegistry(initialMap = {}) {
 
     _context() {
       return runtimeContext;
-    }
-  };
+    },
 
+    _adoptMany(map = {}) {
+      for (const id of Object.keys(map ?? {})) {
+        if (entries.has(id)) {
+          bindEntry(id, entries.get(id));
+        }
+      }
+      return registry;
+    }
+  }, registryStore, type);
+
+  for (const [id, entry] of entries) {
+    bindEntry(id, entry);
+  }
   registry.registerMany(initialMap);
   return registry;
+
+  function bindEntry(id, entry) {
+    if (boundEntries.has(id) || typeof entry?._bindRegistry !== "function") {
+      return;
+    }
+    boundEntries.add(id);
+    const cleanup = entry._bindRegistry(registry, id);
+    if (typeof cleanup === "function") {
+      registryCleanups.add(cleanup);
+    }
+  }
 }
 
 function normalizeSignal(signalLike) {

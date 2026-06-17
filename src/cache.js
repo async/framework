@@ -1,3 +1,5 @@
+import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
+
 const cacheDefinitionKind = Symbol.for("@async/framework.cacheDefinition");
 
 export function defineCache(options = {}) {
@@ -9,11 +11,12 @@ export function defineCache(options = {}) {
   };
 }
 
-export function createCacheRegistry(initialMap = {}, { now = () => Date.now() } = {}) {
-  const definitions = new Map();
-  const entries = new Map();
+export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), registry, type = "cache.browser" } = {}) {
+  const registryStore = registry ?? createRegistryStore();
+  const definitions = registryStore._map(type);
+  const entries = registryStore._map(`${type}.entries`);
 
-  const registry = {
+  const registryApi = attachRegistryInspection({
     register(id, definition = defineCache()) {
       assertId(id);
       const normalized = normalizeDefinition(definition);
@@ -26,9 +29,9 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now() } 
 
     registerMany(map) {
       for (const [id, definition] of Object.entries(map ?? {})) {
-        registry.register(id, definition);
+        registryApi.register(id, definition);
       }
-      return registry;
+      return registryApi;
     },
 
     resolve(id) {
@@ -64,12 +67,12 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now() } 
       if (typeof fn !== "function") {
         throw new TypeError("cache.getOrSet(key, fn) requires a function.");
       }
-      const cached = registry.get(key);
+      const cached = registryApi.get(key);
       if (cached !== undefined) {
         return cached;
       }
       const value = await fn();
-      registry.set(key, value, options);
+      registryApi.set(key, value, options);
       return value;
     },
 
@@ -81,20 +84,20 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now() } 
     clear(prefix) {
       if (prefix === undefined) {
         entries.clear();
-        return registry;
+        return registryApi;
       }
       for (const key of [...entries.keys()]) {
         if (key.startsWith(prefix)) {
           entries.delete(key);
         }
       }
-      return registry;
+      return registryApi;
     },
 
     snapshot() {
       const snapshot = {};
       for (const [key] of entries) {
-        const value = registry.get(key);
+        const value = registryApi.get(key);
         if (value !== undefined) {
           snapshot[key] = value;
         }
@@ -104,14 +107,26 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now() } 
 
     restore(snapshot = {}) {
       for (const [key, value] of Object.entries(snapshot ?? {})) {
-        registry.set(key, value);
+        registryApi.set(key, value);
       }
-      return registry;
-    }
-  };
+      return registryApi;
+    },
 
-  registry.registerMany(initialMap);
-  return registry;
+    entryKeys() {
+      return [...entries.keys()];
+    },
+
+    entryEntries() {
+      return registryStore.entries(`${type}.entries`);
+    },
+
+    _adoptMany() {
+      return registryApi;
+    }
+  }, registryStore, type);
+
+  registryApi.registerMany(initialMap);
+  return registryApi;
 
   function resolvePolicy(key, explicitId) {
     if (explicitId !== undefined) {

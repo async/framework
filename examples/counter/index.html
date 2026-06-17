@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <title>AsyncLoader Counter</title>
   </head>
-  <body data-async-container>
+  <body async:container>
     <main>
-      <p>Count: <strong data-async-text="counter.count"></strong></p>
+      <p>Count: <strong signal:text="counter.count"></strong></p>
       <button type="button" on:click="counter.decrement">-</button>
       <button type="button" on:click="counter.increment">+</button>
     </main>

@@ -6,7 +6,7 @@
     <title>AsyncLoader Server Call</title>
   </head>
   <body>
-    <main data-async-container>
+    <main async:container>
       <form on:submit="preventDefault; server.serverCall.products.save(serverCall.productId, $form)">
         <label>
           Title
@@ -14,7 +14,7 @@
         </label>
         <button type="submit">Save</button>
       </form>
-      <p>Saved: <strong data-async-text="serverCall.savedTitle"></strong></p>
+      <p>Saved: <strong signal:text="serverCall.savedTitle"></strong></p>
     </main>
     <script type="module" src="./main.js"></script>
   </body>

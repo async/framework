@@ -19,7 +19,7 @@ test("Async.use(type, entries) before start registers app runtime pieces", async
   const { document } = window;
   document.body.innerHTML = `
     <button on:click="increment">+</button>
-    <output data-async-text="count"></output>
+    <output signal:text="count"></output>
   `;
   const app = defineApp();
   app.use("signal", {
@@ -44,7 +44,7 @@ test("Async.use(moduleObject) and late app.use patch a live runtime", async () =
   const { document } = window;
   document.body.innerHTML = `
     <button on:click="late">Late</button>
-    <output data-async-text="ready"></output>
+    <output signal:text="ready"></output>
   `;
   const app = defineApp({
     signal: {
@@ -73,7 +73,7 @@ test("runtime.use delegates through the same app hub", async () => {
   const { document } = window;
   document.body.innerHTML = `
     <button on:click="fromRuntime">Run</button>
-    <output data-async-text="status"></output>
+    <output signal:text="status"></output>
   `;
   const app = defineApp({
     signal: {
@@ -100,7 +100,7 @@ test("Async singleton can start an app and expose the latest runtime", async () 
   const window = new Window();
   const { document } = window;
   const signalId = `asyncSingleton${Date.now()}`;
-  document.body.innerHTML = `<output data-async-text="${signalId}"></output>`;
+  document.body.innerHTML = `<output signal:text="${signalId}"></output>`;
 
   Async.use("signal", {
     [signalId]: createSignal("singleton")
@@ -169,7 +169,7 @@ test("server commands receive server cache while handlers receive browser cache"
   const { document } = window;
   document.body.innerHTML = `
     <button on:click="commandCache.local; server.commandCache.save(commandCache.id)">Save</button>
-    <output data-async-text="commandCache.status"></output>
+    <output signal:text="commandCache.status"></output>
   `;
   const app = defineApp({
     signal: {
@@ -285,14 +285,42 @@ test("SSR render serializes signals and browser cache, never server cache", asyn
   assert.deepEqual(response.cache.browser["product:sku-1"], { title: "Keyboard" });
   assert.equal(response.cache.server, undefined);
   assert.doesNotMatch(response.html, /do-not-ship|secret:token/);
+  assert.match(response.html, /async:snapshot/);
+  runtime.destroy();
+});
+
+test("SSR render uses configured async attributes for boundary and snapshot", async () => {
+  const app = defineApp({
+    partial: {
+      "home.page"() {
+        return "<h1>Home</h1>";
+      }
+    },
+    route: {
+      "/": defineRoute("home.page")
+    }
+  });
+  const runtime = createApp(app, {
+    target: "server",
+    attributes: {
+      async: "data-async-",
+      signal: "data-signal-",
+      on: "data-on-"
+    }
+  });
+  const response = await runtime.render("/");
+
+  assert.match(response.html, /data-async-boundary="route"/);
   assert.match(response.html, /data-async-snapshot/);
+  assert.doesNotMatch(response.html, /async:snapshot/);
+
   runtime.destroy();
 });
 
 test("browser runtime restores SSR signal and browser cache snapshots", () => {
   const window = new Window();
   const { document } = window;
-  document.body.innerHTML = `<output data-async-text="productId"></output>`;
+  document.body.innerHTML = `<output signal:text="productId"></output>`;
   const app = defineApp({
     signal: {
       productId: createSignal(null)
@@ -327,7 +355,7 @@ test("browser runtime restores SSR signal and browser cache snapshots", () => {
 test("app runtime starts a CSR router from registered routes and partials", async () => {
   const window = new Window({ url: "http://app.test/products/sku-1" });
   const { document } = window;
-  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
   const app = defineApp({
     partial: {
       "csrApp.product"({ id }) {

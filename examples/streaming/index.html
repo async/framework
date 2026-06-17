@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <title>AsyncLoader Streaming</title>
   </head>
-  <body data-async-container>
+  <body async:container>
     <main>
       <button type="button" on:click="streamingDemo.streamProduct">Stream product</button>
-      <section data-async-boundary="product">
+      <section async:boundary="product">
         <p>Waiting for streamed HTML...</p>
       </section>
     </main>

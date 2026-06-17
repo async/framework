@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 - 2026-06-17
+
+- Added a shared registry store behind `Async`, app runtimes, and concrete
+  registries so apps can inspect signals, handlers, server ids, routes,
+  partials, components, and split cache state from one place.
+- Added configurable HTML attribute prefixes, with `async:*`, `signal:*`, and
+  `on:*` as the defaults plus explicit support for `data-async-*`,
+  `data-signal-*`, and `data-on-*`.
+- Declared the UNPKG package entry explicitly so the package root can be used as
+  a no-build browser ESM CDN import.
+- Documented the UNPKG import-map setup for importing `@async/framework` by
+  package name in no-build browser apps.
+
 ## 0.2.2 - 2026-06-17
 
 - Fixed release doctor validation to accept the pipeline-generated GitHub

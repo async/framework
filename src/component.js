@@ -1,4 +1,5 @@
 import { rawHtml, renderTemplate } from "./html.js";
+import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
 const componentKind = Symbol.for("@async/framework.component");
 let componentCounter = 0;
@@ -16,10 +17,12 @@ export function defineComponent(fn) {
 
 export const component = defineComponent;
 
-export function createComponentRegistry(initialMap = {}) {
-  const entries = new Map();
+export function createComponentRegistry(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "component";
+  const entries = registryStore._map(type);
 
-  const registry = {
+  const registry = attachRegistryInspection({
     register(id, Component) {
       if (typeof id !== "string" || id.length === 0) {
         throw new TypeError("Component id must be a non-empty string.");
@@ -46,8 +49,12 @@ export function createComponentRegistry(initialMap = {}) {
         throw new TypeError("Component id must be a non-empty string.");
       }
       return entries.get(id);
+    },
+
+    _adoptMany() {
+      return registry;
     }
-  };
+  }, registryStore, type);
 
   registry.registerMany(initialMap);
   return registry;

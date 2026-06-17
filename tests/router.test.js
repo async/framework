@@ -19,12 +19,12 @@ test("CSR router renders the current route partial into an empty boundary on sta
   const window = new Window({ url: "http://app.test/products/sku-1?ref=nav" });
   const { document } = window;
   document.body.innerHTML = `
-    <main data-async-container>
+    <main async:container>
       <nav>
         <a href="/">Home</a>
         <a href="/products/sku-1">Product</a>
       </nav>
-      <section data-async-boundary="route"></section>
+      <section async:boundary="route"></section>
     </main>
   `;
 
@@ -45,7 +45,7 @@ test("CSR router renders the current route partial into an empty boundary on sta
         html: html`
           <article>
             <h1 id="product-title">${id}</h1>
-            <button id="select" on:click="selectProduct" data-async-class:selected="selected">
+            <button id="select" on:click="selectProduct" signal:class:selected="selected">
               Select
             </button>
           </article>
@@ -101,7 +101,7 @@ test("CSR router renders the current route partial into an empty boundary on sta
 test("CSR router records an error when no route matches", async () => {
   const window = new Window({ url: "http://app.test/missing" });
   const { document } = window;
-  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
 
   const signals = createSignalRegistry();
   const loader = AsyncLoader({ root: document.body, signals }).start();
@@ -127,7 +127,7 @@ test("CSR router records an error when no route matches", async () => {
   assert.equal(signals.get("router.path"), "/missing");
   assert.equal(signals.get("router.route"), null);
   assert.match(signals.get("router.error").message, /No route matched \/missing/);
-  assert.equal(document.querySelector("[data-async-boundary='route']").innerHTML, "");
+  assert.equal(document.querySelector("[async\\:boundary='route']").innerHTML, "");
 
   router.destroy();
   loader.destroy();
@@ -136,7 +136,7 @@ test("CSR router records an error when no route matches", async () => {
 test("CSR router supports wildcard fallback routes", async () => {
   const window = new Window({ url: "http://app.test/unknown" });
   const { document } = window;
-  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
 
   const signals = createSignalRegistry();
   const notFoundRoute = route("notFound.page");
@@ -174,7 +174,7 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
   document.body.innerHTML = `
     <main>
       <a id="product-link" href="/products/sku-1">Product</a>
-      <section data-async-boundary="route"></section>
+      <section async:boundary="route"></section>
     </main>
   `;
 
@@ -190,7 +190,7 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
     "product.page": function ({ id }) {
       return html`
         <article>
-          <button id="select" on:click="select" data-async-class:selected="selected">
+          <button id="select" on:click="select" signal:class:selected="selected">
             ${id}
           </button>
         </article>
@@ -231,7 +231,7 @@ test("SSR-SPA router starts from existing HTML and intercepts later same-origin 
   const { document } = window;
   document.body.innerHTML = `
     <main>
-      <section data-async-boundary="route"><h1>Home</h1></section>
+      <section async:boundary="route"><h1>Home</h1></section>
       <a id="next" href="/next">Next</a>
     </main>
   `;
@@ -307,5 +307,49 @@ test("MPA router mode does not intercept link clicks", () => {
   document.querySelector("#next").dispatchEvent(event);
 
   assert.equal(event.defaultPrevented, false);
+  router.destroy();
+});
+
+test("CSR router passes custom attribute config to its owned loader", async () => {
+  const window = new Window({ url: "http://app.test/custom/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+
+  const signals = createSignalRegistry({
+    selected: signal(false)
+  });
+  const router = createRouter({
+    mode: "csr",
+    root: document.body,
+    boundary: "route",
+    attributes: {
+      async: "data-async-",
+      signal: "data-signal-",
+      on: "data-on-"
+    },
+    routes: createRouteRegistry({
+      "/custom/:id": route("custom.page")
+    }),
+    signals,
+    handlers: createHandlerRegistry({
+      select() {
+        this.signals.set("selected", true);
+      }
+    }),
+    partials: createPartialRegistry({
+      "custom.page"({ id }) {
+        return `<button id="custom-select" data-on-click="select" data-signal-class:selected="selected">${id}</button>`;
+      }
+    })
+  }).start();
+
+  await delay(0);
+
+  const button = document.querySelector("#custom-select");
+  assert.equal(button.textContent, "sku-1");
+  button.click();
+  await delay(0);
+  assert.equal(button.classList.contains("selected"), true);
+
   router.destroy();
 });

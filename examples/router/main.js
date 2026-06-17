@@ -26,14 +26,14 @@ Async.use({
     "routerDemo.home"() {
       return html`
         <h1>Home</h1>
-        <p>Cart: <strong data-async-text="routerDemo.cartCount"></strong></p>
+        <p>Cart: <strong signal:text="routerDemo.cartCount"></strong></p>
       `;
     },
     "routerDemo.product.page"({ id }) {
       return html`
         <article>
           <h1>Product ${id}</h1>
-          <p>Cart: <strong data-async-text="routerDemo.cartCount"></strong></p>
+          <p>Cart: <strong signal:text="routerDemo.cartCount"></strong></p>
           <button type="button" on:click="server.routerDemo.cart.add(routerDemo.productId)">Add</button>
         </article>
       `;

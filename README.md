@@ -10,9 +10,9 @@ pnpm add @async/framework
 ```
 
 ```html
-<main data-async-container>
+<main async:container>
   <button type="button" on:click="decrement">-</button>
-  <strong data-async-text="count"></strong>
+  <strong signal:text="count"></strong>
   <button type="button" on:click="increment">+</button>
 </main>
 <script type="module" src="./main.js"></script>
@@ -69,12 +69,78 @@ pnpm add @async/framework
 The package is ESM-only and supports Node.js 24 and newer for tests, examples,
 and package lifecycle tooling. Browser consumers import ESM directly.
 
+## CDN
+
+The package is browser-ready ESM and can be loaded from UNPKG without a build
+step. Use `@latest` for quick prototypes, and pin an exact version in
+production:
+
+```html
+<main async:container>
+  <button type="button" on:click="increment">+</button>
+  <strong signal:text="count"></strong>
+</main>
+
+<script type="module">
+  import {
+    Async,
+    createSignal
+  } from "https://unpkg.com/@async/framework@latest";
+
+  Async.use({
+    signal: {
+      count: createSignal(0)
+    },
+    handler: {
+      increment() {
+        this.signals.update("count", (count) => count + 1);
+      }
+    }
+  });
+
+  Async.start({ root: document });
+</script>
+```
+
+You can also use an import map so app code imports `@async/framework` by name:
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@async/framework": "https://unpkg.com/@async/framework@latest"
+  }
+}
+</script>
+
+<script type="module">
+  import {
+    Async,
+    createSignal
+  } from "@async/framework";
+
+  Async.use({
+    signal: {
+      count: createSignal(0)
+    },
+    handler: {
+      increment() {
+        this.signals.update("count", (count) => count + 1);
+      }
+    }
+  });
+
+  Async.start({ root: document });
+</script>
+```
+
 ## Core API
 
 ```js
 import {
   AsyncLoader,
   Async,
+  attributeName,
   asyncSignal,
   createApp,
   createCacheRegistry,
@@ -84,11 +150,13 @@ import {
   createSignal,
   createHandlerRegistry,
   createPartialRegistry,
+  createRegistryStore,
   createRouteRegistry,
   createRouter,
   createServerProxy,
   createServerRegistry,
   createSignalRegistry,
+  defineAttributeConfig,
   defineApp,
   defineCache,
   defineComponent,
@@ -170,6 +238,50 @@ Naming rules:
 Singular registry keys are canonical: `signal`, `handler`, `server`,
 `partial`, `route`, `component`, and nested `cache.browser` / `cache.server`.
 
+### Registry Inspection
+
+`Async.registry` is the global inspection surface for registered app pieces.
+Every runtime and concrete registry also points at the same backing store:
+
+```js
+Async.registry.keys("signal");
+Async.registry.entries("route");
+Async.registry.snapshot();
+
+const runtime = Async.start({ root: document });
+
+runtime.registry.keys("handler");
+runtime.signals.registry === runtime.registry;
+runtime.browser.cache.registry === runtime.registry;
+```
+
+Supported inspection types:
+
+```txt
+signal
+handler
+server
+partial
+route
+component
+cache.browser
+cache.server
+cache.browser.entries
+cache.server.entries
+```
+
+Browser runtime inspection exposes server ids as descriptors, not executable
+server functions, and does not expose server cache contents:
+
+```js
+runtime.registry.keys("server");
+runtime.registry.get("server", "products.get");
+// { id: "products.get", kind: "server" }
+
+runtime.registry.snapshot().entries.server;
+// {}
+```
+
 ### Signals
 
 ```js
@@ -249,32 +361,49 @@ AsyncLoader scans regular HTML attributes:
 
 | Attribute | Behavior |
 | --- | --- |
-| `data-async-container` | Marks a scannable app root |
+| `async:container` | Marks a scannable app root |
 | `on:click="selectProduct"` | Delegated command event |
 | `on:submit="preventDefault; save"` | Sequential command chain |
 | `on:click="server.cart.add(productId)"` | Server command with signal args |
-| `data-async-text="product.title"` | Text binding |
-| `data-async-value="productId"` | Form value binding with writeback |
-| `data-async-attr:disabled="product.$loading"` | Attribute binding |
-| `data-async-class:selected="selected"` | Class toggle |
-| `data-async-boundary="product"` | Async or streamed replacement boundary |
-| `data-async-loading="product"` | Boundary loading template |
-| `data-async-ready="product"` | Boundary ready template |
-| `data-async-error="product"` | Boundary error template |
+| `signal:text="product.title"` | Text binding |
+| `signal:value="productId"` | Form value binding with writeback |
+| `signal:attr:disabled="product.$loading"` | Attribute binding |
+| `signal:class:selected="selected"` | Class toggle |
+| `async:boundary="product"` | Async or streamed replacement boundary |
+| `async:loading="product"` | Boundary loading template |
+| `async:ready="product"` | Boundary ready template |
+| `async:error="product"` | Boundary error template |
 
 ```html
-<section data-async-boundary="product">
-  <template data-async-loading="product">
+<section async:boundary="product">
+  <template async:loading="product">
     <p>Loading...</p>
   </template>
-  <template data-async-ready="product">
-    <h1 data-async-text="product.title"></h1>
+  <template async:ready="product">
+    <h1 signal:text="product.title"></h1>
   </template>
-  <template data-async-error="product">
-    <p data-async-text="product.$error.message"></p>
+  <template async:error="product">
+    <p signal:text="product.$error.message"></p>
   </template>
 </section>
 ```
+
+The default prefixes are `async:`, `signal:`, and `on:`. You can switch to
+data attributes when a host needs that shape:
+
+```js
+Async.start({
+  root: document,
+  attributes: {
+    async: "data-async-",
+    signal: "data-signal-",
+    on: "data-on-"
+  }
+});
+```
+
+That maps to `data-async-container`, `data-on-click="save"`, and
+`data-signal-text="product.title"`.
 
 ### Command Events
 
@@ -417,13 +546,13 @@ Router modes:
 CSR startup can use an empty route boundary:
 
 ```html
-<main data-async-container>
+<main async:container>
   <nav>
     <a href="/">Home</a>
     <a href="/products/sku-1">Product</a>
   </nav>
 
-  <section data-async-boundary="route"></section>
+  <section async:boundary="route"></section>
 </main>
 ```
 
@@ -520,10 +649,10 @@ const response = await serverRuntime.render("/products/123");
 The returned HTML includes a route boundary plus a JSON snapshot:
 
 ```html
-<section data-async-boundary="route">
+<section async:boundary="route">
   <!-- server-rendered route partial -->
 </section>
-<script type="application/json" data-async-snapshot>{}</script>
+<script type="application/json" async:snapshot>{}</script>
 ```
 
 Browser activation scans the existing HTML and attaches events. It does not
@@ -558,8 +687,8 @@ const Toggle = defineComponent(function Toggle() {
     <button
       type="button"
       on:click="${toggle}"
-      data-async-class:selected="${selected.id}"
-      data-async-attr:aria-pressed="${selected.id}"
+      signal:class:selected="${selected.id}"
+      signal:attr:aria-pressed="${selected.id}"
     >
       Toggle
     </button>
@@ -597,7 +726,7 @@ loader.swap(
   "product",
   `
     <article>
-      <h1 data-async-text="product.title"></h1>
+      <h1 signal:text="product.title"></h1>
       <button type="button" on:click="selectProduct">Select</button>
     </article>
   `

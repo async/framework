@@ -6,6 +6,7 @@ import {
   createHandlerRegistry,
   createServerRegistry,
   createSignalRegistry,
+  defineAttributeConfig,
   delay,
   signal
 } from "../src/index.js";
@@ -14,10 +15,10 @@ test("AsyncLoader binds text, values, attributes, classes, and input writes", as
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
-    <main data-async-container>
-      <span data-async-text="product.title"></span>
-      <input data-async-value="productId">
-      <button data-async-attr:disabled="product.$loading" data-async-class:selected="selected"></button>
+    <main async:container>
+      <span signal:text="product.title"></span>
+      <input signal:value="productId">
+      <button signal:attr:disabled="product.$loading" signal:class:selected="selected"></button>
     </main>
   `;
 
@@ -49,14 +50,59 @@ test("AsyncLoader binds text, values, attributes, classes, and input writes", as
   loader.destroy();
 });
 
+test("AsyncLoader supports configured data attribute prefixes", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main data-async-container>
+      <button data-on-click="select" data-signal-attr:disabled="product.$loading" data-signal-class:selected="selected">
+        <span data-signal-text="product.title"></span>
+      </button>
+      <input data-signal-value="productId">
+      <section data-async-boundary="product"></section>
+    </main>
+  `;
+
+  const attributes = defineAttributeConfig({
+    async: "data-async-",
+    signal: "data-signal-",
+    on: "data-on-"
+  });
+  const signals = createSignalRegistry({
+    productId: signal("sku-1"),
+    product: signal({ title: "Keyboard" }),
+    selected: signal(false)
+  });
+  const loader = AsyncLoader({
+    root: document.body,
+    signals,
+    attributes,
+    handlers: createHandlerRegistry({
+      select() {
+        this.signals.set("selected", true);
+        this.loader.swap("product", `<p data-signal-text="productId"></p>`);
+      }
+    })
+  }).start();
+
+  assert.equal(document.querySelector("span").textContent, "Keyboard");
+  document.querySelector("button").click();
+  await delay(0);
+
+  assert.equal(document.querySelector("button").classList.contains("selected"), true);
+  assert.equal(document.querySelector("p").textContent, "sku-1");
+
+  loader.destroy();
+});
+
 test("AsyncLoader renders async boundaries through loading, ready, and error templates", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
-    <section data-async-boundary="product">
-      <template data-async-loading="product"><p class="loading">Loading</p></template>
-      <template data-async-ready="product"><h1 data-async-text="product.title"></h1></template>
-      <template data-async-error="product"><p class="error" data-async-text="product.$error.message"></p></template>
+    <section async:boundary="product">
+      <template async:loading="product"><p class="loading">Loading</p></template>
+      <template async:ready="product"><h1 signal:text="product.title"></h1></template>
+      <template async:error="product"><p class="error" signal:text="product.$error.message"></p></template>
     </section>
   `;
 
@@ -98,7 +144,7 @@ test("AsyncLoader runs semicolon commands with server calls from DOM events", as
       <input name="title" value="Keyboard">
       <button type="submit">Save</button>
     </form>
-    <output data-async-text="savedTitle"></output>
+    <output signal:text="savedTitle"></output>
   `;
 
   const signals = createSignalRegistry({
@@ -134,7 +180,7 @@ test("boundary swap rescans inserted HTML and scanned handlers still work", asyn
   document.body.innerHTML = `
     <main>
       <button id="stream" on:click="stream">Stream</button>
-      <section data-async-boundary="product"></section>
+      <section async:boundary="product"></section>
     </main>
   `;
 
@@ -150,7 +196,7 @@ test("boundary swap rescans inserted HTML and scanned handlers still work", asyn
       stream() {
         this.loader.swap(
           "product",
-          `<button id="select" on:click="select" data-async-class:selected="selected" data-async-text="title"></button>`
+          `<button id="select" on:click="select" signal:class:selected="selected" signal:text="title"></button>`
         );
       },
       select() {
