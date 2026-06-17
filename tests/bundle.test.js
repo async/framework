@@ -84,10 +84,15 @@ test("root UMD bundle rejects namespace conflicts before assignment", () => {
   );
 });
 
-test("root framework.ts facade re-exports the public runtime API", async () => {
-  const tsFacade = await import("../framework.ts");
+test("root framework.ts is a bundled TypeScript entrypoint", async () => {
+  const contents = readFileSync(new URL("../framework.ts", import.meta.url), "utf8");
+  const tsBundle = await import("../framework.ts");
 
-  assert.deepEqual(Object.keys(tsFacade).sort(), Object.keys(source).sort());
+  assert.deepEqual(Object.keys(tsBundle).sort(), Object.keys(source).sort());
+  assert.doesNotMatch(contents, /^\s*import\s/m);
+  assert.doesNotMatch(contents, /from\s+["']\.\//);
+  assert.match(contents, /Bundled TypeScript source entry/);
+  assert.match(contents, /^export\s+{/m);
 });
 
 test("root framework.d.ts declares the public runtime API", () => {
