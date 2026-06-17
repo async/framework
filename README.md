@@ -375,34 +375,81 @@ const partials = createPartialRegistry({
 });
 ```
 
-The router swaps route partials into a boundary:
+The router swaps route partials into a boundary. `csr` starts from an empty
+route boundary, renders the current route partial locally, then keeps future
+navigation local too:
 
 ```js
-const router = createRouter({
-  mode: "ssr-spa",
-  root: document,
-  boundary: "route",
-  routes: createRouteRegistry({
+Async.use({
+  partial: {
+    home() {
+      return html`<h1>Home</h1>`;
+    },
+    "product.page"({ id }) {
+      return html`<h1>Product ${id}</h1>`;
+    }
+  },
+  route: {
     "/": defineRoute("home"),
     "/products/:id": defineRoute("product.page")
-  }),
-  loader,
-  signals,
-  server,
-  partials
-}).start();
+  }
+});
+
+Async.start({
+  mode: "csr",
+  boundary: "route",
+  root: document
+});
 ```
 
 `route(...)` remains a compatibility alias for `defineRoute(...)`.
 
 Router modes:
 
-| Mode | Behavior |
+| Mode | Initial route | Later navigation |
 | --- | --- |
-| `spa` | Intercepts same-origin links and GET forms, then swaps route HTML |
-| `ssr-spa` | Starts from server HTML, then uses SPA navigation |
-| `mpa` | Does not intercept navigation |
-| `ssr` | Leaves navigation to the server document flow |
+| `csr` | Client renders local partial into boundary | Client renders local partial and swaps |
+| `spa` | Existing HTML may already contain route | Client renders local partial and swaps |
+| `ssr` | Server rendered document | Browser navigates normally |
+| `ssr-spa` | Server rendered document/route boundary | Fetch route partial, apply effects, swap |
+| `mpa` | Any document source | Browser navigates normally |
+
+CSR startup can use an empty route boundary:
+
+```html
+<main data-async-container>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/products/sku-1">Product</a>
+  </nav>
+
+  <section data-async-boundary="route"></section>
+</main>
+```
+
+Router state lives under `router.*` signals:
+
+```txt
+router.url
+router.path
+router.params
+router.query
+router.route
+router.pending
+router.error
+```
+
+Register a wildcard route for an explicit fallback page:
+
+```js
+Async.use({
+  route: {
+    "/": defineRoute("home.page"),
+    "/products/:id": defineRoute("product.page"),
+    "*": defineRoute("notFound.page")
+  }
+});
+```
 
 ### Cache
 
@@ -569,7 +616,7 @@ rescans the inserted fragment.
 | [`examples/components`](./examples/components) | Scoped fragment components and lifecycle hooks |
 | [`examples/streaming`](./examples/streaming) | Boundary swaps with rescanned handlers |
 | [`examples/server-call`](./examples/server-call) | Command events calling server functions |
-| [`examples/router`](./examples/router) | SSR-SPA route boundary swaps |
+| [`examples/router`](./examples/router) | CSR first render and local route boundary swaps |
 | [`examples/partials`](./examples/partials) | Server-rendered partial fragments |
 | [`examples/cache`](./examples/cache) | Browser/server cache declarations |
 | [`examples/ssr`](./examples/ssr) | Server render output and browser activation snapshot |

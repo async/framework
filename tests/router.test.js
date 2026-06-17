@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   AsyncLoader,
+  createCacheRegistry,
   createHandlerRegistry,
   createPartialRegistry,
   createRouteRegistry,
@@ -13,6 +14,159 @@ import {
   route,
   signal
 } from "../src/index.js";
+
+test("CSR router renders the current route partial into an empty boundary on start", async () => {
+  const window = new Window({ url: "http://app.test/products/sku-1?ref=nav" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <main data-async-container>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/products/sku-1">Product</a>
+      </nav>
+      <section data-async-boundary="route"></section>
+    </main>
+  `;
+
+  const signals = createSignalRegistry({
+    selected: signal(false),
+    loaded: signal(false)
+  });
+  const handlers = createHandlerRegistry({
+    selectProduct() {
+      this.signals.set("selected", true);
+    }
+  });
+  const cache = createCacheRegistry();
+  const productRoute = route("product.page");
+  const partials = createPartialRegistry({
+    "product.page": function ({ id }) {
+      return {
+        html: html`
+          <article>
+            <h1 id="product-title">${id}</h1>
+            <button id="select" on:click="selectProduct" data-async-class:selected="selected">
+              Select
+            </button>
+          </article>
+        `,
+        signals: {
+          loaded: true
+        },
+        cache: {
+          browser: {
+            [`product:${id}`]: { id }
+          }
+        }
+      };
+    }
+  });
+  const loader = AsyncLoader({ root: document.body, signals, handlers, cache }).start();
+  const router = createRouter({
+    mode: "csr",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": productRoute
+    }),
+    loader,
+    signals,
+    handlers,
+    cache,
+    partials
+  }).start();
+
+  assert.equal(signals.get("router.pending"), true);
+  assert.equal(signals.get("router.path"), "/products/sku-1");
+  assert.deepEqual(signals.get("router.params"), { id: "sku-1" });
+  assert.deepEqual(signals.get("router.query"), { ref: "nav" });
+  assert.equal(signals.get("router.route"), productRoute);
+  assert.equal(signals.get("router.error"), null);
+
+  await delay(0);
+
+  assert.equal(signals.get("router.pending"), false);
+  assert.equal(signals.get("loaded"), true);
+  assert.deepEqual(cache.get("product:sku-1"), { id: "sku-1" });
+  assert.equal(document.querySelector("#product-title").textContent, "sku-1");
+
+  document.querySelector("#select").click();
+  await delay(0);
+  assert.equal(document.querySelector("#select").classList.contains("selected"), true);
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("CSR router records an error when no route matches", async () => {
+  const window = new Window({ url: "http://app.test/missing" });
+  const { document } = window;
+  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+
+  const signals = createSignalRegistry();
+  const loader = AsyncLoader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "csr",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/": route("home")
+    }),
+    loader,
+    signals,
+    partials: createPartialRegistry({
+      home() {
+        return "<h1>Home</h1>";
+      }
+    })
+  }).start();
+
+  await delay(0);
+
+  assert.equal(signals.get("router.pending"), false);
+  assert.equal(signals.get("router.path"), "/missing");
+  assert.equal(signals.get("router.route"), null);
+  assert.match(signals.get("router.error").message, /No route matched \/missing/);
+  assert.equal(document.querySelector("[data-async-boundary='route']").innerHTML, "");
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("CSR router supports wildcard fallback routes", async () => {
+  const window = new Window({ url: "http://app.test/unknown" });
+  const { document } = window;
+  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+
+  const signals = createSignalRegistry();
+  const notFoundRoute = route("notFound.page");
+  const loader = AsyncLoader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "csr",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "*": notFoundRoute
+    }),
+    loader,
+    signals,
+    partials: createPartialRegistry({
+      "notFound.page"() {
+        return `<h1 id="not-found">Not found</h1>`;
+      }
+    })
+  }).start();
+
+  await delay(0);
+
+  assert.equal(document.querySelector("#not-found").textContent, "Not found");
+  assert.equal(signals.get("router.route"), notFoundRoute);
+  assert.equal(signals.get("router.error"), null);
+
+  router.destroy();
+  loader.destroy();
+});
 
 test("SPA router swaps route boundaries and rescans inserted handlers", async () => {
   const window = new Window({ url: "http://app.test/" });
@@ -83,11 +237,7 @@ test("SSR-SPA router starts from existing HTML and intercepts later same-origin 
   `;
 
   const signals = createSignalRegistry();
-  const partials = createPartialRegistry({
-    next() {
-      return `<h1 id="next-page">Next</h1>`;
-    }
-  });
+  let requestedUrl;
   const loader = AsyncLoader({ root: document.body, signals }).start();
   const router = createRouter({
     mode: "ssr-spa",
@@ -99,7 +249,19 @@ test("SSR-SPA router starts from existing HTML and intercepts later same-origin 
     }),
     loader,
     signals,
-    partials
+    partials: createPartialRegistry({
+      next() {
+        throw new Error("ssr-spa should fetch route HTML instead of rendering local partials.");
+      }
+    }),
+    fetch: async (url) => {
+      requestedUrl = url;
+      return new Response(JSON.stringify({ html: `<h1 id="next-page">Next</h1>` }), {
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }
   }).start();
 
   assert.equal(document.querySelector("h1").textContent, "Home");
@@ -109,9 +271,27 @@ test("SSR-SPA router starts from existing HTML and intercepts later same-origin 
 
   assert.equal(document.querySelector("#next-page").textContent, "Next");
   assert.equal(signals.get("router.path"), "/next");
+  assert.equal(signals.get("router.route").partial, "next");
+  assert.match(requestedUrl, /\/__async\/route\?to=/);
 
   router.destroy();
   loader.destroy();
+});
+
+test("SSR router mode does not intercept link clicks", () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<a id="next" href="/next">Next</a>`;
+  const router = createRouter({
+    mode: "ssr",
+    root: document.body
+  }).start();
+
+  const event = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#next").dispatchEvent(event);
+
+  assert.equal(event.defaultPrevented, false);
+  router.destroy();
 });
 
 test("MPA router mode does not intercept link clicks", () => {

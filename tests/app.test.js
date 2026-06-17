@@ -323,3 +323,34 @@ test("browser runtime restores SSR signal and browser cache snapshots", () => {
   assert.deepEqual(runtime.browser.cache.get("product:sku-1"), { title: "Keyboard" });
   runtime.destroy();
 });
+
+test("app runtime starts a CSR router from registered routes and partials", async () => {
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section data-async-boundary="route"></section>`;
+  const app = defineApp({
+    partial: {
+      "csrApp.product"({ id }) {
+        return `<h1 id="csr-product">${id}</h1>`;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("csrApp.product")
+    }
+  });
+
+  const runtime = createApp(app, {
+    root: document.body,
+    mode: "csr",
+    boundary: "route"
+  }).start();
+
+  assert.equal(runtime.signals.get("router.pending"), true);
+  await delay(0);
+
+  assert.equal(document.querySelector("#csr-product").textContent, "sku-1");
+  assert.equal(runtime.signals.get("router.pending"), false);
+  assert.deepEqual(runtime.signals.get("router.params"), { id: "sku-1" });
+
+  runtime.destroy();
+});

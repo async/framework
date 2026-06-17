@@ -63,7 +63,7 @@ export function createRouteRegistry(initialMap = {}) {
 }
 
 export function createRouter({
-  mode = "spa",
+  mode = "ssr-spa",
   root,
   boundary = "route",
   routes = createRouteRegistry(),
@@ -89,6 +89,7 @@ export function createRouter({
       server,
       cache
     });
+  const ownsLoader = !loader;
   const cleanups = new Set();
   let destroyed = false;
 
@@ -108,10 +109,23 @@ export function createRouter({
       assertActive();
       loaderInstance.router = api;
       signalRegistry._setContext?.({ router: api, loader: loaderInstance, server, cache });
-      ensureRouterState(currentUrl());
-      if (mode === "spa" || mode === "ssr-spa") {
-        bindNavigation();
+      if (ownsLoader) {
+        loaderInstance.start();
       }
+      if (mode === "mpa" || mode === "ssr") {
+        updateStateFromLocation();
+        return api;
+      }
+      bindNavigation();
+      if (mode === "csr") {
+        void api.navigate(currentUrl(), {
+          replace: true,
+          initial: true,
+          source: "client"
+        }).catch(() => {});
+        return api;
+      }
+      updateStateFromLocation();
       return api;
     },
 
@@ -121,6 +135,9 @@ export function createRouter({
 
     prefetch(url) {
       assertActive();
+      if (mode === "ssr-spa" && typeof fetchImpl === "function") {
+        return fetchRoute(url, { prefetch: true });
+      }
       const matched = api.match(url);
       if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
         return partials.render(matched.route.partial, matched.params, contextFor(matched));
@@ -133,43 +150,16 @@ export function createRouter({
 
     async navigate(url, options = {}) {
       assertActive();
-      if (mode === "mpa") {
+      if (mode === "mpa" || mode === "ssr") {
         documentRef.defaultView?.location?.assign?.(url);
         return null;
       }
 
       const target = toUrl(url);
-      const matched = api.match(target);
-      setRouterState({
-        url: target.href,
-        path: target.pathname,
-        query: queryObject(target),
-        params: matched?.params ?? {},
-        route: matched?.pattern ?? null,
-        pending: true,
-        error: null
-      });
-
-      try {
-        const result = await resolveNavigation(target, matched);
-        await applyServerResult(result, {
-          signals: signalRegistry,
-          loader: loaderInstance,
-          router: api,
-          cache
-        });
-        if (result?.html != null && !result.boundary && !result.redirect) {
-          loaderInstance.swap(boundary, result.html);
-        }
-        if (options.history !== false) {
-          documentRef.defaultView?.history?.pushState?.({}, "", target.href);
-        }
-        setRouterState({ pending: false, error: null });
-        return result;
-      } catch (error) {
-        setRouterState({ pending: false, error });
-        throw error;
+      if (mode === "ssr-spa") {
+        return fetchRoutePartial(target, options);
       }
+      return renderLocalRoutePartial(target, options);
     },
 
     destroy() {
@@ -213,11 +203,65 @@ export function createRouter({
     cleanups.add(() => documentRef.defaultView?.removeEventListener?.("popstate", popstate));
   }
 
-  async function resolveNavigation(target, matched) {
-    if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
-      return partials.render(matched.route.partial, matched.params, contextFor(matched));
+  async function renderLocalRoutePartial(target, options = {}) {
+    const matched = api.match(target);
+    if (!matched) {
+      setNoRouteError(target);
+      return null;
     }
-    return fetchRoute(target.href);
+
+    setMatchedRouterState(target, matched, { pending: true, error: null });
+
+    try {
+      if (!matched.route?.partial || !partials?.resolve?.(matched.route.partial)) {
+        const error = new Error(`Route "${target.pathname}" does not have a registered partial.`);
+        setRouterState({ pending: false, error });
+        return null;
+      }
+
+      const result = await partials.render(matched.route.partial, matched.params, contextFor(matched));
+      await applyNavigationResult(result, target, options);
+      setRouterState({ pending: false, error: null });
+      return result;
+    } catch (error) {
+      setRouterState({ pending: false, error });
+      throw error;
+    }
+  }
+
+  async function fetchRoutePartial(target, options = {}) {
+    const matched = api.match(target);
+    setMatchedRouterState(target, matched, { pending: true, error: null });
+
+    try {
+      const result = await fetchRoute(target.href);
+      await applyNavigationResult(result, target, options);
+      setRouterState({ pending: false, error: null });
+      return result;
+    } catch (error) {
+      setRouterState({ pending: false, error });
+      throw error;
+    }
+  }
+
+  async function applyNavigationResult(result, target, options) {
+    await applyServerResult(result, {
+      signals: signalRegistry,
+      loader: loaderInstance,
+      router: api,
+      cache
+    });
+    if (result?.html != null && !result.boundary && !result.redirect) {
+      loaderInstance.swap(boundary, result.html);
+    }
+    if (result?.redirect || options.history === false) {
+      return;
+    }
+    if (options.replace) {
+      documentRef.defaultView?.history?.replaceState?.({}, "", target.href);
+      return;
+    }
+    documentRef.defaultView?.history?.pushState?.({}, "", target.href);
   }
 
   async function fetchRoute(url, { prefetch = false } = {}) {
@@ -256,17 +300,29 @@ export function createRouter({
     };
   }
 
-  function ensureRouterState(url) {
-    signalRegistry.ensure("router", {});
+  function updateStateFromLocation() {
+    const url = currentUrl();
     const matched = api.match(url);
+    setMatchedRouterState(url, matched, { pending: false, error: null });
+  }
+
+  function setMatchedRouterState(url, matched, patch = {}) {
+    signalRegistry.ensure("router", {});
     setRouterState({
       url: url.href,
       path: url.pathname,
       query: queryObject(url),
       params: matched?.params ?? {},
-      route: matched?.pattern ?? null,
+      route: matched?.route ?? null,
+      ...patch
+    });
+  }
+
+  function setNoRouteError(url) {
+    const error = new Error(`No route matched ${url.pathname}${url.search}`);
+    setMatchedRouterState(url, null, {
       pending: false,
-      error: null
+      error
     });
   }
 
@@ -301,6 +357,9 @@ function normalizeRoute(pattern, definition) {
 
 function compilePattern(pattern) {
   const keys = [];
+  if (pattern === "*") {
+    return { regex: /^.*$/, keys };
+  }
   if (pattern === "/") {
     return { regex: /^\/$/, keys };
   }
@@ -361,7 +420,7 @@ function escapeRegExp(value) {
 }
 
 function assertPattern(pattern) {
-  if (typeof pattern !== "string" || !pattern.startsWith("/")) {
-    throw new TypeError("Route pattern must be a path string.");
+  if (typeof pattern !== "string" || (pattern !== "*" && !pattern.startsWith("/"))) {
+    throw new TypeError("Route pattern must be a path string or \"*\".");
   }
 }

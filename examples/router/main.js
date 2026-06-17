@@ -46,7 +46,7 @@ Async.use({
 });
 
 Async.start({
-  mode: "ssr-spa",
+  mode: "csr",
   root: document,
   boundary: "route"
 });

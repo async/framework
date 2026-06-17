@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 - 2026-06-17
+
+- Added `csr` router mode for client-side first route rendering plus local SPA
+  navigation through route partial boundary swaps.
+
 ## 0.1.0 - 2026-06-17
 
 - Reset `@async/framework` to Layer 1 AsyncLoader.
