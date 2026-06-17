@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-06-17
+
 - Split browser and server entrypoints with `@async/framework/browser`,
   `@async/framework/server`, browser-only CDN bundles, and server-only local
   function registry exports.
