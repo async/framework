@@ -59,3 +59,21 @@ test("computed signals update from tracked registry reads", () => {
   signals.set("count", 4);
   assert.equal(signals.get("doubled"), 8);
 });
+
+test("signal registry unregister removes entries and stops computed updates", () => {
+  const signals = createSignalRegistry({
+    count: signal(1),
+    doubled: computed(function () {
+      return this.signals.get("count") * 2;
+    })
+  });
+
+  assert.equal(signals.get("doubled"), 2);
+  assert.equal(signals.unregister("doubled"), true);
+  assert.equal(signals.has("doubled"), false);
+
+  signals.set("count", 3);
+
+  assert.equal(signals.unregister("doubled"), false);
+  assert.throws(() => signals.get("doubled"), /Signal "doubled" is not registered/);
+});

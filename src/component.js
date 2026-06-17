@@ -1,4 +1,5 @@
-import { rawHtml, renderTemplate } from "./html.js";
+import { attributeName } from "./attributes.js";
+import { escapeHtml, rawHtml, renderTemplate } from "./html.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
 const componentKind = Symbol.for("@async/framework.component");
@@ -44,6 +45,13 @@ export function createComponentRegistry(initialMap = {}, options = {}) {
       return registry;
     },
 
+    unregister(id) {
+      if (typeof id !== "string" || id.length === 0) {
+        throw new TypeError("Component id must be a non-empty string.");
+      }
+      return entries.delete(id);
+    },
+
     resolve(id) {
       if (typeof id !== "string" || id.length === 0) {
         throw new TypeError("Component id must be a non-empty string.");
@@ -75,17 +83,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
   const visibleHooks = [];
   const destroyHooks = [];
   const bindingIds = [];
-  const context = createComponentContext({
-    runtime,
-    scope,
-    cleanups,
-    attachHooks,
-    visibleHooks,
-    destroyHooks
-  });
-
-  const output = Component.call(context, props);
-  const html = renderTemplate(output, {
+  const templateOptions = {
     attributes: runtime.attributes,
     signals: runtime.signals,
     bind(value) {
@@ -96,7 +94,20 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
       bindingIds.push(id);
       return id;
     }
+  };
+  const renderScopedTemplate = (value) => renderTemplate(value, templateOptions);
+  const context = createComponentContext({
+    runtime,
+    scope,
+    cleanups,
+    attachHooks,
+    visibleHooks,
+    destroyHooks,
+    renderScopedTemplate
   });
+
+  const output = Component.call(context, props);
+  const html = renderScopedTemplate(output);
 
   return {
     html,
@@ -133,7 +144,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
   };
 }
 
-function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks }) {
+function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks, renderScopedTemplate }) {
   const { signals, handlers, loader, server, router, cache } = runtime;
   const generatedHandlers = new WeakMap();
   let generatedHandlerCounter = 0;
@@ -149,14 +160,27 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
 
     signal(name, initial) {
       if (arguments.length === 1) {
-        return signals.ensure(scoped(scope, `signal.${++generatedSignalCounter}`), name);
+        const id = scoped(scope, `signal.${++generatedSignalCounter}`);
+        const ref = signals.ensure(id, name);
+        cleanups.push(() => signals.unregister?.(id));
+        return ref;
       }
-      return signals.ensure(scoped(scope, name), initial);
+      const id = scoped(scope, name);
+      const created = !signals.has(id);
+      const ref = signals.ensure(id, initial);
+      if (created) {
+        cleanups.push(() => signals.unregister?.(id));
+      }
+      return ref;
     },
 
     computed(name, fn) {
       const id = scoped(scope, name);
+      const created = !signals.has(id);
       const ref = signals.ensure(id, undefined);
+      if (created) {
+        cleanups.push(() => signals.unregister?.(id));
+      }
       const cleanup = signals.effect(() => {
         signals.set(id, fn.call(context));
       });
@@ -166,8 +190,12 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
 
     asyncSignal(name, fn) {
       const id = scoped(scope, name);
+      const created = !signals.has(id);
       if (!signals.has(id)) {
         signals.asyncSignal(id, fn);
+      }
+      if (created) {
+        cleanups.push(() => signals.unregister?.(id));
       }
       return signals.ref(id);
     },
@@ -200,6 +228,26 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
       attachHooks.push((target) => child.attach(target));
       visibleHooks.push((target) => child.visible(target, loader._observeVisible));
       return rawHtml(child.html);
+    },
+
+    suspense(signalRef, views) {
+      const id = signalRef?.id;
+      if (!id) {
+        throw new TypeError("this.suspense(signalRef, views) requires a signal ref.");
+      }
+
+      const normalized = normalizeSuspenseViews(views);
+      const chunks = [];
+      for (const state of ["loading", "ready", "error"]) {
+        const view = normalized[state];
+        if (!view) {
+          continue;
+        }
+        const attr = attributeName(runtime.attributes, "async", state);
+        const body = renderScopedTemplate(view.call(context, signalRef));
+        chunks.push(`<template ${attr}="${escapeHtml(id)}">${body}</template>`);
+      }
+      return rawHtml(chunks.join(""));
     },
 
     on(eventName, fn) {
@@ -241,6 +289,7 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     handlers.register(id, function runComponentHandler(handlerContext) {
       return fn.call({ ...context, ...handlerContext }, handlerContext);
     });
+    cleanups.push(() => handlers.unregister?.(id));
     return id;
   }
 }
@@ -250,6 +299,21 @@ function scoped(scope, name) {
     throw new TypeError("Scoped signal or handler name must be a non-empty string.");
   }
   return `${scope}.${name}`;
+}
+
+function normalizeSuspenseViews(views) {
+  const normalized = typeof views === "function" ? { ready: views } : views;
+  if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+    throw new TypeError("this.suspense(signalRef, views) requires views to be a function or object.");
+  }
+
+  for (const state of ["loading", "ready", "error"]) {
+    if (Object.hasOwn(normalized, state) && normalized[state] !== undefined && typeof normalized[state] !== "function") {
+      throw new TypeError(`this.suspense(signalRef, views) view "${state}" must be a function.`);
+    }
+  }
+
+  return normalized;
 }
 
 function componentName(Component) {

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 - 2026-06-17
+
+- Added `this.suspense(signalRef, views)` for component-owned async boundary
+  templates without adding a wrapper, rerender loop, hydration, or promise
+  throwing.
+- Added `signal:prop:*` property bindings and tests for inline signal refs in
+  `signal:text`, `signal:attr:*`, and `signal:prop:*`.
+- Added explicit `unregister(id)` APIs to runtime registries and component
+  cleanup for scoped signals, async signals, computed signals, and handlers.
+- Added boundary swap cleanup for mounted component fragments and old DOM
+  bindings.
+- Added server-call normalization for async signals, including returned signal
+  effects, proxy abort propagation, and stable server error messages.
+- Added `prevent` as a command-event alias for `preventDefault`.
+
 ## 0.4.0 - 2026-06-17
 
 - Added a generated root `framework.js` ESM bundle for UNPKG browser imports.

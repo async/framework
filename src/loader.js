@@ -19,6 +19,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
   const boundaryState = new WeakMap();
   const renderingBoundaries = new WeakSet();
   const inlineBindings = new Map();
+  const scopedCleanups = new WeakMap();
   let inlineBindingCounter = 0;
   let destroyed = false;
 
@@ -53,6 +54,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
       if (!boundary) {
         throw new Error(`Boundary "${boundaryId}" was not found.`);
       }
+      cleanupChildren(boundary);
       boundary.replaceChildren(toFragment(fragmentOrTemplate, documentRef));
       api.scan(boundary);
       return boundary;
@@ -69,11 +71,12 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
         cache: api.cache,
         attributes: attributeConfig
       });
+      cleanupChildren(target);
       target.replaceChildren(toFragment(rendered.html, target.ownerDocument));
       api.scan(target);
       rendered.mount(target);
       rendered.visible(target, api._observeVisible);
-      cleanups.add(rendered.cleanup);
+      addCleanup(rendered.cleanup, target, "children");
       return rendered;
     },
 
@@ -83,7 +86,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
       }
       destroyed = true;
       for (const cleanup of [...cleanups]) {
-        cleanup();
+        runCleanup(cleanup);
       }
       cleanups.clear();
     },
@@ -104,6 +107,13 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
   };
 
   signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache });
+  api.server?._setContext?.({
+    signals: signalRegistry,
+    handlers: handlerRegistry,
+    loader: api,
+    router: api.router,
+    cache: api.cache
+  });
 
   function bindEventAttributes(scope) {
     for (const element of elementsIn(scope)) {
@@ -152,7 +162,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
     };
 
     element.addEventListener(eventName, listener);
-    cleanups.add(() => element.removeEventListener(eventName, listener));
+    addCleanup(() => element.removeEventListener(eventName, listener), element);
   }
 
   function bindSignalAttributes(scope) {
@@ -185,6 +195,12 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
           const attr = signalName.slice("attr:".length);
           const path = element.getAttribute(name);
           bindSignal(element, `attr:${attr}:${path}`, path, (value) => updateAttribute(element, attr, value));
+          continue;
+        }
+        if (signalName.startsWith("prop:")) {
+          const prop = signalName.slice("prop:".length);
+          const path = element.getAttribute(name);
+          bindSignal(element, `prop:${prop}:${path}`, path, (value) => updateProperty(element, prop, value));
           continue;
         }
         if (signalName.startsWith("class:")) {
@@ -255,7 +271,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
 
     const read = () => readBinding(path, options);
     apply(read());
-    cleanups.add(subscribeBinding(path, () => apply(read())));
+    addCleanup(subscribeBinding(path, () => apply(read())), element);
   }
 
   function bindValueWriter(element, path) {
@@ -319,7 +335,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
           cleanup: signalRegistry.subscribe(`${id}.$status`, () => renderBoundary(boundary))
         };
         boundaryState.set(boundary, state);
-        cleanups.add(state.cleanup);
+        addCleanup(state.cleanup, boundary);
       }
       renderBoundary(boundary);
     }
@@ -335,6 +351,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
     if (!template) {
       return;
     }
+    cleanupChildren(boundary);
     boundary.replaceChildren(template.content.cloneNode(true));
     renderingBoundaries.add(boundary);
     try {
@@ -368,7 +385,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
         continue;
       }
       visibleElements.add(element);
-      cleanups.add(observeVisible(element, () => runPseudo(element, ref)));
+      addCleanup(observeVisible(element, () => runPseudo(element, ref)), element);
     }
   }
 
@@ -398,7 +415,7 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
       });
       for (const result of results) {
         if (typeof result === "function") {
-          cleanups.add(result);
+          addCleanup(result, element);
         }
       }
     } catch (error) {
@@ -431,6 +448,63 @@ export function AsyncLoader({ root, signals, handlers, server, router, cache, at
   function assertActive() {
     if (destroyed) {
       throw new Error("AsyncLoader has been destroyed.");
+    }
+  }
+
+  function addCleanup(cleanup, owner, mode = "self") {
+    if (typeof cleanup !== "function") {
+      return cleanup;
+    }
+    cleanups.add(cleanup);
+    if (owner) {
+      const records = scopedCleanups.get(owner) ?? [];
+      records.push({ cleanup, mode });
+      scopedCleanups.set(owner, records);
+    }
+    return cleanup;
+  }
+
+  function runCleanup(cleanup) {
+    if (typeof cleanup !== "function" || !cleanups.has(cleanup)) {
+      return;
+    }
+    cleanups.delete(cleanup);
+    cleanup();
+  }
+
+  function cleanupChildren(container) {
+    runScopedCleanups(container, "children");
+    for (const child of [...(container.childNodes ?? [])]) {
+      cleanupNode(child);
+    }
+  }
+
+  function cleanupNode(node) {
+    if (node.nodeType !== 1) {
+      return;
+    }
+    for (const element of elementsIn(node)) {
+      runScopedCleanups(element);
+    }
+  }
+
+  function runScopedCleanups(element, mode) {
+    const records = scopedCleanups.get(element);
+    if (!records) {
+      return;
+    }
+    const remaining = [];
+    for (const record of records) {
+      if (mode && record.mode !== mode) {
+        remaining.push(record);
+        continue;
+      }
+      runCleanup(record.cleanup);
+    }
+    if (remaining.length > 0) {
+      scopedCleanups.set(element, remaining);
+    } else {
+      scopedCleanups.delete(element);
     }
   }
 
@@ -579,6 +653,14 @@ function updateAttribute(element, attr, value) {
   if (attr in element) {
     element[attr] = value;
   }
+}
+
+function updateProperty(element, prop, value) {
+  if (value == null) {
+    element[prop] = "";
+    return;
+  }
+  element[prop] = value;
 }
 
 function selectAll(scope, selector) {

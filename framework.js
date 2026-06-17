@@ -86,7 +86,18 @@ const __asyncSignalModule = (() => {
           signals: registry,
           id: registeredId,
           get server() {
-            return registry._context?.().server;
+            const context = registry._context?.() ?? {};
+            const server = context.server;
+            if (typeof server?._withContext === "function") {
+              return server._withContext({
+                signals: registry,
+                router: context.router,
+                loader: context.loader,
+                cache: context.cache,
+                abort: activeAbort
+              });
+            }
+            return server;
           },
           get router() {
             return registry._context?.().router;
@@ -278,6 +289,10 @@ const __registryStoreModule = (() => {
         assertId(type, id);
         map.set(id, value);
         return value;
+      },
+
+      unregister(type, id) {
+        return registry.delete(type, id);
       },
 
       delete(type, id) {
@@ -540,6 +555,11 @@ const __cacheModule = (() => {
         return registryApi;
       },
 
+      unregister(id) {
+        assertId(id);
+        return definitions.delete(id);
+      },
+
       resolve(id) {
         assertId(id);
         return definitions.get(id);
@@ -667,6 +687,62 @@ const __cacheModule = (() => {
   return { defineCache, createCacheRegistry };
 })();
 
+const __attributesModule = (() => {
+  const defaultPrefixes = Object.freeze({
+    async: ["async:"],
+    class: ["class:"],
+    signal: ["signal:"],
+    on: ["on:"]
+  });
+
+  function defineAttributeConfig(config = {}) {
+    return normalizeAttributeConfig(config);
+  }
+
+  function normalizeAttributeConfig(config = {}) {
+    return {
+      async: normalizePrefixes(config.async, defaultPrefixes.async),
+      class: normalizePrefixes(config.class, defaultPrefixes.class),
+      signal: normalizePrefixes(config.signal, defaultPrefixes.signal),
+      on: normalizePrefixes(config.on, defaultPrefixes.on)
+    };
+  }
+
+  function attributeName(attributes, type, name) {
+    return normalizeAttributeConfig(attributes)[type][0] + name;
+  }
+
+  function readAttribute(element, attributes, type, name) {
+    for (const prefix of normalizeAttributeConfig(attributes)[type]) {
+      const attr = `${prefix}${name}`;
+      if (element.hasAttribute?.(attr)) {
+        return element.getAttribute(attr);
+      }
+    }
+    return null;
+  }
+
+  function matchAttribute(name, attributes, type) {
+    for (const prefix of normalizeAttributeConfig(attributes)[type]) {
+      if (name.startsWith(prefix)) {
+        return name.slice(prefix.length);
+      }
+    }
+    return null;
+  }
+
+  function normalizePrefixes(value, fallback) {
+    const prefixes = value == null ? fallback : Array.isArray(value) ? value : [value];
+    return prefixes.map((prefix) => {
+      if (typeof prefix !== "string" || prefix.length === 0) {
+        throw new TypeError("Attribute prefixes must be non-empty strings.");
+      }
+      return prefix;
+    });
+  }
+  return { defineAttributeConfig, normalizeAttributeConfig, attributeName, readAttribute, matchAttribute };
+})();
+
 const __signalsModule = (() => {
   const { asyncSignal: createAsyncSignal, isAsyncSignal } = __asyncSignalModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
@@ -790,7 +866,7 @@ const __signalsModule = (() => {
     const registryStore = options.registry ?? createRegistryStore();
     const type = options.type ?? "signal";
     const entries = registryStore._map(type);
-    const registryCleanups = new Set();
+    const registryCleanups = new Map();
     const runtimeContext = {};
     const boundEntries = new Set();
 
@@ -811,6 +887,19 @@ const __signalsModule = (() => {
           registry.register(id, signalLike);
         }
         return registry;
+      },
+
+      unregister(id) {
+        assertId(id);
+        if (!entries.has(id)) {
+          return false;
+        }
+        registryCleanups.get(id)?.();
+        registryCleanups.delete(id);
+        entries.get(id)?._dispose?.();
+        entries.delete(id);
+        boundEntries.delete(id);
+        return true;
       },
 
       ensure(id, initial) {
@@ -925,7 +1014,7 @@ const __signalsModule = (() => {
       },
 
       destroy() {
-        for (const cleanup of registryCleanups) {
+        for (const cleanup of registryCleanups.values()) {
           cleanup();
         }
         registryCleanups.clear();
@@ -982,7 +1071,7 @@ const __signalsModule = (() => {
       boundEntries.add(id);
       const cleanup = entry._bindRegistry(registry, id);
       if (typeof cleanup === "function") {
-        registryCleanups.add(cleanup);
+        registryCleanups.set(id, cleanup);
       }
     }
   }
@@ -1175,62 +1264,6 @@ const __signalsModule = (() => {
   return { createSignal, computed, effect, createSignalRegistry, isSignalRef, signal };
 })();
 
-const __attributesModule = (() => {
-  const defaultPrefixes = Object.freeze({
-    async: ["async:"],
-    class: ["class:"],
-    signal: ["signal:"],
-    on: ["on:"]
-  });
-
-  function defineAttributeConfig(config = {}) {
-    return normalizeAttributeConfig(config);
-  }
-
-  function normalizeAttributeConfig(config = {}) {
-    return {
-      async: normalizePrefixes(config.async, defaultPrefixes.async),
-      class: normalizePrefixes(config.class, defaultPrefixes.class),
-      signal: normalizePrefixes(config.signal, defaultPrefixes.signal),
-      on: normalizePrefixes(config.on, defaultPrefixes.on)
-    };
-  }
-
-  function attributeName(attributes, type, name) {
-    return normalizeAttributeConfig(attributes)[type][0] + name;
-  }
-
-  function readAttribute(element, attributes, type, name) {
-    for (const prefix of normalizeAttributeConfig(attributes)[type]) {
-      const attr = `${prefix}${name}`;
-      if (element.hasAttribute?.(attr)) {
-        return element.getAttribute(attr);
-      }
-    }
-    return null;
-  }
-
-  function matchAttribute(name, attributes, type) {
-    for (const prefix of normalizeAttributeConfig(attributes)[type]) {
-      if (name.startsWith(prefix)) {
-        return name.slice(prefix.length);
-      }
-    }
-    return null;
-  }
-
-  function normalizePrefixes(value, fallback) {
-    const prefixes = value == null ? fallback : Array.isArray(value) ? value : [value];
-    return prefixes.map((prefix) => {
-      if (typeof prefix !== "string" || prefix.length === 0) {
-        throw new TypeError("Attribute prefixes must be non-empty strings.");
-      }
-      return prefix;
-    });
-  }
-  return { defineAttributeConfig, normalizeAttributeConfig, attributeName, readAttribute, matchAttribute };
-})();
-
 const __htmlModule = (() => {
   const { isSignalRef } = __signalsModule;
   const { attributeName, matchAttribute, normalizeAttributeConfig } = __attributesModule;
@@ -1393,7 +1426,8 @@ const __htmlModule = (() => {
 })();
 
 const __componentModule = (() => {
-  const { rawHtml, renderTemplate } = __htmlModule;
+  const { attributeName } = __attributesModule;
+  const { escapeHtml, rawHtml, renderTemplate } = __htmlModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
   const componentKind = Symbol.for("@async/framework.component");
   let componentCounter = 0;
@@ -1438,6 +1472,13 @@ const __componentModule = (() => {
         return registry;
       },
 
+      unregister(id) {
+        if (typeof id !== "string" || id.length === 0) {
+          throw new TypeError("Component id must be a non-empty string.");
+        }
+        return entries.delete(id);
+      },
+
       resolve(id) {
         if (typeof id !== "string" || id.length === 0) {
           throw new TypeError("Component id must be a non-empty string.");
@@ -1469,17 +1510,7 @@ const __componentModule = (() => {
     const visibleHooks = [];
     const destroyHooks = [];
     const bindingIds = [];
-    const context = createComponentContext({
-      runtime,
-      scope,
-      cleanups,
-      attachHooks,
-      visibleHooks,
-      destroyHooks
-    });
-
-    const output = Component.call(context, props);
-    const html = renderTemplate(output, {
+    const templateOptions = {
       attributes: runtime.attributes,
       signals: runtime.signals,
       bind(value) {
@@ -1490,7 +1521,20 @@ const __componentModule = (() => {
         bindingIds.push(id);
         return id;
       }
+    };
+    const renderScopedTemplate = (value) => renderTemplate(value, templateOptions);
+    const context = createComponentContext({
+      runtime,
+      scope,
+      cleanups,
+      attachHooks,
+      visibleHooks,
+      destroyHooks,
+      renderScopedTemplate
     });
+
+    const output = Component.call(context, props);
+    const html = renderScopedTemplate(output);
 
     return {
       html,
@@ -1527,7 +1571,7 @@ const __componentModule = (() => {
     };
   }
 
-  function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks }) {
+  function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks, renderScopedTemplate }) {
     const { signals, handlers, loader, server, router, cache } = runtime;
     const generatedHandlers = new WeakMap();
     let generatedHandlerCounter = 0;
@@ -1543,14 +1587,27 @@ const __componentModule = (() => {
 
       signal(name, initial) {
         if (arguments.length === 1) {
-          return signals.ensure(scoped(scope, `signal.${++generatedSignalCounter}`), name);
+          const id = scoped(scope, `signal.${++generatedSignalCounter}`);
+          const ref = signals.ensure(id, name);
+          cleanups.push(() => signals.unregister?.(id));
+          return ref;
         }
-        return signals.ensure(scoped(scope, name), initial);
+        const id = scoped(scope, name);
+        const created = !signals.has(id);
+        const ref = signals.ensure(id, initial);
+        if (created) {
+          cleanups.push(() => signals.unregister?.(id));
+        }
+        return ref;
       },
 
       computed(name, fn) {
         const id = scoped(scope, name);
+        const created = !signals.has(id);
         const ref = signals.ensure(id, undefined);
+        if (created) {
+          cleanups.push(() => signals.unregister?.(id));
+        }
         const cleanup = signals.effect(() => {
           signals.set(id, fn.call(context));
         });
@@ -1560,8 +1617,12 @@ const __componentModule = (() => {
 
       asyncSignal(name, fn) {
         const id = scoped(scope, name);
+        const created = !signals.has(id);
         if (!signals.has(id)) {
           signals.asyncSignal(id, fn);
+        }
+        if (created) {
+          cleanups.push(() => signals.unregister?.(id));
         }
         return signals.ref(id);
       },
@@ -1594,6 +1655,26 @@ const __componentModule = (() => {
         attachHooks.push((target) => child.attach(target));
         visibleHooks.push((target) => child.visible(target, loader._observeVisible));
         return rawHtml(child.html);
+      },
+
+      suspense(signalRef, views) {
+        const id = signalRef?.id;
+        if (!id) {
+          throw new TypeError("this.suspense(signalRef, views) requires a signal ref.");
+        }
+
+        const normalized = normalizeSuspenseViews(views);
+        const chunks = [];
+        for (const state of ["loading", "ready", "error"]) {
+          const view = normalized[state];
+          if (!view) {
+            continue;
+          }
+          const attr = attributeName(runtime.attributes, "async", state);
+          const body = renderScopedTemplate(view.call(context, signalRef));
+          chunks.push(`<template ${attr}="${escapeHtml(id)}">${body}</template>`);
+        }
+        return rawHtml(chunks.join(""));
       },
 
       on(eventName, fn) {
@@ -1635,6 +1716,7 @@ const __componentModule = (() => {
       handlers.register(id, function runComponentHandler(handlerContext) {
         return fn.call({ ...context, ...handlerContext }, handlerContext);
       });
+      cleanups.push(() => handlers.unregister?.(id));
       return id;
     }
   }
@@ -1644,6 +1726,21 @@ const __componentModule = (() => {
       throw new TypeError("Scoped signal or handler name must be a non-empty string.");
     }
     return `${scope}.${name}`;
+  }
+
+  function normalizeSuspenseViews(views) {
+    const normalized = typeof views === "function" ? { ready: views } : views;
+    if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+      throw new TypeError("this.suspense(signalRef, views) requires views to be a function or object.");
+    }
+
+    for (const state of ["loading", "ready", "error"]) {
+      if (Object.hasOwn(normalized, state) && normalized[state] !== undefined && typeof normalized[state] !== "function") {
+        throw new TypeError(`this.suspense(signalRef, views) view "${state}" must be a function.`);
+      }
+    }
+
+    return normalized;
   }
 
   function componentName(Component) {
@@ -1682,6 +1779,11 @@ const __serverModule = (() => {
         return registry;
       },
 
+      unregister(id) {
+        assertServerId(id);
+        return entries.delete(id);
+      },
+
       resolve(id) {
         assertServerId(id);
         return entries.get(id);
@@ -1697,7 +1799,7 @@ const __serverModule = (() => {
         let runContext;
         const server = createServerNamespace((childId, childArgs, childContext = {}) => {
           return registry.run(childId, childArgs, { ...runContext, ...childContext });
-        });
+        }, {}, () => runContext);
 
         const mergedContext = {
           ...defaults,
@@ -1730,7 +1832,7 @@ const __serverModule = (() => {
     }, registryStore, type);
 
     registry.registerMany(initialMap);
-    return createServerNamespace((id, args, context) => registry.run(id, args, context), registry);
+    return createServerNamespace((id, args, context) => registry.run(id, args, context), registry, () => defaults);
   }
 
   function createServerProxy({
@@ -1781,7 +1883,7 @@ const __serverModule = (() => {
       _setContext(context = {}) {
         Object.assign(defaults, context);
       }
-    });
+    }, () => defaults);
   }
 
   function resolveServerCommandArguments(args, context = {}) {
@@ -1859,7 +1961,7 @@ const __serverModule = (() => {
     };
   }
 
-  function createServerNamespace(run, root = {}) {
+  function createServerNamespace(run, root = {}, contextProvider = () => ({})) {
     const cache = new Map();
 
     function namespace(parts) {
@@ -1868,11 +1970,14 @@ const __serverModule = (() => {
         return cache.get(cacheKey);
       }
 
-      const callable = (...args) => {
+      const callable = async (...args) => {
         if (parts.length === 0) {
           throw new Error("Server namespace is not directly callable.");
         }
-        return Promise.resolve(run(parts.join("."), args)).then(unwrapServerResult);
+        const context = contextProvider() ?? {};
+        const result = await run(parts.join("."), args, context);
+        await applyServerResult(result, context);
+        return unwrapServerResult(result);
       };
 
       const proxy = new Proxy(callable, {
@@ -1882,6 +1987,18 @@ const __serverModule = (() => {
           }
           if (prop in _target) {
             return _target[prop];
+          }
+          if (parts.length === 0 && prop === "_withContext") {
+            return (context = {}) => createServerNamespace(run, root, () => ({
+              ...(contextProvider() ?? {}),
+              ...context
+            }));
+          }
+          if (parts.length === 0 && prop === "run" && typeof root.run === "function") {
+            return (id, args = [], context = {}) => root.run(id, args, {
+              ...(contextProvider() ?? {}),
+              ...context
+            });
           }
           if (parts.length === 0 && Object.hasOwn(root, prop)) {
             return root[prop];
@@ -2035,11 +2152,10 @@ const __serverModule = (() => {
 const __handlersModule = (() => {
   const { applyServerResult, defaultInput, resolveServerCommandArguments, unwrapServerResult } = __serverModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
-  const builtInTokens = new Set(["preventDefault", "stopPropagation", "stopImmediatePropagation"]);
+  const builtInTokens = new Set(["prevent", "preventDefault", "stopPropagation", "stopImmediatePropagation"]);
   const builtInHandlers = {
-    preventDefault() {
-      this.event?.preventDefault?.();
-    },
+    prevent: preventDefault,
+    preventDefault,
     stopPropagation() {
       this.event?.stopPropagation?.();
     },
@@ -2047,6 +2163,10 @@ const __handlersModule = (() => {
       this.event?.stopImmediatePropagation?.();
     }
   };
+
+  function preventDefault() {
+    this.event?.preventDefault?.();
+  }
 
   function createHandlerRegistry(initialMap = {}, options = {}) {
     const registryStore = options.registry ?? createRegistryStore();
@@ -2071,6 +2191,11 @@ const __handlersModule = (() => {
           registry.register(id, fn);
         }
         return registry;
+      },
+
+      unregister(id) {
+        assertId(id);
+        return handlers.delete(id);
       },
 
       resolve(id) {
@@ -2245,6 +2370,7 @@ const __loaderModule = (() => {
     const boundaryState = new WeakMap();
     const renderingBoundaries = new WeakSet();
     const inlineBindings = new Map();
+    const scopedCleanups = new WeakMap();
     let inlineBindingCounter = 0;
     let destroyed = false;
 
@@ -2279,6 +2405,7 @@ const __loaderModule = (() => {
         if (!boundary) {
           throw new Error(`Boundary "${boundaryId}" was not found.`);
         }
+        cleanupChildren(boundary);
         boundary.replaceChildren(toFragment(fragmentOrTemplate, documentRef));
         api.scan(boundary);
         return boundary;
@@ -2295,11 +2422,12 @@ const __loaderModule = (() => {
           cache: api.cache,
           attributes: attributeConfig
         });
+        cleanupChildren(target);
         target.replaceChildren(toFragment(rendered.html, target.ownerDocument));
         api.scan(target);
         rendered.mount(target);
         rendered.visible(target, api._observeVisible);
-        cleanups.add(rendered.cleanup);
+        addCleanup(rendered.cleanup, target, "children");
         return rendered;
       },
 
@@ -2309,7 +2437,7 @@ const __loaderModule = (() => {
         }
         destroyed = true;
         for (const cleanup of [...cleanups]) {
-          cleanup();
+          runCleanup(cleanup);
         }
         cleanups.clear();
       },
@@ -2330,6 +2458,13 @@ const __loaderModule = (() => {
     };
 
     signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache });
+    api.server?._setContext?.({
+      signals: signalRegistry,
+      handlers: handlerRegistry,
+      loader: api,
+      router: api.router,
+      cache: api.cache
+    });
 
     function bindEventAttributes(scope) {
       for (const element of elementsIn(scope)) {
@@ -2378,7 +2513,7 @@ const __loaderModule = (() => {
       };
 
       element.addEventListener(eventName, listener);
-      cleanups.add(() => element.removeEventListener(eventName, listener));
+      addCleanup(() => element.removeEventListener(eventName, listener), element);
     }
 
     function bindSignalAttributes(scope) {
@@ -2411,6 +2546,12 @@ const __loaderModule = (() => {
             const attr = signalName.slice("attr:".length);
             const path = element.getAttribute(name);
             bindSignal(element, `attr:${attr}:${path}`, path, (value) => updateAttribute(element, attr, value));
+            continue;
+          }
+          if (signalName.startsWith("prop:")) {
+            const prop = signalName.slice("prop:".length);
+            const path = element.getAttribute(name);
+            bindSignal(element, `prop:${prop}:${path}`, path, (value) => updateProperty(element, prop, value));
             continue;
           }
           if (signalName.startsWith("class:")) {
@@ -2481,7 +2622,7 @@ const __loaderModule = (() => {
 
       const read = () => readBinding(path, options);
       apply(read());
-      cleanups.add(subscribeBinding(path, () => apply(read())));
+      addCleanup(subscribeBinding(path, () => apply(read())), element);
     }
 
     function bindValueWriter(element, path) {
@@ -2545,7 +2686,7 @@ const __loaderModule = (() => {
             cleanup: signalRegistry.subscribe(`${id}.$status`, () => renderBoundary(boundary))
           };
           boundaryState.set(boundary, state);
-          cleanups.add(state.cleanup);
+          addCleanup(state.cleanup, boundary);
         }
         renderBoundary(boundary);
       }
@@ -2561,6 +2702,7 @@ const __loaderModule = (() => {
       if (!template) {
         return;
       }
+      cleanupChildren(boundary);
       boundary.replaceChildren(template.content.cloneNode(true));
       renderingBoundaries.add(boundary);
       try {
@@ -2594,7 +2736,7 @@ const __loaderModule = (() => {
           continue;
         }
         visibleElements.add(element);
-        cleanups.add(observeVisible(element, () => runPseudo(element, ref)));
+        addCleanup(observeVisible(element, () => runPseudo(element, ref)), element);
       }
     }
 
@@ -2624,7 +2766,7 @@ const __loaderModule = (() => {
         });
         for (const result of results) {
           if (typeof result === "function") {
-            cleanups.add(result);
+            addCleanup(result, element);
           }
         }
       } catch (error) {
@@ -2657,6 +2799,63 @@ const __loaderModule = (() => {
     function assertActive() {
       if (destroyed) {
         throw new Error("AsyncLoader has been destroyed.");
+      }
+    }
+
+    function addCleanup(cleanup, owner, mode = "self") {
+      if (typeof cleanup !== "function") {
+        return cleanup;
+      }
+      cleanups.add(cleanup);
+      if (owner) {
+        const records = scopedCleanups.get(owner) ?? [];
+        records.push({ cleanup, mode });
+        scopedCleanups.set(owner, records);
+      }
+      return cleanup;
+    }
+
+    function runCleanup(cleanup) {
+      if (typeof cleanup !== "function" || !cleanups.has(cleanup)) {
+        return;
+      }
+      cleanups.delete(cleanup);
+      cleanup();
+    }
+
+    function cleanupChildren(container) {
+      runScopedCleanups(container, "children");
+      for (const child of [...(container.childNodes ?? [])]) {
+        cleanupNode(child);
+      }
+    }
+
+    function cleanupNode(node) {
+      if (node.nodeType !== 1) {
+        return;
+      }
+      for (const element of elementsIn(node)) {
+        runScopedCleanups(element);
+      }
+    }
+
+    function runScopedCleanups(element, mode) {
+      const records = scopedCleanups.get(element);
+      if (!records) {
+        return;
+      }
+      const remaining = [];
+      for (const record of records) {
+        if (mode && record.mode !== mode) {
+          remaining.push(record);
+          continue;
+        }
+        runCleanup(record.cleanup);
+      }
+      if (remaining.length > 0) {
+        scopedCleanups.set(element, remaining);
+      } else {
+        scopedCleanups.delete(element);
       }
     }
 
@@ -2807,6 +3006,14 @@ const __loaderModule = (() => {
     }
   }
 
+  function updateProperty(element, prop, value) {
+    if (value == null) {
+      element[prop] = "";
+      return;
+    }
+    element[prop] = value;
+  }
+
   function selectAll(scope, selector) {
     const elements = [];
     if (scope?.nodeType === 1 && scope.matches?.(selector)) {
@@ -2884,6 +3091,11 @@ const __partialsModule = (() => {
           registry.register(id, fn);
         }
         return registry;
+      },
+
+      unregister(id) {
+        assertId(id);
+        return entries.delete(id);
       },
 
       resolve(id) {
@@ -3013,6 +3225,15 @@ const __routerModule = (() => {
           registry.register(pattern, definition);
         }
         return registry;
+      },
+
+      unregister(pattern) {
+        assertPattern(pattern);
+        const index = routes.findIndex((candidate) => candidate.pattern === pattern);
+        if (index !== -1) {
+          routes.splice(index, 1);
+        }
+        return entries.delete(pattern);
       },
 
       match(url) {

@@ -184,3 +184,241 @@ test("component templates support inline handlers, signal class values, and sign
 
   loader.destroy();
 });
+
+test("component templates support inline signal refs for text, attributes, and properties", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const FormControls = component(function FormControls() {
+    const title = this.signal("Keyboard");
+    const disabled = this.signal(true);
+    const checked = this.signal(false);
+    const name = this.signal("sku-1");
+
+    return html`
+      <section>
+        <h1 signal:text="${title}"></h1>
+        <button id="save" signal:attr:disabled="${disabled}">Save</button>
+        <input id="checked" type="checkbox" signal:prop:checked="${checked}">
+        <input id="name" signal:prop:value="${name}">
+        <button
+          id="change"
+          type="button"
+          on:click="${this.handler(function () {
+            title.set("Headphones");
+            disabled.set(false);
+            checked.set(true);
+            name.set("sku-2");
+          })}"
+        >
+          Change
+        </button>
+      </section>
+    `;
+  });
+
+  const loader = AsyncLoader({ root: document });
+  loader.mount(document.querySelector("#app"), FormControls);
+  await delay(0);
+
+  assert.equal(document.querySelector("h1").textContent, "Keyboard");
+  assert.equal(document.querySelector("#save").hasAttribute("disabled"), true);
+  assert.equal(document.querySelector("#save").disabled, true);
+  assert.equal(document.querySelector("#checked").checked, false);
+  assert.equal(document.querySelector("#name").value, "sku-1");
+
+  document.querySelector("#change").click();
+  await delay(0);
+
+  assert.equal(document.querySelector("h1").textContent, "Headphones");
+  assert.equal(document.querySelector("#save").hasAttribute("disabled"), false);
+  assert.equal(document.querySelector("#save").disabled, false);
+  assert.equal(document.querySelector("#checked").checked, true);
+  assert.equal(document.querySelector("#name").value, "sku-2");
+
+  loader.destroy();
+});
+
+test("component scoped handlers and signals clean up when a mounted fragment is swapped out", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main>
+      <section async:boundary="route">
+        <div id="slot"></div>
+      </section>
+    </main>
+  `;
+
+  let clicks = 0;
+  let destroyed = 0;
+  let handlerId;
+  let signalId;
+
+  const Card = component(function Card() {
+    const selected = this.signal(false);
+    signalId = selected.id;
+    handlerId = this.handler(function () {
+      clicks += 1;
+      selected.set(true);
+    });
+    this.on("destroy", () => {
+      destroyed += 1;
+    });
+
+    return html`
+      <button
+        id="old-select"
+        type="button"
+        on:click="${handlerId}"
+        signal:class="${["card", { selected }]}"
+      >
+        Select
+      </button>
+    `;
+  });
+
+  const loader = AsyncLoader({ root: document.body }).start();
+  loader.mount(document.querySelector("#slot"), Card);
+  await delay(0);
+
+  const oldButton = document.querySelector("#old-select");
+  assert.equal(typeof loader.handlers.resolve(handlerId), "function");
+  assert.equal(loader.signals.has(signalId), true);
+
+  oldButton.click();
+  await delay(0);
+  assert.equal(clicks, 1);
+  assert.equal(oldButton.classList.contains("selected"), true);
+
+  loader.swap("route", `<p id="next-route">Next</p>`);
+
+  assert.equal(destroyed, 1);
+  assert.equal(loader.handlers.resolve(handlerId), undefined);
+  assert.equal(loader.signals.has(signalId), false);
+  assert.equal(document.querySelector("#next-route").textContent, "Next");
+
+  oldButton.click();
+  await delay(0);
+  assert.equal(clicks, 1);
+
+  loader.destroy();
+});
+
+test("component this.suspense emits async boundary templates without owning a wrapper", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const server = createServerRegistry({
+    "products.get"() {
+      return { title: "Keyboard" };
+    }
+  });
+
+  const Product = component(function Product() {
+    const product = this.asyncSignal("product", async function () {
+      await delay(5, this.abort);
+      return this.server.products.get("sku-1");
+    });
+
+    return html`
+      <article id="product" async:boundary="${product.id}">
+        ${this.suspense(product, {
+          loading() {
+            return html`<p class="loading">Loading...</p>`;
+          },
+          ready(product) {
+            return html`<h1 signal:text="${product.id}.title"></h1>`;
+          },
+          error(product) {
+            return html`<p class="error" signal:text="${product.id}.$error.message"></p>`;
+          }
+        })}
+      </article>
+    `;
+  });
+
+  const loader = AsyncLoader({ root: document, server });
+  loader.mount(document.querySelector("#app"), Product);
+
+  assert.equal(document.querySelector("#product").tagName, "ARTICLE");
+  assert.equal(document.querySelector(".loading").textContent, "Loading...");
+  assert.equal(document.querySelector("#product > section"), null);
+
+  await delay(10);
+
+  assert.equal(document.querySelector("h1").textContent, "Keyboard");
+  assert.equal(document.querySelector("#product").tagName, "ARTICLE");
+
+  loader.destroy();
+});
+
+test("component this.suspense supports shorthand ready views and configured async attributes", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const Product = component(function Product() {
+    const product = this.asyncSignal("product", async function () {
+      await delay(0, this.abort);
+      return { title: "Mouse" };
+    });
+
+    return html`
+      <article id="custom-product" data-async-boundary="${product.id}">
+        ${this.suspense(product, (product) => html`
+          <h1 data-signal-text="${product.id}.title"></h1>
+        `)}
+      </article>
+    `;
+  });
+
+  const loader = AsyncLoader({
+    root: document,
+    attributes: {
+      async: "data-async-",
+      signal: "data-signal-",
+      on: "data-on-",
+      class: "data-class-"
+    }
+  });
+  loader.mount(document.querySelector("#app"), Product);
+  await delay(5);
+
+  assert.equal(document.querySelector("#custom-product").tagName, "ARTICLE");
+  assert.equal(document.querySelector("h1").textContent, "Mouse");
+
+  loader.destroy();
+});
+
+test("component this.suspense validates signal refs and view callbacks", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const Errors = component(function Errors() {
+    assert.throws(
+      () => this.suspense(null, () => html``),
+      /this\.suspense\(signalRef, views\) requires a signal ref/
+    );
+    assert.throws(
+      () => this.suspense({ id: "product" }, null),
+      /this\.suspense\(signalRef, views\) requires views to be a function or object/
+    );
+    assert.throws(
+      () => this.suspense({ id: "product" }, { ready: "nope" }),
+      /this\.suspense\(signalRef, views\) view "ready" must be a function/
+    );
+
+    return html`<span id="suspense-errors-ok">ok</span>`;
+  });
+
+  const loader = AsyncLoader({ root: document });
+  loader.mount(document.querySelector("#app"), Errors);
+
+  assert.equal(document.querySelector("#suspense-errors-ok").textContent, "ok");
+
+  loader.destroy();
+});

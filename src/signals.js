@@ -121,7 +121,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
   const type = options.type ?? "signal";
   const entries = registryStore._map(type);
-  const registryCleanups = new Set();
+  const registryCleanups = new Map();
   const runtimeContext = {};
   const boundEntries = new Set();
 
@@ -142,6 +142,19 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
         registry.register(id, signalLike);
       }
       return registry;
+    },
+
+    unregister(id) {
+      assertId(id);
+      if (!entries.has(id)) {
+        return false;
+      }
+      registryCleanups.get(id)?.();
+      registryCleanups.delete(id);
+      entries.get(id)?._dispose?.();
+      entries.delete(id);
+      boundEntries.delete(id);
+      return true;
     },
 
     ensure(id, initial) {
@@ -256,7 +269,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     },
 
     destroy() {
-      for (const cleanup of registryCleanups) {
+      for (const cleanup of registryCleanups.values()) {
         cleanup();
       }
       registryCleanups.clear();
@@ -313,7 +326,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     boundEntries.add(id);
     const cleanup = entry._bindRegistry(registry, id);
     if (typeof cleanup === "function") {
-      registryCleanups.add(cleanup);
+      registryCleanups.set(id, cleanup);
     }
   }
 }

@@ -26,6 +26,11 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
       return registry;
     },
 
+    unregister(id) {
+      assertId(id);
+      return entries.delete(id);
+    },
+
     resolve(id) {
       assertId(id);
       return entries.get(id);

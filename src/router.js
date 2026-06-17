@@ -41,6 +41,15 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
       return registry;
     },
 
+    unregister(pattern) {
+      assertPattern(pattern);
+      const index = routes.findIndex((candidate) => candidate.pattern === pattern);
+      if (index !== -1) {
+        routes.splice(index, 1);
+      }
+      return entries.delete(pattern);
+    },
+
     match(url) {
       const path = toUrl(url).pathname;
       for (const candidate of routes) {

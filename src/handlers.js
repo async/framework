@@ -6,11 +6,10 @@ import {
 } from "./server.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 
-const builtInTokens = new Set(["preventDefault", "stopPropagation", "stopImmediatePropagation"]);
+const builtInTokens = new Set(["prevent", "preventDefault", "stopPropagation", "stopImmediatePropagation"]);
 const builtInHandlers = {
-  preventDefault() {
-    this.event?.preventDefault?.();
-  },
+  prevent: preventDefault,
+  preventDefault,
   stopPropagation() {
     this.event?.stopPropagation?.();
   },
@@ -18,6 +17,10 @@ const builtInHandlers = {
     this.event?.stopImmediatePropagation?.();
   }
 };
+
+function preventDefault() {
+  this.event?.preventDefault?.();
+}
 
 export function createHandlerRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
@@ -42,6 +45,11 @@ export function createHandlerRegistry(initialMap = {}, options = {}) {
         registry.register(id, fn);
       }
       return registry;
+    },
+
+    unregister(id) {
+      assertId(id);
+      return handlers.delete(id);
     },
 
     resolve(id) {

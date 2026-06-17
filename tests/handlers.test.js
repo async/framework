@@ -31,7 +31,7 @@ test("handler registry supports initializer maps, command chains, built-ins, and
     }
   });
 
-  const results = await handlers.run(" first ; preventDefault ; ; second ; stopPropagation ; stopImmediatePropagation ", {
+  const results = await handlers.run(" first ; prevent ; preventDefault ; ; second ; stopPropagation ; stopImmediatePropagation ", {
     signals,
     event
   });
@@ -136,6 +136,24 @@ test("missing handlers fail with a useful error", async () => {
   await assert.rejects(
     handlers.run("missing", {}),
     /Handler "missing" is not registered/
+  );
+});
+
+test("handler registry unregister removes custom handlers", async () => {
+  const handlers = createHandlerRegistry({
+    save() {
+      return "saved";
+    }
+  });
+
+  assert.equal(typeof handlers.resolve("save"), "function");
+  assert.equal(handlers.unregister("save"), true);
+  assert.equal(handlers.resolve("save"), undefined);
+  assert.equal(handlers.unregister("save"), false);
+
+  await assert.rejects(
+    handlers.run("save", {}),
+    /Handler "save" is not registered/
   );
 });
 

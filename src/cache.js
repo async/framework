@@ -34,6 +34,11 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
       return registryApi;
     },
 
+    unregister(id) {
+      assertId(id);
+      return definitions.delete(id);
+    },
+
     resolve(id) {
       assertId(id);
       return definitions.get(id);

@@ -253,6 +253,7 @@ Naming rules:
 | `create*` | Runtime instance or mutable runtime primitive |
 | `Async.use(...)` | App-level declaration registration |
 | `registry.register(...)` | Low-level registration on a concrete runtime registry |
+| `registry.unregister(...)` | Low-level removal from a concrete runtime registry |
 
 Singular registry keys are canonical: `signal`, `handler`, `server`,
 `partial`, `route`, `component`, and nested `cache.browser` / `cache.server`.
@@ -314,6 +315,7 @@ signals.set("count", 1);
 signals.update("count", (count) => count + 1);
 signals.subscribe("count", (count) => console.log(count));
 signals.ref("count").value;
+signals.unregister("count");
 ```
 
 Initializer maps are supported:
@@ -389,6 +391,7 @@ AsyncLoader scans regular HTML attributes:
 | `signal:text="product.title"` | Text binding |
 | `signal:value="productId"` | Form value binding with writeback |
 | `signal:attr:disabled="product.$loading"` | Attribute binding |
+| `signal:prop:checked="selected"` | DOM property binding |
 | `class:selected="selected"` | Class toggle from a signal path |
 | `signal:class="buttonClasses"` | Class set from a signal value: string, object, or array |
 | `async:boundary="product"` | Async or streamed replacement boundary |
@@ -427,6 +430,24 @@ Async.start({
 
 That maps to `data-async-container`, `data-on-click="save"`,
 `data-signal-text="product.title"`, and `data-class-selected="selected"`.
+
+Inside `html` templates, signal refs can be passed directly to binding
+attributes:
+
+```js
+const title = this.signal("Keyboard");
+const disabled = this.signal(false);
+const checked = this.signal(true);
+
+return html`
+  <h1 signal:text="${title}"></h1>
+  <button signal:attr:disabled="${disabled}">Save</button>
+  <input type="checkbox" signal:prop:checked="${checked}">
+`;
+```
+
+Use `signal:value` for form value binding with writeback. Use `signal:prop:*`
+when you only need one-way DOM property updates.
 
 Named class toggles use their own top-level namespace:
 
@@ -518,6 +539,7 @@ Plain commands resolve through the handler registry. Built-ins are registered by
 default:
 
 ```txt
+prevent
 preventDefault
 stopPropagation
 stopImmediatePropagation
@@ -584,6 +606,12 @@ await server.cart.add("sku-1", 2);
 
 Server responses can include `value`, `signals`, `boundary`, `html`, `redirect`,
 or `error`. Signal patches are applied before boundary swaps and redirects.
+Namespace calls such as `server.cart.add(...)` return the unwrapped `value`.
+
+When an async signal calls a server namespace function, the framework passes the
+active abort signal through proxy calls. Returned server effects such as
+`signals`, `cache.browser`, `boundary/html`, and `redirect` are applied before
+the async signal stores the unwrapped `value`.
 
 ### Router And Partials
 
@@ -812,9 +840,54 @@ Component helpers:
 | `this.handler(name, fn)` | Scoped named handler registry entry |
 | `this.handler(fn)` | Generated scoped handler registry entry |
 | `this.render(Component, props)` | Child fragment rendering |
+| `this.suspense(signalRef, views)` | Async boundary template helper |
 | `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
 | `this.onMount(fn)` | Compatibility alias for `this.on("attach", fn)` |
 | `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
+
+`this.suspense(...)` is sugar for AsyncLoader boundaries:
+`asyncSignal + async:boundary + async:* templates`. It emits only templates. The
+caller owns the boundary element, and the loader chooses the loading, ready, or
+error template from the async signal status.
+
+```js
+const Product = defineComponent(function Product() {
+  const product = this.asyncSignal("product", async function () {
+    return this.server.products.get("sku-1");
+  });
+
+  return html`
+    <article async:boundary="${product.id}">
+      ${this.suspense(product, {
+        loading() {
+          return html`<p>Loading...</p>`;
+        },
+        ready(product) {
+          return html`<h1 signal:text="${product.id}.title"></h1>`;
+        },
+        error(product) {
+          return html`<p signal:text="${product.id}.$error.message"></p>`;
+        }
+      })}
+    </article>
+  `;
+});
+```
+
+The shorthand form treats the callback as the ready template:
+
+```js
+this.suspense(product, (product) => html`
+  <h1 signal:text="${product.id}.title"></h1>
+`);
+```
+
+`this.suspense(...)` is not React Suspense. It does not throw promises,
+hydrate, diff, rerender a component tree, or emit a wrapper element.
+
+Component-scoped signals and handlers are unregistered when the mounted
+fragment is destroyed. `loader.swap(...)` cleans up old DOM bindings and mounted
+component fragments under the swapped boundary before inserting the new HTML.
 
 Put component lifecycle on the component root element when there is one:
 

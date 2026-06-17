@@ -34,6 +34,10 @@ export function createRegistryStore(initial = {}, options = {}) {
       return value;
     },
 
+    unregister(type, id) {
+      return registry.delete(type, id);
+    },
+
     delete(type, id) {
       return registry._map(type).delete(id);
     },

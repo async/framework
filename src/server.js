@@ -28,6 +28,11 @@ export function createServerRegistry(initialMap = {}, options = {}) {
       return registry;
     },
 
+    unregister(id) {
+      assertServerId(id);
+      return entries.delete(id);
+    },
+
     resolve(id) {
       assertServerId(id);
       return entries.get(id);
@@ -43,7 +48,7 @@ export function createServerRegistry(initialMap = {}, options = {}) {
       let runContext;
       const server = createServerNamespace((childId, childArgs, childContext = {}) => {
         return registry.run(childId, childArgs, { ...runContext, ...childContext });
-      });
+      }, {}, () => runContext);
 
       const mergedContext = {
         ...defaults,
@@ -76,7 +81,7 @@ export function createServerRegistry(initialMap = {}, options = {}) {
   }, registryStore, type);
 
   registry.registerMany(initialMap);
-  return createServerNamespace((id, args, context) => registry.run(id, args, context), registry);
+  return createServerNamespace((id, args, context) => registry.run(id, args, context), registry, () => defaults);
 }
 
 export function createServerProxy({
@@ -127,7 +132,7 @@ export function createServerProxy({
     _setContext(context = {}) {
       Object.assign(defaults, context);
     }
-  });
+  }, () => defaults);
 }
 
 export function resolveServerCommandArguments(args, context = {}) {
@@ -205,7 +210,7 @@ export function defaultInput(context = {}) {
   };
 }
 
-function createServerNamespace(run, root = {}) {
+function createServerNamespace(run, root = {}, contextProvider = () => ({})) {
   const cache = new Map();
 
   function namespace(parts) {
@@ -214,11 +219,14 @@ function createServerNamespace(run, root = {}) {
       return cache.get(cacheKey);
     }
 
-    const callable = (...args) => {
+    const callable = async (...args) => {
       if (parts.length === 0) {
         throw new Error("Server namespace is not directly callable.");
       }
-      return Promise.resolve(run(parts.join("."), args)).then(unwrapServerResult);
+      const context = contextProvider() ?? {};
+      const result = await run(parts.join("."), args, context);
+      await applyServerResult(result, context);
+      return unwrapServerResult(result);
     };
 
     const proxy = new Proxy(callable, {
@@ -228,6 +236,18 @@ function createServerNamespace(run, root = {}) {
         }
         if (prop in _target) {
           return _target[prop];
+        }
+        if (parts.length === 0 && prop === "_withContext") {
+          return (context = {}) => createServerNamespace(run, root, () => ({
+            ...(contextProvider() ?? {}),
+            ...context
+          }));
+        }
+        if (parts.length === 0 && prop === "run" && typeof root.run === "function") {
+          return (id, args = [], context = {}) => root.run(id, args, {
+            ...(contextProvider() ?? {}),
+            ...context
+          });
         }
         if (parts.length === 0 && Object.hasOwn(root, prop)) {
           return root[prop];

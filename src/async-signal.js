@@ -82,7 +82,18 @@ export function asyncSignal(id, fn) {
         signals: registry,
         id: registeredId,
         get server() {
-          return registry._context?.().server;
+          const context = registry._context?.() ?? {};
+          const server = context.server;
+          if (typeof server?._withContext === "function") {
+            return server._withContext({
+              signals: registry,
+              router: context.router,
+              loader: context.loader,
+              cache: context.cache,
+              abort: activeAbort
+            });
+          }
+          return server;
         },
         get router() {
           return registry._context?.().router;
