@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Added `Loader` as the canonical public loader factory, including
+  `Async.Loader(...)` for UMD script-tag usage, while keeping `AsyncLoader` as
+  a compatibility alias.
+- Added generated root CDN artifacts: `framework.min.js`, `framework.umd.js`,
+  `framework.umd.min.js`, `framework.ts`, and `framework.d.ts`.
+- Added package exports and docs for ESM, compact ESM, UMD, compact UMD, and
+  TypeScript source/types entrypoints.
+- Added exported helpers to the UMD-only `globalThis.Async` object for
+  script-tag CDN usage while keeping ESM `Async` as the app hub export.
+- Added UMD namespace conflict checks so generated helpers cannot silently
+  overwrite app-hub fields such as `use`, `start`, or `registry`.
+- Added `registry:lint`, a cached package linter that emits a local registry
+  manifest and detects conflicting signal, handler, server, partial, route, or
+  component declarations while skipping generated root bundles.
+
 ## 0.5.0 - 2026-06-17
 
 - Added `this.suspense(signalRef, views)` for component-owned async boundary
