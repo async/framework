@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-06-17
+
 - Added `createBoundaryReceiver(...)` for optional out-of-order boundary patch
   delivery with per-boundary sequence checks, signal/cache effect ordering,
   scheduler flushing, redirects, and destroyed parent-scope filtering.
