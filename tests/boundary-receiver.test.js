@@ -58,6 +58,30 @@ test("boundary receiver restores browser cache patches", async () => {
   loader.destroy();
 });
 
+test("boundary receiver applies signals-only patches", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+  const signals = createSignalRegistry({
+    product: signal({})
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+  const receiver = createBoundaryReceiver({ loader, signals });
+
+  const result = await receiver.apply({
+    boundary: "product",
+    seq: 1,
+    signals: {
+      "product.status": "ready"
+    }
+  });
+
+  assert.deepEqual(result, { status: "applied", boundary: "product", seq: 1 });
+  assert.equal(signals.get("product.status"), "ready");
+  assert.equal(document.querySelector("[async\\:boundary='product']").textContent, "");
+  loader.destroy();
+});
+
 test("boundary receiver ignores stale seq for the same boundary", async () => {
   const window = new Window();
   const { document } = window;
@@ -185,6 +209,37 @@ test("boundary receiver redirects through router after effects", async () => {
   loader.destroy();
 });
 
+test("boundary receiver applies html before reporting redirect", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+  const navigations = [];
+  const router = {
+    async navigate(to) {
+      navigations.push({
+        to,
+        html: document.querySelector("[async\\:boundary='route']").innerHTML
+      });
+    }
+  };
+  const loader = Loader({ root: document.body, router }).start();
+  const receiver = createBoundaryReceiver({ loader, router });
+
+  const result = await receiver.apply({
+    boundary: "route",
+    seq: 1,
+    html: `<h1>Redirecting</h1>`,
+    redirect: "/next"
+  });
+
+  assert.equal(result.status, "redirected");
+  assert.deepEqual(navigations, [{
+    to: "/next",
+    html: "<h1>Redirecting</h1>"
+  }]);
+  loader.destroy();
+});
+
 test("boundary receiver returns errored for patch errors by default", async () => {
   const window = new Window();
   const { document } = window;
@@ -211,6 +266,37 @@ test("boundary receiver returns errored for patch errors by default", async () =
   assert.equal(result.error.message, "Product failed");
   assert.equal(result.error.code, "E_PRODUCT");
   assert.equal(seen, result.error);
+  loader.destroy();
+});
+
+test("boundary receiver throwOnError throws stable errors and records status", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+  const loader = Loader({ root: document.body }).start();
+  const receiver = createBoundaryReceiver({
+    loader,
+    throwOnError: true
+  });
+
+  await assert.rejects(
+    receiver.apply({
+      boundary: "product",
+      seq: 1,
+      error: {
+        message: "Product failed",
+        code: "E_PRODUCT"
+      }
+    }),
+    (error) => {
+      assert.equal(error.message, "Product failed");
+      assert.equal(error.code, "E_PRODUCT");
+      return true;
+    }
+  );
+
+  assert.equal(receiver.inspect().boundaries.product.lastStatus, "errored");
+  assert.equal(receiver.inspect().boundaries.product.errored, 1);
   loader.destroy();
 });
 
@@ -242,6 +328,27 @@ test("boundary receiver throws TypeError for invalid patch shapes", async () => 
       message: /seq must be a finite number/
     }
   );
+  await assert.rejects(
+    receiver.apply({ boundary: "product", seq: 1, signals: [] }),
+    {
+      name: "TypeError",
+      message: /signals must be an object/
+    }
+  );
+  await assert.rejects(
+    receiver.apply({ boundary: "product", seq: 1, cache: [] }),
+    {
+      name: "TypeError",
+      message: /cache must be an object/
+    }
+  );
+  await assert.rejects(
+    receiver.apply({ boundary: "product", seq: 1, cache: { browser: [] } }),
+    {
+      name: "TypeError",
+      message: /cache\.browser must be an object/
+    }
+  );
   loader.destroy();
 });
 
@@ -259,6 +366,33 @@ test("boundary receiver reset clears sequence state", async () => {
   assert.equal((await receiver.apply({ boundary: "hero", seq: 1, html: `<h1>Reset</h1>` })).status, "applied");
   assert.equal(document.querySelector("h1").textContent, "Reset");
   assert.equal(receiver.inspect().boundaries.hero.lastSeq, 1);
+  loader.destroy();
+});
+
+test("boundary receiver reset(boundary) removes recent entries only for that boundary", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="hero"></section>
+    <section async:boundary="reviews"></section>
+  `;
+  const loader = Loader({ root: document.body }).start();
+  const receiver = createBoundaryReceiver({ loader });
+
+  await receiver.apply({ boundary: "hero", seq: 1, html: `<h1>Hero</h1>` });
+  await receiver.apply({ boundary: "reviews", seq: 1, html: `<p>Reviews</p>` });
+  await receiver.apply({ boundary: "hero", seq: 0, html: `<h1>Old Hero</h1>` });
+
+  receiver.reset("hero");
+
+  const inspected = receiver.inspect();
+  assert.equal(inspected.boundaries.hero, undefined);
+  assert.equal(inspected.boundaries.reviews.lastSeq, 1);
+  assert.deepEqual(inspected.recent, [{
+    boundary: "reviews",
+    seq: 1,
+    status: "applied"
+  }]);
   loader.destroy();
 });
 

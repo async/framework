@@ -122,6 +122,96 @@ test("async signal dependency refreshes run through the async phase", async () =
   loader.destroy();
 });
 
+test("scheduler runs jobs enqueued during the current flush before completing", async () => {
+  const scheduler = createScheduler({ strategy: "manual" });
+  const seen = [];
+
+  scheduler.enqueue("binding", () => {
+    seen.push("outer");
+    scheduler.enqueue("binding", () => {
+      seen.push("inner");
+    });
+  });
+
+  await scheduler.flush();
+
+  assert.deepEqual(seen, ["outer", "inner"]);
+});
+
+test("scheduler does not starve jobs when a job calls flush", async () => {
+  const scheduler = createScheduler({ strategy: "manual" });
+  const seen = [];
+
+  scheduler.enqueue("binding", async () => {
+    seen.push("outer");
+    scheduler.enqueue("binding", () => {
+      seen.push("inner");
+    });
+    await scheduler.flush();
+    seen.push("nested-flush-returned");
+  });
+
+  await scheduler.flush();
+
+  assert.deepEqual(seen, ["outer", "nested-flush-returned", "inner"]);
+});
+
+test("scheduler preserves phase order for nested future-phase jobs", async () => {
+  const scheduler = createScheduler({ strategy: "manual" });
+  const seen = [];
+
+  scheduler.enqueue("binding", () => {
+    seen.push("binding");
+    scheduler.enqueue("lifecycle", () => {
+      seen.push("lifecycle");
+    });
+    scheduler.enqueue("effect", () => {
+      seen.push("effect");
+    });
+  });
+  scheduler.afterFlush(() => {
+    seen.push("post");
+  });
+
+  await scheduler.flush();
+
+  assert.deepEqual(seen, ["binding", "lifecycle", "effect", "post"]);
+});
+
+test("scheduler onError receives job metadata and flush continues", async () => {
+  const scope = {};
+  const failures = [];
+  const seen = [];
+  const scheduler = createScheduler({
+    strategy: "manual",
+    onError(error, job) {
+      failures.push({ error, job });
+    }
+  });
+  const expected = new Error("effect failed");
+
+  scheduler.enqueue("effect", () => {
+    throw expected;
+  }, {
+    scope,
+    boundary: "product",
+    key: "failing-effect"
+  });
+  scheduler.afterFlush(() => {
+    seen.push("post");
+  });
+
+  await scheduler.flush();
+
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].error, expected);
+  assert.equal(failures[0].job.phase, "effect");
+  assert.equal(failures[0].job.scope, scope);
+  assert.equal(failures[0].job.boundary, "product");
+  assert.equal(typeof failures[0].job.id, "number");
+  assert.deepEqual(seen, ["post"]);
+});
+
 test("scheduler maxDepth catches runaway enqueue loops", async () => {
   const scheduler = createScheduler({ strategy: "manual", maxDepth: 2 });
 

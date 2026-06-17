@@ -33,10 +33,20 @@ export function createLazyRegistry(options = {}) {
       const resolved = resolveDescriptorUrl(type, id, descriptor, registryAssets);
       let modulePromise = moduleCache.get(resolved.moduleUrl);
       if (!modulePromise) {
-        modulePromise = Promise.resolve(importModule(resolved.moduleUrl));
+        modulePromise = Promise.resolve().then(() => importModule(resolved.moduleUrl));
         moduleCache.set(resolved.moduleUrl, modulePromise);
       }
-      const module = await modulePromise;
+      let module;
+      try {
+        module = await modulePromise;
+      } catch (cause) {
+        if (moduleCache.get(resolved.moduleUrl) === modulePromise) {
+          moduleCache.delete(resolved.moduleUrl);
+        }
+        throw new Error(`Lazy ${type} "${id}" failed to import ${resolved.moduleUrl}: ${errorMessage(cause)}`, {
+          cause
+        });
+      }
       const value = resolveExport(module, resolved.exportNames, type, id);
       exportCache.set(cacheKey, value);
       return value;
@@ -194,6 +204,10 @@ function stripTrailingSlash(value) {
 
 function isAbsoluteUrl(value) {
   return /^[A-Za-z][A-Za-z\d+.-]*:/.test(value);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function stableStringify(value) {

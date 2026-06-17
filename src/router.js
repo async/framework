@@ -61,7 +61,7 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
         }
         const params = {};
         candidate.keys.forEach((key, index) => {
-          params[key] = decodeURIComponent(match[index + 1] ?? "");
+          params[key] = safeDecodeURIComponent(match[index + 1] ?? "");
         });
         return {
           pattern: candidate.pattern,
@@ -176,11 +176,11 @@ export function createRouter({
       }
       bindNavigation();
       if (mode === "csr") {
-        void api.navigate(currentUrl(), {
+        handleNavigation(api.navigate(currentUrl(), {
           replace: true,
           initial: true,
           source: "client"
-        }).catch(() => {});
+        }));
         return api;
       }
       updateStateFromLocation();
@@ -245,7 +245,7 @@ export function createRouter({
         return;
       }
       event.preventDefault();
-      api.navigate(anchor.href);
+      handleNavigation(api.navigate(anchor.href));
     };
     const submit = (event) => {
       const form = closest(event.target, "form");
@@ -253,9 +253,9 @@ export function createRouter({
         return;
       }
       event.preventDefault();
-      api.navigate(formActionUrl(form));
+      handleNavigation(api.navigate(formActionUrl(form)));
     };
-    const popstate = () => api.navigate(currentUrl(), { history: false });
+    const popstate = () => handleNavigation(api.navigate(currentUrl(), { history: false }));
 
     rootNode.addEventListener?.("click", click);
     rootNode.addEventListener?.("submit", submit);
@@ -448,6 +448,19 @@ export function createRouter({
     }
   }
 
+  function handleNavigation(promise) {
+    void promise.catch((error) => {
+      if (destroyed) {
+        return;
+      }
+      setRouterState({
+        pending: false,
+        error
+      });
+      dispatchAsyncError(rootNode, error);
+    });
+  }
+
   function currentUrl() {
     return resolveUrl(documentRef.defaultView?.location?.href ?? "http://localhost/");
   }
@@ -463,6 +476,33 @@ export function createRouter({
     if (destroyed) {
       throw new Error("Router has been destroyed.");
     }
+  }
+
+  function shouldIgnoreLink(event, anchor) {
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return true;
+    }
+    if (anchor.target || anchor.hasAttribute("download")) {
+      return true;
+    }
+    const target = resolveUrl(anchor.href);
+    const current = currentUrl();
+    if (target.origin !== current.origin) {
+      return true;
+    }
+    return isHashOnlyNavigation(target, current, anchor);
+  }
+
+  function shouldIgnoreForm(form) {
+    const method = String(form.method || "get").toLowerCase();
+    return method !== "get" || resolveUrl(form.action).origin !== currentUrl().origin;
+  }
+
+  function formActionUrl(form) {
+    const url = resolveUrl(form.action || form.ownerDocument.defaultView.location.href);
+    const formData = new form.ownerDocument.defaultView.FormData(form);
+    url.search = new URLSearchParams(formData).toString();
+    return url.href;
   }
 }
 
@@ -501,28 +541,6 @@ function compilePattern(pattern) {
   return { regex: new RegExp(`^${source}$`), keys };
 }
 
-function shouldIgnoreLink(event, anchor) {
-  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-    return true;
-  }
-  if (anchor.target || anchor.hasAttribute("download")) {
-    return true;
-  }
-  return toUrl(anchor.href).origin !== toUrl(anchor.ownerDocument.defaultView.location.href).origin;
-}
-
-function shouldIgnoreForm(form) {
-  const method = String(form.method || "get").toLowerCase();
-  return method !== "get" || toUrl(form.action).origin !== toUrl(form.ownerDocument.defaultView.location.href).origin;
-}
-
-function formActionUrl(form) {
-  const url = toUrl(form.action || form.ownerDocument.defaultView.location.href);
-  const formData = new form.ownerDocument.defaultView.FormData(form);
-  url.search = new URLSearchParams(formData).toString();
-  return url.href;
-}
-
 function closest(target, selector) {
   return target?.closest?.(selector);
 }
@@ -536,6 +554,34 @@ function toUrl(url) {
 
 function queryObject(url) {
   return Object.fromEntries(url.searchParams.entries());
+}
+
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isHashOnlyNavigation(target, current, anchor) {
+  if (target.origin !== current.origin || target.pathname !== current.pathname || target.search !== current.search) {
+    return false;
+  }
+  return target.hash !== current.hash || anchor.getAttribute?.("href")?.startsWith("#") === true;
+}
+
+function dispatchAsyncError(element, error) {
+  const EventCtor = element.ownerDocument?.defaultView?.CustomEvent ?? globalThis.CustomEvent;
+  if (typeof EventCtor !== "function") {
+    return;
+  }
+  element.dispatchEvent?.(
+    new EventCtor("async:error", {
+      bubbles: true,
+      detail: { error }
+    })
+  );
 }
 
 function escapeRegExp(value) {

@@ -519,6 +519,162 @@ test("SSR-SPA router starts from existing HTML and intercepts later same-origin 
   loader.destroy();
 });
 
+test("SSR-SPA router catches intercepted link navigation failures", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <a id="broken" href="/broken">Broken</a>
+    <section async:boundary="route"></section>
+  `;
+
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "ssr-spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/broken": route("broken")
+    }),
+    loader,
+    signals,
+    fetch: async () => new Response("nope", { status: 500 })
+  }).start();
+
+  const unhandled = await collectUnhandledRejections(async () => {
+    document.querySelector("#broken").click();
+    await delay(0);
+  });
+
+  assert.deepEqual(unhandled, []);
+  assert.equal(signals.get("router.pending"), false);
+  assert.match(signals.get("router.error").message, /failed with 500/);
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("SSR-SPA router catches intercepted submit navigation failures", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <form id="search" action="/search">
+      <input name="q" value="keyboards">
+    </form>
+    <section async:boundary="route"></section>
+  `;
+
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "ssr-spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/search": route("search")
+    }),
+    loader,
+    signals,
+    fetch: async () => new Response("nope", { status: 503 })
+  }).start();
+
+  const submit = new window.Event("submit", { bubbles: true, cancelable: true });
+  const unhandled = await collectUnhandledRejections(async () => {
+    document.querySelector("#search").dispatchEvent(submit);
+    await delay(0);
+  });
+
+  assert.equal(submit.defaultPrevented, true);
+  assert.deepEqual(unhandled, []);
+  assert.equal(signals.get("router.pending"), false);
+  assert.match(signals.get("router.error").message, /failed with 503/);
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("SSR-SPA router catches popstate navigation failures", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "ssr-spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/broken": route("broken")
+    }),
+    loader,
+    signals,
+    fetch: async () => new Response("nope", { status: 502 })
+  }).start();
+
+  window.history.pushState({}, "", "/broken");
+  const unhandled = await collectUnhandledRejections(async () => {
+    window.dispatchEvent(new window.PopStateEvent("popstate"));
+    await delay(0);
+  });
+
+  assert.deepEqual(unhandled, []);
+  assert.equal(signals.get("router.path"), "/broken");
+  assert.equal(signals.get("router.pending"), false);
+  assert.match(signals.get("router.error").message, /failed with 502/);
+
+  router.destroy();
+  loader.destroy();
+});
+
+test("SSR-SPA router ignores same-document hash links", async () => {
+  const window = new Window({ url: "http://app.test/products?tab=info" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <a id="hash-only" href="#details">Details</a>
+    <a id="same-path-hash" href="/products?tab=info#reviews">Reviews</a>
+    <a id="next" href="/products?tab=specs#details">Specs</a>
+    <section async:boundary="route"><h1>Product</h1></section>
+  `;
+
+  let requests = 0;
+  const router = createRouter({
+    mode: "ssr-spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products": route("product")
+    }),
+    fetch: async () => {
+      requests += 1;
+      return new Response(JSON.stringify({ html: "<h1>Updated</h1>" }), {
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }
+  }).start();
+
+  const hashOnly = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#hash-only").dispatchEvent(hashOnly);
+  const samePathHash = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#same-path-hash").dispatchEvent(samePathHash);
+  await delay(0);
+
+  assert.equal(hashOnly.defaultPrevented, false);
+  assert.equal(samePathHash.defaultPrevented, false);
+  assert.equal(requests, 0);
+
+  const next = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#next").dispatchEvent(next);
+  await delay(0);
+
+  assert.equal(next.defaultPrevented, true);
+  assert.equal(requests, 1);
+
+  router.destroy();
+});
+
 test("SSR router mode does not intercept link clicks", () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
@@ -549,6 +705,49 @@ test("MPA router mode does not intercept link clicks", () => {
 
   assert.equal(event.defaultPrevented, false);
   router.destroy();
+});
+
+test("route matching leaves malformed encoded params raw", () => {
+  const routes = createRouteRegistry({
+    "/products/:id": route("product.page")
+  });
+
+  assert.deepEqual(routes.match("/products/%E0%A4%A").params, {
+    id: "%E0%A4%A"
+  });
+});
+
+test("CSR router renders malformed encoded params without crashing", async () => {
+  const window = new Window({ url: "http://app.test/products/%E0%A4%A" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const signals = createSignalRegistry();
+  const loader = Loader({ root: document.body, signals }).start();
+  const router = createRouter({
+    mode: "csr",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": route("product.page")
+    }),
+    loader,
+    signals,
+    partials: createPartialRegistry({
+      "product.page"({ id }) {
+        return `<h1 id="product-id">${id}</h1>`;
+      }
+    })
+  }).start();
+
+  await delay(0);
+
+  assert.equal(document.querySelector("#product-id").textContent, "%E0%A4%A");
+  assert.deepEqual(signals.get("router.params"), { id: "%E0%A4%A" });
+  assert.equal(signals.get("router.error"), null);
+
+  router.destroy();
+  loader.destroy();
 });
 
 test("CSR router passes custom attribute config to its owned loader", async () => {
@@ -595,3 +794,19 @@ test("CSR router passes custom attribute config to its owned loader", async () =
 
   router.destroy();
 });
+
+async function collectUnhandledRejections(fn) {
+  const unhandled = [];
+  const onUnhandled = (reason) => {
+    unhandled.push(reason);
+  };
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    await fn();
+    await delay(0);
+    await delay(0);
+    return unhandled;
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+}

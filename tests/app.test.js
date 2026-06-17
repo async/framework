@@ -5,6 +5,7 @@ import {
   Async,
   createApp,
   createLazyRegistry,
+  createScheduler,
   createSignal,
   defineAsyncContainerElement,
   defineAsyncSuspenseElement,
@@ -517,6 +518,108 @@ test("rootless runtime starts without scanning until a root is attached", async 
   runtime.destroy();
 });
 
+test("rootless runtime attachRoot is idempotent for the same root", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<span on:attach="attached">Root</span>`;
+  let attached = 0;
+  const app = defineApp({
+    handler: {
+      attached() {
+        attached += 1;
+      }
+    }
+  });
+
+  const runtime = createApp(app, { router: false }).start();
+  runtime.attachRoot(document.body);
+  runtime.attachRoot(document.body);
+  await delay(0);
+
+  assert.equal(runtime.inspectRoots().count, 1);
+  assert.equal(attached, 1);
+  runtime.destroy();
+});
+
+test("rootless runtime detachRoot cancels pending scoped scheduler jobs", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<output signal:text="status"></output>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const app = defineApp({
+    signal: {
+      status: createSignal("idle")
+    }
+  });
+
+  const runtime = createApp(app, { router: false, scheduler }).start();
+  runtime.attachRoot(document.body);
+
+  assert.equal(document.querySelector("output").textContent, "idle");
+  runtime.signals.set("status", "detached");
+  runtime.detachRoot(document.body);
+  await scheduler.flush();
+
+  assert.equal(runtime.inspectRoots().count, 0);
+  assert.equal(document.querySelector("output").textContent, "idle");
+  runtime.destroy();
+});
+
+test("rootless runtime applySnapshot updates all attached roots", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section id="left"><output signal:text="status"></output></section>
+    <section id="right"><output signal:text="status"></output></section>
+  `;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const app = defineApp({
+    signal: {
+      status: createSignal("idle")
+    }
+  });
+
+  const runtime = createApp(app, { router: false, scheduler }).start();
+  runtime.attachRoot(document.querySelector("#left"));
+  runtime.attachRoot(document.querySelector("#right"));
+
+  assert.deepEqual([...document.querySelectorAll("output")].map((node) => node.textContent), ["idle", "idle"]);
+
+  runtime.applySnapshot({
+    signals: {
+      status: "ready"
+    }
+  });
+  await scheduler.flush();
+
+  assert.deepEqual([...document.querySelectorAll("output")].map((node) => node.textContent), ["ready", "ready"]);
+  assert.equal(runtime.inspectRoots().count, 2);
+  assert.equal(runtime.inspectRoots().roots.filter((entry) => entry.primary).length, 1);
+  runtime.destroy();
+});
+
+test("rootless runtime destroy detaches all roots and rejects future attaches", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section id="left"></section>
+    <section id="right"></section>
+  `;
+  const runtime = createApp(defineApp(), { router: false }).start();
+
+  runtime.attachRoot(document.querySelector("#left"));
+  runtime.attachRoot(document.querySelector("#right"));
+  assert.equal(runtime.inspectRoots().count, 2);
+
+  runtime.destroy();
+
+  assert.equal(runtime.inspectRoots().count, 0);
+  assert.throws(
+    () => runtime.attachRoot(document.body),
+    /Async app runtime has been destroyed/
+  );
+});
+
 test("async-container self attaches to the active runtime without double binding", async () => {
   const window = new Window();
   const { document } = window;
@@ -581,6 +684,51 @@ test("lazy registry resolves compact descriptor URLs and infers exports", async 
     "/_async/handler/cart.add.js",
     "/_async/asyncSignal/product.load.js"
   ]);
+});
+
+test("lazy registry retries failed imports with stable errors", async () => {
+  let attempts = 0;
+  const lazy = createLazyRegistry({
+    importModule() {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("network offline");
+      }
+      return {
+        save() {
+          return "saved";
+        }
+      };
+    }
+  });
+  const descriptor = { url: "cart.save.js" };
+
+  await assert.rejects(
+    lazy.resolve("handler", "cart.save", descriptor),
+    /Lazy handler "cart\.save" failed to import \/_async\/handler\/cart\.save\.js: network offline/
+  );
+
+  const save = await lazy.resolve("handler", "cart.save", descriptor);
+
+  assert.equal(attempts, 2);
+  assert.equal(save(), "saved");
+});
+
+test("lazy registry reports missing exports with inferred names", async () => {
+  const lazy = createLazyRegistry({
+    importModule() {
+      return {
+        other() {
+          return "wrong";
+        }
+      };
+    }
+  });
+
+  await assert.rejects(
+    lazy.resolve("handler", "cart.remove", { url: "cart.add.js" }),
+    /Lazy handler "cart\.remove" did not export "remove", "cart\.add", "default"/
+  );
 });
 
 test("runtime applies streamed descriptors and lazy handlers on first event", async () => {

@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { promisify } from "node:util";
 import vm from "node:vm";
 import * as bundle from "../browser.js";
 import * as minBundle from "../browser.min.js";
 import * as source from "../src/browser.js";
 import manifest from "../package.json" with { type: "json" };
+
+const execFileAsync = promisify(execFile);
+const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 
 test("browser ESM bundles export the public browser runtime API", () => {
   assert.deepEqual(Object.keys(bundle).sort(), Object.keys(source).sort());
@@ -117,6 +126,60 @@ test("root package and explicit subpath exports resolve correctly", async () => 
   assert.equal(typeof browserPackage.createServerProxy, "function");
   assert.equal(typeof serverPackage.createServerRegistry, "function");
   assert.equal(typeof serverPackage.createRequestContextStore, "function");
+});
+
+test("temporary project can import installed package subpaths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "async-framework-install-"));
+  try {
+    await mkdir(join(root, "node_modules", "@async"), { recursive: true });
+    await symlink(repoRoot, join(root, "node_modules", "@async", "framework"), "dir");
+    await writeFile(join(root, "check.mjs"), `
+      import * as rootPackage from "@async/framework";
+      import * as browserPackage from "@async/framework/browser";
+      import * as serverPackage from "@async/framework/server";
+      import manifest from "@async/framework/package.json" with { type: "json" };
+
+      console.log(JSON.stringify({
+        rootCreateApp: typeof rootPackage.createApp,
+        rootServerRegistry: typeof rootPackage.createServerRegistry,
+        browserCreateApp: typeof browserPackage.createApp,
+        browserServerRegistry: typeof browserPackage.createServerRegistry,
+        serverCreateApp: typeof serverPackage.createApp,
+        serverRequestContextStore: typeof serverPackage.createRequestContextStore,
+        version: manifest.version
+      }));
+    `, "utf8");
+    await writeFile(join(root, "check-browser-condition.mjs"), `
+      import * as rootPackage from "@async/framework";
+
+      console.log(JSON.stringify({
+        createApp: typeof rootPackage.createApp,
+        serverRegistry: typeof rootPackage.createServerRegistry
+      }));
+    `, "utf8");
+
+    const installed = JSON.parse((await execFileAsync(process.execPath, ["check.mjs"], { cwd: root })).stdout);
+    const browserCondition = JSON.parse((await execFileAsync(process.execPath, [
+      "--conditions=browser",
+      "check-browser-condition.mjs"
+    ], { cwd: root })).stdout);
+
+    assert.deepEqual(installed, {
+      rootCreateApp: "function",
+      rootServerRegistry: "function",
+      browserCreateApp: "function",
+      browserServerRegistry: "undefined",
+      serverCreateApp: "function",
+      serverRequestContextStore: "function",
+      version: manifest.version
+    });
+    assert.deepEqual(browserCondition, {
+      createApp: "function",
+      serverRegistry: "undefined"
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("package metadata keeps legacy size analyzers on the browser entry", () => {

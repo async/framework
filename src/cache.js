@@ -47,15 +47,7 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
 
     get(key) {
       assertKey(key);
-      const entry = entries.get(key);
-      if (!entry) {
-        return undefined;
-      }
-      if (entry.expiresAt !== undefined && entry.expiresAt <= now()) {
-        entries.delete(key);
-        return undefined;
-      }
-      return entry.value;
+      return readEntry(key).value;
     },
 
     set(key, value, options = {}) {
@@ -73,9 +65,9 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
       if (typeof fn !== "function") {
         throw new TypeError("cache.getOrSet(key, fn) requires a function.");
       }
-      const cached = registryApi.get(key);
-      if (cached !== undefined) {
-        return cached;
+      const cached = readEntry(key);
+      if (cached.found) {
+        return cached.value;
       }
       if (pending.has(key)) {
         return pending.get(key);
@@ -126,8 +118,8 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
     snapshot() {
       const snapshot = {};
       for (const [key] of entries) {
-        const value = registryApi.get(key);
-        if (value !== undefined) {
+        const { found, value } = readEntry(key);
+        if (found && value !== undefined) {
           snapshot[key] = value;
         }
       }
@@ -166,6 +158,18 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
     }
     const prefix = key.split(":")[0];
     return definitions.get(prefix);
+  }
+
+  function readEntry(key) {
+    const entry = entries.get(key);
+    if (!entry) {
+      return { found: false, value: undefined };
+    }
+    if (entry.expiresAt !== undefined && entry.expiresAt <= now()) {
+      entries.delete(key);
+      return { found: false, value: undefined };
+    }
+    return { found: true, value: entry.value };
   }
 }
 

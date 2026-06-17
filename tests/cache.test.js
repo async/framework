@@ -111,3 +111,38 @@ test("cache registry snapshots and restores browser-safe entries", () => {
 
   assert.deepEqual(restored.get("product:1"), { title: "Keyboard" });
 });
+
+test("cache registry treats undefined as a cached value for getOrSet", async () => {
+  const cache = createCacheRegistry();
+  let loads = 0;
+
+  assert.equal(await cache.getOrSet("optional:1", async () => {
+    loads += 1;
+    return undefined;
+  }), undefined);
+  assert.equal(await cache.getOrSet("optional:1", async () => {
+    loads += 1;
+    return "filled";
+  }), undefined);
+
+  assert.equal(loads, 1);
+  assert.equal(cache.get("optional:1"), undefined);
+  assert.deepEqual(cache.entryKeys(), ["optional:1"]);
+  assert.deepEqual(cache.snapshot(), {});
+});
+
+test("cache set undefined prevents getOrSet refills while snapshot omits it", async () => {
+  const cache = createCacheRegistry();
+  let loads = 0;
+
+  cache.set("optional:2", undefined);
+  const value = await cache.getOrSet("optional:2", async () => {
+    loads += 1;
+    return "filled";
+  });
+
+  assert.equal(value, undefined);
+  assert.equal(loads, 0);
+  assert.deepEqual(cache.entryKeys(), ["optional:2"]);
+  assert.deepEqual(cache.snapshot(), {});
+});

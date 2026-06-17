@@ -305,14 +305,17 @@ function formDataToObject(formData) {
   return output;
 }
 
-function assertJsonTransportable(value, seen = new Set()) {
+function assertJsonTransportable(value, stack = new Set()) {
+  if (typeof value === "bigint") {
+    throw new Error("Server proxy JSON transport does not support BigInt values.");
+  }
   if (value == null || typeof value !== "object") {
     return;
   }
-  if (seen.has(value)) {
-    return;
+  if (stack.has(value)) {
+    throw new Error("Server proxy JSON transport does not support circular values.");
   }
-  seen.add(value);
+  stack.add(value);
 
   const tag = Object.prototype.toString.call(value);
   if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
@@ -320,13 +323,15 @@ function assertJsonTransportable(value, seen = new Set()) {
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      assertJsonTransportable(item, seen);
+      assertJsonTransportable(item, stack);
     }
+    stack.delete(value);
     return;
   }
   for (const item of Object.values(value)) {
-    assertJsonTransportable(item, seen);
+    assertJsonTransportable(item, stack);
   }
+  stack.delete(value);
 }
 
 function joinEndpoint(endpoint, id) {

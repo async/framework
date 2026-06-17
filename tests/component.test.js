@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { Loader, component, createServerRegistry, delay, html } from "../src/index.js";
+import { Loader, component, createScheduler, createServerRegistry, delay, html } from "../src/index.js";
 
 test("component helpers create scoped signals, handlers, effects, children, and lifecycle cleanup", async () => {
   const window = new Window();
@@ -112,6 +112,53 @@ test("component this.on supports rootless fragment lifecycle fallback", async ()
 
   loader.destroy();
   assert.deepEqual(events, ["attach:app", "mount:app", "visible:app", "destroy", "attach-cleanup"]);
+});
+
+test("component identical attach callbacks both run", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+  const attach = () => {
+    events.push("attach");
+  };
+
+  const ReusedHook = component(function ReusedHook() {
+    this.on("attach", attach);
+    this.on("attach", attach);
+    return html`<span>ready</span>`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  loader.mount(document.querySelector("#app"), ReusedHook);
+  await scheduler.flush();
+
+  assert.deepEqual(events, ["attach", "attach"]);
+  loader.destroy();
+});
+
+test("component visible hook does not run after parent is destroyed", async () => {
+  const window = new Window();
+  const { document } = window;
+  window.IntersectionObserver = undefined;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+
+  const Visible = component(function Visible() {
+    this.on("visible", () => {
+      events.push("visible");
+    });
+    return html`<span>visible</span>`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  loader.mount(document.querySelector("#app"), Visible);
+  loader.destroy();
+  await scheduler.flush();
+
+  assert.deepEqual(events, []);
 });
 
 test("component templates support inline handlers, signal class values, and signal value attributes", async () => {

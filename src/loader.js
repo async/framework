@@ -90,6 +90,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         return;
       }
       destroyed = true;
+      markDestroyedScopes(rootNode);
       for (const cleanup of [...cleanups]) {
         runCleanup(cleanup);
       }
@@ -538,6 +539,12 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
       scope: element,
       key
     });
+  }
+
+  function markDestroyedScopes(scope) {
+    for (const element of elementsIn(scope)) {
+      schedulerInstance.markScopeDestroyed(element);
+    }
   }
 
   return api;

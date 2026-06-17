@@ -202,3 +202,106 @@ test("server proxy rejects file-like values instead of silently JSON stringifyin
     /does not support File, Blob, or FormData/
   );
 });
+
+test("server proxy rejects circular args before fetch runs", async () => {
+  const circular = {};
+  circular.self = circular;
+  const server = createServerProxy({
+    fetch() {
+      throw new Error("fetch should not run for circular JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [circular]),
+    /does not support circular values/
+  );
+});
+
+test("server proxy rejects circular input before fetch runs", async () => {
+  const input = {};
+  input.self = input;
+  const server = createServerProxy({
+    fetch() {
+      throw new Error("fetch should not run for circular JSON input.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [], { input }),
+    /does not support circular values/
+  );
+});
+
+test("server proxy allows repeated non-circular references", async () => {
+  const shared = { id: "sku-1" };
+  let requestBody;
+  const server = createServerProxy({
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ value: "ok" }), {
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }
+  });
+
+  assert.equal(await server.run("products.save", [shared, shared]), "ok");
+  assert.deepEqual(requestBody.args, [{ id: "sku-1" }, { id: "sku-1" }]);
+});
+
+test("server proxy rejects nested file-like values before fetch runs", async () => {
+  const blobLike = {
+    [Symbol.toStringTag]: "Blob"
+  };
+  const formDataLike = {
+    [Symbol.toStringTag]: "FormData"
+  };
+  const server = createServerProxy({
+    fetch() {
+      throw new Error("fetch should not run for nested unsupported JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("profile.upload", [{ files: [blobLike], form: formDataLike }]),
+    /does not support File, Blob, or FormData/
+  );
+});
+
+test("server proxy rejects BigInt values with an Async-specific error", async () => {
+  const server = createServerProxy({
+    fetch() {
+      throw new Error("fetch should not run for BigInt JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [{ id: 1n }]),
+    /does not support BigInt values/
+  );
+});
+
+test("server proxy preserves current JSON undefined handling", async () => {
+  let requestBody;
+  const server = createServerProxy({
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ value: "ok" }), {
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }
+  });
+
+  assert.equal(await server.run("products.save", [undefined], {
+    input: {
+      omitted: undefined,
+      kept: true
+    }
+  }), "ok");
+  assert.deepEqual(requestBody.args, [null]);
+  assert.deepEqual(requestBody.input, { kept: true });
+});
