@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-06-17
 
 - Added `Loader` as the canonical public loader factory, including
   `Async.Loader(...)` for UMD script-tag usage, while keeping `AsyncLoader` as
