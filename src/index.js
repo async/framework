@@ -1,7 +1,12 @@
 export { asyncSignal } from "./async-signal.js";
-export { component } from "./component.js";
+export { Async, createApp, defineApp } from "./app.js";
+export { createCacheRegistry, defineCache } from "./cache.js";
+export { component, createComponentRegistry, defineComponent } from "./component.js";
 export { delay } from "./delay.js";
 export { createHandlerRegistry } from "./handlers.js";
 export { html } from "./html.js";
 export { AsyncLoader } from "./loader.js";
-export { computed, createSignalRegistry, effect, signal } from "./signals.js";
+export { createPartialRegistry } from "./partials.js";
+export { createRouteRegistry, createRouter, defineRoute, route } from "./router.js";
+export { createServerProxy, createServerRegistry } from "./server.js";
+export { computed, createSignal, createSignalRegistry, effect, signal } from "./signals.js";

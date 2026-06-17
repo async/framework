@@ -2,7 +2,7 @@ import { renderComponent } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { createSignalRegistry } from "./signals.js";
 
-export function AsyncLoader({ root, signals, handlers } = {}) {
+export function AsyncLoader({ root, signals, handlers, server, router, cache } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
@@ -20,6 +20,9 @@ export function AsyncLoader({ root, signals, handlers } = {}) {
     root: rootNode,
     signals: signalRegistry,
     handlers: handlerRegistry,
+    server,
+    router,
+    cache,
 
     start() {
       assertActive();
@@ -52,7 +55,10 @@ export function AsyncLoader({ root, signals, handlers } = {}) {
       const rendered = renderComponent(Component, props, {
         signals: signalRegistry,
         handlers: handlerRegistry,
-        loader: api
+        loader: api,
+        server: api.server,
+        router: api.router,
+        cache: api.cache
       });
       target.replaceChildren(toFragment(rendered.html, target.ownerDocument));
       api.scan(target);
@@ -77,6 +83,8 @@ export function AsyncLoader({ root, signals, handlers } = {}) {
       return observeVisible(target, fn);
     }
   };
+
+  signalRegistry._setContext?.({ server: api.server, router: api.router, loader: api, cache: api.cache });
 
   function bindEventAttributes(scope) {
     for (const element of selectAll(scope, "[data-async-container], *")) {
@@ -111,8 +119,12 @@ export function AsyncLoader({ root, signals, handlers } = {}) {
           signals: signalRegistry,
           handlers: handlerRegistry,
           loader: api,
+          server: api.server,
+          router: api.router,
+          cache: api.cache,
           event,
           element,
+          el: element,
           root: rootNode
         });
       } catch (error) {
@@ -249,7 +261,11 @@ export function AsyncLoader({ root, signals, handlers } = {}) {
         signals: signalRegistry,
         handlers: handlerRegistry,
         loader: api,
+        server: api.server,
+        router: api.router,
+        cache: api.cache,
         element,
+        el: element,
         root: rootNode
       });
       for (const result of results) {

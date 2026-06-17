@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createSignalRegistry, delay, signal } from "../src/index.js";
+import { Window } from "happy-dom";
+import { AsyncLoader, createServerRegistry, createSignalRegistry, delay, signal } from "../src/index.js";
 
 test("async signals track sync reads, abort reruns, and suppress stale completion", async () => {
   const signals = createSignalRegistry({
@@ -66,4 +67,31 @@ test("async signal cancel aborts the native signal", async () => {
   assert.equal(abort.aborted, true);
   assert.equal(ref.loading, false);
   assert.equal(signals.get("slow.$status"), "idle");
+});
+
+test("async signal context exposes this.server from the loader runtime", async () => {
+  const window = new Window();
+  const signals = createSignalRegistry();
+  const server = createServerRegistry({
+    "products.get"(id) {
+      return {
+        value: {
+          id,
+          title: "Keyboard"
+        }
+      };
+    }
+  });
+
+  signals.asyncSignal("product", async function () {
+    return this.server.products.get("sku-1");
+  });
+
+  const loader = AsyncLoader({ root: window.document, signals, server }).start();
+  await delay(5);
+
+  assert.equal(signals.get("product.$status"), "ready");
+  assert.equal(signals.get("product.title"), "Keyboard");
+
+  loader.destroy();
 });

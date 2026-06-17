@@ -4,6 +4,7 @@ import { Window } from "happy-dom";
 import {
   AsyncLoader,
   createHandlerRegistry,
+  createServerRegistry,
   createSignalRegistry,
   delay,
   signal
@@ -87,6 +88,44 @@ test("AsyncLoader dispatches async:error for missing delegated handlers", async 
   await delay(0);
 
   assert.match(seen.message, /Handler "missing" is not registered/);
+});
+
+test("AsyncLoader runs semicolon commands with server calls from DOM events", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <form on:submit="preventDefault; server.products.save(productId, $form)">
+      <input name="title" value="Keyboard">
+      <button type="submit">Save</button>
+    </form>
+    <output data-async-text="savedTitle"></output>
+  `;
+
+  const signals = createSignalRegistry({
+    productId: signal("sku-1"),
+    savedTitle: signal("")
+  });
+  const server = createServerRegistry({
+    "products.save"(productId, form) {
+      return {
+        value: { id: productId, ...form },
+        signals: {
+          savedTitle: form.title
+        }
+      };
+    }
+  });
+  const loader = AsyncLoader({ root: document.body, signals, server }).start();
+  const form = document.querySelector("form");
+  const event = new window.Event("submit", { bubbles: true, cancelable: true });
+
+  form.dispatchEvent(event);
+  await delay(0);
+
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(document.querySelector("output").textContent, "Keyboard");
+
+  loader.destroy();
 });
 
 test("boundary swap rescans inserted HTML and scanned handlers still work", async () => {

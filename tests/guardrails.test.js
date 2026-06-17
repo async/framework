@@ -21,3 +21,13 @@ test("source stays centered on loader bindings instead of VDOM machinery", () =>
 
   assert.doesNotMatch(source, /createVNode|patchVNode|hydrate|hydration|rerender/i);
 });
+
+test("inline command parsing does not use eval or function constructors", () => {
+  const source = readdirSync(resolve(root, "src"))
+    .filter((file) => file.endsWith(".js"))
+    .map((file) => readFileSync(resolve(root, "src", file), "utf8"))
+    .join("\n");
+
+  assert.doesNotMatch(source, /\beval\s*\(/);
+  assert.doesNotMatch(source, /new\s+Function\s*\(/);
+});

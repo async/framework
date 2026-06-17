@@ -3,15 +3,54 @@ import { rawHtml, renderTemplate } from "./html.js";
 const componentKind = Symbol.for("@async/framework.component");
 let componentCounter = 0;
 
-export function component(fn) {
+export function defineComponent(fn) {
   if (typeof fn !== "function") {
-    throw new TypeError("component(fn) requires a function.");
+    throw new TypeError("defineComponent(fn) requires a function.");
   }
   Object.defineProperty(fn, componentKind, {
     configurable: true,
     value: true
   });
   return fn;
+}
+
+export const component = defineComponent;
+
+export function createComponentRegistry(initialMap = {}) {
+  const entries = new Map();
+
+  const registry = {
+    register(id, Component) {
+      if (typeof id !== "string" || id.length === 0) {
+        throw new TypeError("Component id must be a non-empty string.");
+      }
+      if (!isComponent(Component) && typeof Component !== "function") {
+        throw new TypeError(`Component "${id}" must be a component function.`);
+      }
+      if (entries.has(id)) {
+        throw new Error(`Component "${id}" is already registered.`);
+      }
+      entries.set(id, Component);
+      return id;
+    },
+
+    registerMany(map) {
+      for (const [id, Component] of Object.entries(map ?? {})) {
+        registry.register(id, Component);
+      }
+      return registry;
+    },
+
+    resolve(id) {
+      if (typeof id !== "string" || id.length === 0) {
+        throw new TypeError("Component id must be a non-empty string.");
+      }
+      return entries.get(id);
+    }
+  };
+
+  registry.registerMany(initialMap);
+  return registry;
 }
 
 export function isComponent(value) {
@@ -65,12 +104,15 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
 }
 
 function createComponentContext({ runtime, scope, cleanups, mountHooks, visibleHooks }) {
-  const { signals, handlers, loader } = runtime;
+  const { signals, handlers, loader, server, router, cache } = runtime;
   const context = {
     scope,
     signals,
     handlers,
     loader,
+    server,
+    router,
+    cache,
 
     signal(name, initial) {
       return signals.ensure(scoped(scope, name), initial);

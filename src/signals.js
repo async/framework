@@ -6,7 +6,7 @@ const effectKind = Symbol.for("@async/framework.effect");
 const refKind = Symbol.for("@async/framework.signalRef");
 const dependencyFrames = [];
 
-export function signal(initial) {
+export function createSignal(initial) {
   let value = initial;
   const subscribers = new Set();
 
@@ -55,11 +55,13 @@ export function signal(initial) {
   }
 }
 
+export const signal = createSignal;
+
 export function computed(fn) {
   if (typeof fn !== "function") {
     throw new TypeError("computed(fn) requires a function.");
   }
-  const backing = signal(undefined);
+  const backing = createSignal(undefined);
 
   return {
     [computedKind]: true,
@@ -87,7 +89,14 @@ export function computed(fn) {
 
     _bindRegistry(registry, id) {
       return registry.effect(() => {
-        backing.set(fn.call({ signals: registry, id }));
+        backing.set(fn.call({
+          signals: registry,
+          id,
+          server: registry._context?.().server,
+          router: registry._context?.().router,
+          loader: registry._context?.().loader,
+          cache: registry._context?.().cache
+        }));
       });
     }
   };
@@ -110,10 +119,14 @@ export function effect(fn) {
 export function createSignalRegistry(initialMap = {}) {
   const entries = new Map();
   const registryCleanups = new Set();
+  const runtimeContext = {};
 
   const registry = {
     register(id, signalLike) {
       assertId(id);
+      if (entries.has(id)) {
+        throw new Error(`Signal "${id}" is already registered.`);
+      }
       const entry = normalizeSignal(signalLike);
       entries.set(id, entry);
       if (typeof entry._bindRegistry === "function") {
@@ -135,7 +148,7 @@ export function createSignalRegistry(initialMap = {}) {
     ensure(id, initial) {
       assertId(id);
       if (!entries.has(id)) {
-        registry.register(id, signal(initial));
+        registry.register(id, createSignal(initial));
       }
       return registry.ref(id);
     },
@@ -219,7 +232,13 @@ export function createSignalRegistry(initialMap = {}) {
         }
         dependencyCleanups = [];
 
-        const outcome = registry._collectDependencies(() => fn.call({ signals: registry }));
+        const outcome = registry._collectDependencies(() => fn.call({
+          signals: registry,
+          server: runtimeContext.server,
+          router: runtimeContext.router,
+          loader: runtimeContext.loader,
+          cache: runtimeContext.cache
+        }));
         cleanup = outcome.value;
         dependencyCleanups = outcome.dependencies.map((dependency) => registry.subscribe(dependency, run));
       };
@@ -261,6 +280,15 @@ export function createSignalRegistry(initialMap = {}) {
 
     _entry(id) {
       return requireEntry(entries, id);
+    },
+
+    _setContext(context = {}) {
+      Object.assign(runtimeContext, context);
+      return registry;
+    },
+
+    _context() {
+      return runtimeContext;
     }
   };
 
@@ -272,7 +300,7 @@ function normalizeSignal(signalLike) {
   if (isSignalLike(signalLike)) {
     return signalLike;
   }
-  return signal(signalLike);
+  return createSignal(signalLike);
 }
 
 function isSignalLike(value) {

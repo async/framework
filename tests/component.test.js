@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { AsyncLoader, component, delay, html } from "../src/index.js";
+import { AsyncLoader, component, createServerRegistry, delay, html } from "../src/index.js";
 
 test("component helpers create scoped signals, handlers, effects, children, and lifecycle cleanup", async () => {
   const window = new Window();
@@ -13,6 +13,11 @@ test("component helpers create scoped signals, handlers, effects, children, and 
   let mounted = 0;
   let visible = 0;
   let cleaned = 0;
+  const server = createServerRegistry({
+    "toggle.next"(value) {
+      return { value: !value };
+    }
+  });
 
   const Child = component(function Child() {
     return html`<small>child</small>`;
@@ -21,8 +26,8 @@ test("component helpers create scoped signals, handlers, effects, children, and 
   const Parent = component(function Parent() {
     const selected = this.signal("selected", false);
     const label = this.computed("label", () => (selected.value ? "selected" : "idle"));
-    const toggle = this.handler("toggle", function () {
-      selected.update((value) => !value);
+    const toggle = this.handler("toggle", async function () {
+      selected.set(await this.server.toggle.next(selected.value));
     });
 
     this.effect(() => {
@@ -51,7 +56,7 @@ test("component helpers create scoped signals, handlers, effects, children, and 
     `;
   });
 
-  const loader = AsyncLoader({ root: document });
+  const loader = AsyncLoader({ root: document, server });
   loader.mount(document.querySelector("#app"), Parent);
   await delay(0);
 
