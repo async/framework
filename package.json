@@ -1,25 +1,39 @@
 {
-  "name": "async-framework-workspace",
-  "private": true,
+  "name": "@async/framework",
+  "version": "0.1.0",
+  "description": "Layer 1 AsyncLoader runtime with signals, async signals, delegated handlers, and out-of-order boundary swaps.",
   "type": "module",
-  "packageManager": "pnpm@10.5.2",
-  "scripts": {
-    "test:workspace": "node --test tests/workspace-layout.test.mjs",
-    "typecheck": "pnpm --filter '@async/framework*' typecheck",
-    "lint:wintercg": "eslint \"frameworks/**/*.{ts,tsx,js,mjs}\" --max-warnings=0 --no-error-on-unmatched-pattern",
-    "benchmark": "tsx benchmarks/run.ts",
-    "benchmark:signals": "tsx benchmarks/run.ts --scenario signals",
-    "example:v0": "pnpm --filter @async/example-v0-hello-world dev",
-    "example:v1": "pnpm --filter @async/example-v1-basic-local dev"
+  "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": ">=24"
   },
-  "dependencies": {
-    "@async/framework-v0": "workspace:*",
-    "@async/framework-v1": "workspace:*"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/async/framework.git"
+  },
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "examples",
+    "LICENSE",
+    "package.json"
+  ],
+  "scripts": {
+    "async-pipeline": "async-pipeline",
+    "examples": "node --test tests/examples.test.js",
+    "examples:check": "node --test tests/examples.test.js",
+    "pack:check": "npm pack --dry-run --ignore-scripts",
+    "pipeline:github:check": "async-pipeline github check",
+    "pipeline:sync:check": "async-pipeline sync check",
+    "pipeline:verify": "async-pipeline run verify",
+    "release:check": "pnpm run pipeline:verify -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
+    "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
-    "eslint": "9.26.0",
-    "tsx": "4.19.3",
-    "typescript": "5.8.3",
-    "typescript-eslint": "8.31.1"
+    "@async/pipeline": "0.8.5",
+    "happy-dom": "20.10.5"
   }
 }

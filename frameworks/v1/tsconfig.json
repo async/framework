@@ -1,7 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "jsxImportSource": "@async/framework-v1"
-  },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
-}

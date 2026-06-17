@@ -1,0 +1,56 @@
+{
+  "version": 8,
+  "generator": "@async/pipeline",
+  "config": "pipeline.ts",
+  "workflow": ".github/workflows/async-pipeline.yml",
+  "hash": "sha256:59507bafe82902d8aec74c8fa9db7998ab58953695493c6f173943dc67ea2a56",
+  "generatedAt": "2026-06-17T05:51:26.626Z",
+  "triggers": {
+    "pull_request": {},
+    "push": {
+      "branches": [
+        "main"
+      ]
+    },
+    "workflow_dispatch": {}
+  },
+  "jobs": [
+    {
+      "id": "verify",
+      "target": [
+        "pack"
+      ],
+      "trigger": [
+        "pr",
+        "main",
+        "manual"
+      ],
+      "env": {},
+      "if": "(github.event_name == 'pull_request') || (github.event_name == 'push' && (github.ref == 'refs/heads/main')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'verify')"
+    }
+  ],
+  "packageManager": "pnpm",
+  "packageManagerVersion": "11.1.0",
+  "setup": "pnpm",
+  "nodeVersion": "24",
+  "taskCache": true,
+  "dependencyCache": true,
+  "dependencyCachePath": "pnpm-lock.yaml",
+  "dependabotAutoMerge": {
+    "enabled": false,
+    "ecosystems": [
+      "github-actions",
+      "npm",
+      "deno"
+    ]
+  },
+  "packagePreviews": {
+    "enabled": false,
+    "registry": "https://npm.pkg.github.com",
+    "tokenEnv": "GITHUB_TOKEN",
+    "comment": true
+  },
+  "manualDispatchJobs": [
+    "verify"
+  ]
+}

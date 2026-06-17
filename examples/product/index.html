@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>AsyncLoader Product</title>
+  </head>
+  <body data-async-container>
+    <main>
+      <label>
+        Product
+        <select data-async-value="productId">
+          <option value="sku-1">Mechanical Keyboard</option>
+          <option value="sku-2">Studio Headphones</option>
+        </select>
+      </label>
+
+      <section data-async-boundary="product">
+        <template data-async-loading="product">
+          <p>Loading product...</p>
+        </template>
+        <template data-async-ready="product">
+          <h1 data-async-text="product.title"></h1>
+          <p data-async-text="product.description"></p>
+        </template>
+        <template data-async-error="product">
+          <p data-async-text="product.$error.message"></p>
+        </template>
+      </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

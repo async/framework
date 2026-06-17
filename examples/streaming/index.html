@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>AsyncLoader Streaming</title>
+  </head>
+  <body data-async-container>
+    <main>
+      <button type="button" on:click="streamProduct">Stream product</button>
+      <section data-async-boundary="product">
+        <p>Waiting for streamed HTML...</p>
+      </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,69 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { createSignalRegistry, delay, signal } from "../src/index.js";
+
+test("async signals track sync reads, abort reruns, and suppress stale completion", async () => {
+  const signals = createSignalRegistry({
+    productId: signal("a")
+  });
+  const runs = [];
+
+  signals.asyncSignal("product", async function () {
+    const id = this.signals.get("productId");
+    runs.push({ id, abort: this.abort, version: this.version });
+    await delay(id === "a" ? 30 : 5, this.abort);
+    return { id, title: `Product ${id}` };
+  });
+
+  await delay(0);
+  assert.equal(signals.get("product.$loading"), true);
+  assert.equal(runs[0].abort instanceof AbortSignal, true);
+  assert.equal(typeof runs[0].abort.cancel, "function");
+
+  signals.set("productId", "b");
+  assert.equal(runs[0].abort.aborted, true);
+
+  await delay(40);
+  assert.equal(signals.get("product.$status"), "ready");
+  assert.equal(signals.get("product.id"), "b");
+  assert.equal(signals.get("product.title"), "Product b");
+  assert.equal(signals.get("product.$version"), 2);
+});
+
+test("async signals expose loading, ready, and error states", async () => {
+  const signals = createSignalRegistry();
+  signals.asyncSignal("broken", async function () {
+    await delay(0, this.abort);
+    throw new Error("no product");
+  });
+
+  await delay(0);
+  assert.equal(signals.get("broken.$loading"), true);
+
+  await delay(5);
+  assert.equal(signals.get("broken.$status"), "error");
+  assert.equal(signals.get("broken.$loading"), false);
+  assert.equal(signals.get("broken.$error").message, "no product");
+});
+
+test("async signal cancel aborts the native signal", async () => {
+  const signals = createSignalRegistry();
+  let abort;
+
+  const ref = signals.asyncSignal("slow", async function () {
+    abort = this.abort;
+    await delay(50, this.abort);
+    return "done";
+  });
+
+  await delay(0);
+  assert.equal(ref.status, "loading");
+  assert.equal(ref.loading, true);
+
+  ref.cancel(new Error("manual"));
+  await delay(0);
+
+  assert.equal(abort.aborted, true);
+  assert.equal(ref.loading, false);
+  assert.equal(signals.get("slow.$status"), "idle");
+});

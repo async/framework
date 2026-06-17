@@ -1,4 +1,0 @@
-packages:
-  - "frameworks/*"
-  - "examples/*/*"
-  - "packages/*"

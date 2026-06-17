@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "generator": "@async/pipeline",
+  "config": "pipeline.ts",
+  "prefix": "pipeline",
+  "runners": "all",
+  "targets": "root",
+  "manifests": [
+    {
+      "path": "package.json",
+      "runner": "package",
+      "field": "scripts",
+      "commands": [
+        {
+          "name": "pipeline:verify",
+          "value": "async-pipeline run verify"
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "name": "pipeline:verify",
+      "value": "async-pipeline run verify"
+    }
+  ],
+  "hash": "sha256:c1f4412f3ead839ea489a634e94bd692f19473c025e62b51e70330a5df8a3393",
+  "generatedAt": "2026-06-17T05:51:26.628Z"
+}
