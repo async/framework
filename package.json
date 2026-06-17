@@ -3,6 +3,10 @@
   "version": "0.10.0",
   "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
+  "main": "./src/index.js",
+  "module": "./browser.min.js",
+  "browser": "./browser.min.js",
+  "sideEffects": false,
   "packageManager": "pnpm@11.1.0",
   "engines": {
     "node": ">=24"
@@ -34,7 +38,7 @@
   "exports": {
     ".": {
       "types": "./server.d.ts",
-      "browser": "./browser.js",
+      "browser": "./browser.min.js",
       "node": "./src/index.js",
       "import": "./src/index.js",
       "default": "./src/index.js"
@@ -95,6 +99,8 @@
     "async-pipeline": "async-pipeline",
     "bundle": "node scripts/build-framework-bundle.js",
     "bundle:check": "node scripts/build-framework-bundle.js --check",
+    "bundle:size": "node scripts/bundle-size.js",
+    "bundle:size:check": "node scripts/bundle-size.js --check",
     "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",
@@ -112,11 +118,12 @@
     "pipeline:task:docs.site": "async-pipeline run-task docs.site",
     "pipeline:verify": "async-pipeline run verify",
     "registry:lint": "node scripts/registry-lint.js",
-    "release:check": "pnpm run pipeline:verify -- --force && pnpm run pipeline:pages -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
+    "release:check": "pnpm run pipeline:verify -- --force && pnpm run bundle:size:check && pnpm run pipeline:pages -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
     "@async/pipeline": "0.8.5",
-    "happy-dom": "20.10.5"
+    "happy-dom": "20.10.5",
+    "terser": "5.48.0"
   }
 }

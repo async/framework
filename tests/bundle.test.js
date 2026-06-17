@@ -5,6 +5,7 @@ import vm from "node:vm";
 import * as bundle from "../browser.js";
 import * as minBundle from "../browser.min.js";
 import * as source from "../src/browser.js";
+import manifest from "../package.json" with { type: "json" };
 
 test("browser ESM bundles export the public browser runtime API", () => {
   assert.deepEqual(Object.keys(bundle).sort(), Object.keys(source).sort());
@@ -37,7 +38,7 @@ test("browser ESM bundles are standalone without relative imports", () => {
 
     assert.doesNotMatch(contents, /^\s*import\s/m);
     assert.doesNotMatch(contents, /from\s+["']\.\//);
-    assert.match(contents, /\bexport\s+{/);
+    assert.match(contents, /\bexport\s*{/);
   }
 });
 
@@ -116,6 +117,15 @@ test("root package and explicit subpath exports resolve correctly", async () => 
   assert.equal(typeof browserPackage.createServerProxy, "function");
   assert.equal(typeof serverPackage.createServerRegistry, "function");
   assert.equal(typeof serverPackage.createRequestContextStore, "function");
+});
+
+test("package metadata keeps legacy size analyzers on the browser entry", () => {
+  assert.equal(manifest.main, "./src/index.js");
+  assert.equal(manifest.module, "./browser.min.js");
+  assert.equal(manifest.browser, "./browser.min.js");
+  assert.equal(manifest.exports["."].browser, "./browser.min.js");
+  assert.equal(manifest.sideEffects, false);
+  assert.equal(manifest.devDependencies.terser, "5.48.0");
 });
 
 test("root browser.ts is a bundled TypeScript entrypoint", async () => {

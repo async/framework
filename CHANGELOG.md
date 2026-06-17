@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added Terser-powered browser bundle minification and pointed legacy
+  `module`/`browser` analyzer fields plus the root `exports.browser` condition
+  at `browser.min.js`.
+- Bundle size from bundled TypeScript source: `browser.ts` 171,471 B raw /
+  32,301 B gzip -> `browser.min.js` 72,753 B raw / 21,763 B gzip
+  (-98,718 B raw, -10,538 B gzip).
+
 ## 0.10.0 - 2026-06-17
 
 - Added rootless browser startup plus `attachRoot`, `detachRoot`,
