@@ -536,6 +536,7 @@ const __cacheModule = (() => {
     const registryStore = registry ?? createRegistryStore();
     const definitions = registryStore._map(type);
     const entries = registryStore._map(`${type}.entries`);
+    const pending = new Map();
 
     const registryApi = attachRegistryInspection({
       register(id, definition = defineCache()) {
@@ -597,24 +598,47 @@ const __cacheModule = (() => {
         if (cached !== undefined) {
           return cached;
         }
-        const value = await fn();
-        registryApi.set(key, value, options);
-        return value;
+        if (pending.has(key)) {
+          return pending.get(key);
+        }
+        let promise;
+        promise = Promise.resolve()
+          .then(fn)
+          .then((value) => {
+            if (pending.get(key) === promise) {
+              registryApi.set(key, value, options);
+            }
+            return value;
+          })
+          .finally(() => {
+            if (pending.get(key) === promise) {
+              pending.delete(key);
+            }
+          });
+        pending.set(key, promise);
+        return promise;
       },
 
       delete(key) {
         assertKey(key);
+        pending.delete(key);
         return entries.delete(key);
       },
 
       clear(prefix) {
         if (prefix === undefined) {
           entries.clear();
+          pending.clear();
           return registryApi;
         }
         for (const key of [...entries.keys()]) {
           if (key.startsWith(prefix)) {
             entries.delete(key);
+          }
+        }
+        for (const key of [...pending.keys()]) {
+          if (key.startsWith(prefix)) {
+            pending.delete(key);
           }
         }
         return registryApi;
@@ -1752,6 +1776,8 @@ const __componentModule = (() => {
 const __serverModule = (() => {
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
   const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
+  const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
+  const appliedServerValues = new WeakSet();
 
   function createServerRegistry(initialMap = {}, options = {}) {
     const registryStore = options.registry ?? createRegistryStore();
@@ -1858,6 +1884,7 @@ const __serverModule = (() => {
         input: context.input ?? defaultInput(runContext),
         signals: context.signalValues ?? snapshotSignalPaths(context.signalPaths, runContext.signals)
       };
+      assertJsonTransportable(body);
 
       const response = await fetchImpl(joinEndpoint(endpoint, id), {
         method: "POST",
@@ -1875,7 +1902,7 @@ const __serverModule = (() => {
 
       const result = await readServerResponse(response);
       await applyServerResult(result, runContext);
-      return unwrapServerResult(result);
+      return markAppliedServerValue(unwrapServerResult(result));
     }
 
     return createServerNamespace(run, {
@@ -1910,6 +1937,9 @@ const __serverModule = (() => {
     if (!isServerEnvelope(result)) {
       return result;
     }
+    if (result[appliedServerResult] || appliedServerValues.has(result)) {
+      return result;
+    }
 
     if (result.signals && context.signals) {
       for (const [path, value] of Object.entries(result.signals)) {
@@ -1933,6 +1963,12 @@ const __serverModule = (() => {
       throw toError(result.error);
     }
 
+    Object.defineProperty(result, appliedServerResult, {
+      configurable: true,
+      enumerable: false,
+      value: true
+    });
+
     return result;
   }
 
@@ -1941,6 +1977,13 @@ const __serverModule = (() => {
       return result.value;
     }
     return result;
+  }
+
+  function markAppliedServerValue(value) {
+    if (value && typeof value === "object") {
+      appliedServerValues.add(value);
+    }
+    return value;
   }
 
   function defaultInput(context = {}) {
@@ -2118,6 +2161,30 @@ const __serverModule = (() => {
       output[key] = value;
     }
     return output;
+  }
+
+  function assertJsonTransportable(value, seen = new Set()) {
+    if (value == null || typeof value !== "object") {
+      return;
+    }
+    if (seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+
+    const tag = Object.prototype.toString.call(value);
+    if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
+      throw new Error("Server proxy JSON transport does not support File, Blob, or FormData values yet.");
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        assertJsonTransportable(item, seen);
+      }
+      return;
+    }
+    for (const item of Object.values(value)) {
+      assertJsonTransportable(item, seen);
+    }
   }
 
   function joinEndpoint(endpoint, id) {
@@ -3219,6 +3286,7 @@ const __routerModule = (() => {
         const nextRoute = normalizeRoute(pattern, definition);
         entries.set(pattern, nextRoute.definition);
         routes.push(nextRoute);
+        sortRoutes(routes);
         return nextRoute;
       },
 
@@ -3291,6 +3359,7 @@ const __routerModule = (() => {
       const nextRoute = normalizeRoute(pattern, definition);
       entries.set(pattern, nextRoute.definition);
       routes.push(nextRoute);
+      sortRoutes(routes);
     }
   }
 
@@ -3327,6 +3396,8 @@ const __routerModule = (() => {
     const ownsLoader = !loader;
     const cleanups = new Set();
     let destroyed = false;
+    let navigationVersion = 0;
+    let activeNavigation;
 
     const api = {
       mode,
@@ -3366,7 +3437,7 @@ const __routerModule = (() => {
       },
 
       match(url) {
-        return routes.match(url);
+        return routes.match(resolveUrl(url));
       },
 
       prefetch(url) {
@@ -3391,7 +3462,7 @@ const __routerModule = (() => {
           return null;
         }
 
-        const target = toUrl(url);
+        const target = resolveUrl(url);
         if (mode === "ssr-spa") {
           return fetchRoutePartial(target, options);
         }
@@ -3403,6 +3474,7 @@ const __routerModule = (() => {
           return;
         }
         destroyed = true;
+        activeNavigation?.controller.abort(new Error("Router has been destroyed."));
         for (const cleanup of cleanups) {
           cleanup();
         }
@@ -3442,24 +3514,37 @@ const __routerModule = (() => {
     async function renderLocalRoutePartial(target, options = {}) {
       const matched = api.match(target);
       if (!matched) {
+        beginNavigation(target, null);
         setNoRouteError(target);
         return null;
       }
 
+      const navigation = beginNavigation(target, matched);
       setMatchedRouterState(target, matched, { pending: true, error: null });
 
       try {
         if (!matched.route?.partial || !partials?.resolve?.(matched.route.partial)) {
           const error = new Error(`Route "${target.pathname}" does not have a registered partial.`);
-          setRouterState({ pending: false, error });
+          if (isActiveNavigation(navigation)) {
+            setRouterState({ pending: false, error });
+          }
           return null;
         }
 
-        const result = await partials.render(matched.route.partial, matched.params, contextFor(matched));
-        await applyNavigationResult(result, target, options);
+        const result = await partials.render(matched.route.partial, matched.params, contextFor(matched, navigation));
+        if (!isActiveNavigation(navigation)) {
+          return null;
+        }
+        await applyNavigationResult(result, target, options, navigation);
+        if (!isActiveNavigation(navigation)) {
+          return null;
+        }
         setRouterState({ pending: false, error: null });
         return result;
       } catch (error) {
+        if (!isActiveNavigation(navigation)) {
+          return null;
+        }
         setRouterState({ pending: false, error });
         throw error;
       }
@@ -3467,26 +3552,43 @@ const __routerModule = (() => {
 
     async function fetchRoutePartial(target, options = {}) {
       const matched = api.match(target);
+      const navigation = beginNavigation(target, matched);
       setMatchedRouterState(target, matched, { pending: true, error: null });
 
       try {
-        const result = await fetchRoute(target.href);
-        await applyNavigationResult(result, target, options);
+        const result = await fetchRoute(target.href, { signal: navigation.abort });
+        if (!isActiveNavigation(navigation)) {
+          return null;
+        }
+        await applyNavigationResult(result, target, options, navigation);
+        if (!isActiveNavigation(navigation)) {
+          return null;
+        }
         setRouterState({ pending: false, error: null });
         return result;
       } catch (error) {
+        if (!isActiveNavigation(navigation)) {
+          return null;
+        }
         setRouterState({ pending: false, error });
         throw error;
       }
     }
 
-    async function applyNavigationResult(result, target, options) {
+    async function applyNavigationResult(result, target, options, navigation) {
+      if (!isActiveNavigation(navigation)) {
+        return;
+      }
       await applyServerResult(result, {
         signals: signalRegistry,
         loader: loaderInstance,
         router: api,
-        cache
+        cache,
+        abort: navigation?.abort
       });
+      if (!isActiveNavigation(navigation)) {
+        return;
+      }
       if (result?.html != null && !result.boundary && !result.redirect) {
         loaderInstance.swap(boundary, result.html);
       }
@@ -3500,14 +3602,15 @@ const __routerModule = (() => {
       documentRef.defaultView?.history?.pushState?.({}, "", target.href);
     }
 
-    async function fetchRoute(url, { prefetch = false } = {}) {
+    async function fetchRoute(url, { prefetch = false, signal } = {}) {
       if (typeof fetchImpl !== "function") {
         throw new Error("Router navigation requires a partial registry or fetch.");
       }
       const response = await fetchImpl(`${routeEndpoint}?to=${encodeURIComponent(String(url))}`, {
         headers: {
           accept: "application/json, text/html"
-        }
+        },
+        signal
       });
       if (!response.ok) {
         throw new Error(`Route "${url}" failed with ${response.status}.`);
@@ -3522,7 +3625,7 @@ const __routerModule = (() => {
       return { boundary, html: await response.text() };
     }
 
-    function contextFor(matched) {
+    function contextFor(matched, navigation) {
       return {
         params: matched.params,
         route: matched.route,
@@ -3532,8 +3635,26 @@ const __routerModule = (() => {
         loader: loaderInstance,
         server,
         cache,
-        abort: undefined
+        abort: navigation?.abort
       };
+    }
+
+    function beginNavigation(target, matched) {
+      activeNavigation?.controller.abort(new Error(`Router navigation superseded by ${target.pathname}${target.search}.`));
+      const controller = new AbortController();
+      const navigation = {
+        id: ++navigationVersion,
+        controller,
+        abort: controller.signal,
+        target,
+        matched
+      };
+      activeNavigation = navigation;
+      return navigation;
+    }
+
+    function isActiveNavigation(navigation) {
+      return !destroyed && navigation && activeNavigation?.id === navigation.id && !navigation.abort.aborted;
     }
 
     function updateStateFromLocation() {
@@ -3570,7 +3691,14 @@ const __routerModule = (() => {
     }
 
     function currentUrl() {
-      return toUrl(documentRef.defaultView?.location?.href ?? "http://localhost/");
+      return resolveUrl(documentRef.defaultView?.location?.href ?? "http://localhost/");
+    }
+
+    function resolveUrl(url) {
+      if (url instanceof URL) {
+        return url;
+      }
+      return new URL(String(url), documentRef.defaultView?.location?.href ?? "http://localhost/");
     }
 
     function assertActive() {
@@ -3587,6 +3715,7 @@ const __routerModule = (() => {
       pattern,
       regex,
       keys,
+      score: routeScore(pattern),
       definition: normalized
     };
   }
@@ -3653,6 +3782,28 @@ const __routerModule = (() => {
 
   function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function sortRoutes(routes) {
+    routes.sort((left, right) => right.score - left.score || right.pattern.length - left.pattern.length);
+  }
+
+  function routeScore(pattern) {
+    if (pattern === "*") {
+      return -1;
+    }
+    return pattern
+      .split("/")
+      .filter(Boolean)
+      .reduce((score, segment) => {
+        if (segment === "*") {
+          return score;
+        }
+        if (segment.startsWith(":")) {
+          return score + 2;
+        }
+        return score + 4;
+      }, pattern === "/" ? 3 : 0);
   }
 
   function assertPattern(pattern) {
@@ -3738,7 +3889,7 @@ const __appModule = (() => {
     let started = false;
     let destroyed = false;
 
-    applySnapshot(signals, browserCache, options.snapshot);
+    applySnapshot(signals, browserCache, options.snapshot ?? (target === "browser" ? readSnapshot(options.root, { attributes }) : undefined));
     attachServerCache(server, serverCache);
 
     const runtime = {
@@ -3906,6 +4057,38 @@ const __appModule = (() => {
 
   const Async = defineApp();
 
+  function readSnapshot(root = globalThis.document, { attributes } = {}) {
+    const attributeConfig = normalizeAttributeConfig(attributes);
+    const snapshotAttr = attributeName(attributeConfig, "async", "snapshot");
+    const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
+    const rootNode = root ?? documentRef;
+    if (!rootNode?.querySelectorAll && !documentRef?.querySelectorAll) {
+      return {};
+    }
+
+    for (const searchRoot of new Set([rootNode, documentRef])) {
+      if (!searchRoot?.querySelectorAll) {
+        continue;
+      }
+      for (const script of searchRoot.querySelectorAll("script[type='application/json'], script")) {
+        if (!script.hasAttribute?.(snapshotAttr)) {
+          continue;
+        }
+        const source = script.textContent?.trim() ?? "";
+        if (!source) {
+          return {};
+        }
+        try {
+          return JSON.parse(source);
+        } catch (cause) {
+          throw new Error(`Could not parse Async snapshot: ${cause instanceof Error ? cause.message : String(cause)}`);
+        }
+      }
+    }
+
+    return {};
+  }
+
   function applyUseToRuntime(runtime, normalized) {
     applyRegistryUse(runtime.signals, runtime.registry, normalized.signal);
     applyRegistryUse(runtime.handlers, runtime.registry, normalized.handler);
@@ -4066,7 +4249,7 @@ const __appModule = (() => {
   function escapeScriptJson(value) {
     return JSON.stringify(value).replaceAll("<", "\\u003c");
   }
-  return { defineApp, createApp, Async };
+  return { defineApp, createApp, readSnapshot, Async };
 })();
 
 const __delayModule = (() => {
@@ -4107,6 +4290,7 @@ const { asyncSignal: asyncSignal } = __asyncSignalModule;
 const { Async: Async } = __appModule;
 const { createApp: createApp } = __appModule;
 const { defineApp: defineApp } = __appModule;
+const { readSnapshot: readSnapshot } = __appModule;
 const { attributeName: attributeName } = __attributesModule;
 const { defineAttributeConfig: defineAttributeConfig } = __attributesModule;
 const { createCacheRegistry: createCacheRegistry } = __cacheModule;
@@ -4133,4 +4317,4 @@ const { createSignalRegistry: createSignalRegistry } = __signalsModule;
 const { effect: effect } = __signalsModule;
 const { signal: signal } = __signalsModule;
 
-export { asyncSignal, Async, createApp, defineApp, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };
+export { asyncSignal, Async, createApp, defineApp, readSnapshot, attributeName, defineAttributeConfig, createCacheRegistry, defineCache, component, createComponentRegistry, defineComponent, delay, createHandlerRegistry, html, Loader, AsyncLoader, createPartialRegistry, createRegistryStore, createRouteRegistry, createRouter, defineRoute, route, createServerProxy, createServerRegistry, computed, createSignal, createSignalRegistry, effect, signal };

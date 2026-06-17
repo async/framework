@@ -262,6 +262,7 @@ export interface PartialContext {
   cache?: CacheRegistry;
   browserCache?: CacheRegistry;
   partials: PartialRegistry;
+  abort?: AbortSignal;
   request?: Request;
   locals?: unknown;
   [key: string]: unknown;
@@ -506,6 +507,7 @@ export interface AsyncNamespace extends AppHub {
   asyncSignal: typeof asyncSignal;
   createApp: typeof createApp;
   defineApp: typeof defineApp;
+  readSnapshot: typeof readSnapshot;
   attributeName: typeof attributeName;
   defineAttributeConfig: typeof defineAttributeConfig;
   createCacheRegistry: typeof createCacheRegistry;
@@ -537,6 +539,7 @@ export declare function asyncSignal<T = unknown>(id: string, fn: AsyncSignalFunc
 export declare const Async: AppHub;
 export declare function createApp(appOrDefinition?: AppHub | AppDefinition, options?: CreateAppOptions): AppRuntime;
 export declare function defineApp(initial?: AppDefinition): AppHub;
+export declare function readSnapshot(root?: Document | Element, options?: { attributes?: AttributeConfig }): { signals?: Record<string, unknown>; cache?: { browser?: Record<string, unknown> } };
 export declare function attributeName(attributes: AttributeConfig | undefined, type: keyof NormalizedAttributeConfig, name: string): string;
 export declare function defineAttributeConfig(config?: AttributeConfig): NormalizedAttributeConfig;
 export declare function createCacheRegistry(initialMap?: Record<string, CacheDefinition | CacheDefinitionOptions>, options?: { now?: () => number; registry?: RegistryStore; type?: "cache.browser" | "cache.server" }): CacheRegistry;
