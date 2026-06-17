@@ -75,9 +75,17 @@ export default definePipeline({
       run: sh`pnpm run examples:check`
     }),
 
+    "registry-lint": task({
+      description: "Detect conflicting Async registry declarations in package source without scanning generated bundles.",
+      inputs: ["src/**/*.js", "examples/**/*.js", "scripts/registry-lint.js"],
+      outputs: [".async/registry-manifest.json", ".async/registry-lint-cache.json"],
+      cache: false,
+      run: sh`pnpm run registry:lint`
+    }),
+
     pack: task({
       description: "Prove the package can be packed without consumer build steps.",
-      dependsOn: ["examples", "docs.site"],
+      dependsOn: ["examples", "docs.site", "registry-lint"],
       inputs: ["source"],
       cache: false,
       run: sh`pnpm run bundle:check && npm pack --dry-run --ignore-scripts`

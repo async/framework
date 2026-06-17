@@ -96,6 +96,7 @@
     "pipeline:sync:generate": "async-pipeline sync generate",
     "pipeline:task:docs.site": "async-pipeline run-task docs.site",
     "pipeline:verify": "async-pipeline run verify",
+    "registry:lint": "node scripts/registry-lint.js",
     "release:check": "pnpm run pipeline:verify -- --force && pnpm run pipeline:pages -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
     "test": "node --test tests/*.test.js"
   },

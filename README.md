@@ -1002,9 +1002,18 @@ Useful commands:
 ```bash
 pnpm run pipeline:verify
 pnpm run pipeline:pages
+pnpm run registry:lint
 pnpm run pipeline:release:doctor
 pnpm run release:check
 ```
+
+`registry:lint` scans package source and examples for declared registry ids
+such as signals, handlers, server functions, partials, routes, and components.
+It writes `.async/registry-manifest.json` plus a per-file cache at
+`.async/registry-lint-cache.json`, skips generated root bundles such as
+`framework.umd.min.js`, and fails only when the same registry type and id are
+declared with different normalized content. Duplicate declarations with the
+same content are reported as dedupe candidates, not errors.
 
 GitHub Pages builds through the generated `pages` job. This private repository
 needs GitHub Pages support enabled before the generated job can deploy.
