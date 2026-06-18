@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.12 - 2026-06-18
+
+- Deferred boundary receiver sequence commits until patch effects complete so
+  failed DOM swaps, scheduler flushes, redirects, or missing capabilities no
+  longer make the same streamed sequence stale.
+- Serialized same-boundary patch application to keep concurrent patches from
+  committing out of order while preserving stale rejection after successful
+  commits.
+- Added regression coverage for retryable DOM, scheduler, redirect, and
+  capability failures plus idempotent partial-effect replay.
+- Bundle size from bundled TypeScript source: `browser.ts` 186,064 B raw /
+  35,039 B gzip -> `browser.min.js` 79,042 B raw / 23,445 B gzip
+  (-107,022 B raw, -11,594 B gzip).
+
 ## 0.11.11 - 2026-06-18
 
 - Serialized rejected async-signal snapshot errors to stable `name`, `message`,

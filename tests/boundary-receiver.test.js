@@ -103,6 +103,189 @@ test("boundary receiver ignores stale seq for the same boundary", async () => {
   loader.destroy();
 });
 
+test("boundary receiver retries the same seq after DOM swap failure", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+  const signals = createSignalRegistry({
+    product: signal({})
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+  const originalSwap = loader.swap.bind(loader);
+  let attempts = 0;
+  loader.swap = (boundary, html) => {
+    attempts += 1;
+    if (attempts === 1) {
+      throw new Error("swap failed");
+    }
+    return originalSwap(boundary, html);
+  };
+  const receiver = createBoundaryReceiver({ loader, signals });
+  const patch = {
+    boundary: "product",
+    seq: 1,
+    signals: {
+      "product.title": "Keyboard"
+    },
+    html: `<article><h1 signal:text="product.title"></h1></article>`
+  };
+
+  await assert.rejects(receiver.apply(patch), /swap failed/);
+
+  assert.equal(receiver.inspect().boundaries.product.lastSeq, -Infinity);
+  assert.equal(signals.get("product.title"), "Keyboard");
+
+  const result = await receiver.apply(patch);
+
+  assert.deepEqual(result, { status: "applied", boundary: "product", seq: 1 });
+  assert.equal(receiver.inspect().boundaries.product.lastSeq, 1);
+  assert.equal(document.querySelector("h1").textContent, "Keyboard");
+  loader.destroy();
+});
+
+test("boundary receiver missing signal capability does not consume seq", async () => {
+  let swappedHtml;
+  const loader = {
+    swap(boundary, html) {
+      swappedHtml = { boundary, html };
+    }
+  };
+  const receiver = createBoundaryReceiver({ loader });
+
+  await assert.rejects(
+    receiver.apply({
+      boundary: "product",
+      seq: 1,
+      signals: {
+        "product.title": "Keyboard"
+      }
+    }),
+    /no signal registry is available/
+  );
+
+  assert.equal(receiver.inspect().boundaries.product.lastSeq, -Infinity);
+
+  const result = await receiver.apply({
+    boundary: "product",
+    seq: 1,
+    html: `<h1>Retry</h1>`
+  });
+
+  assert.deepEqual(result, { status: "applied", boundary: "product", seq: 1 });
+  assert.deepEqual(swappedHtml, { boundary: "product", html: `<h1>Retry</h1>` });
+  assert.equal(receiver.inspect().boundaries.product.lastSeq, 1);
+});
+
+test("boundary receiver retries the same seq after scheduler flush failure", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+  const loader = Loader({ root: document.body }).start();
+  let flushes = 0;
+  const scheduler = {
+    async flush() {
+      flushes += 1;
+      if (flushes === 1) {
+        throw new Error("flush failed");
+      }
+    }
+  };
+  const receiver = createBoundaryReceiver({ loader, scheduler });
+
+  await assert.rejects(
+    receiver.apply({ boundary: "product", seq: 1, html: `<h1>First</h1>` }),
+    /flush failed/
+  );
+
+  assert.equal(receiver.inspect().boundaries.product.lastSeq, -Infinity);
+  assert.equal(document.querySelector("h1").textContent, "First");
+
+  const result = await receiver.apply({ boundary: "product", seq: 1, html: `<h1>Retry</h1>` });
+
+  assert.deepEqual(result, { status: "applied", boundary: "product", seq: 1 });
+  assert.equal(receiver.inspect().boundaries.product.lastSeq, 1);
+  assert.equal(document.querySelector("h1").textContent, "Retry");
+  loader.destroy();
+});
+
+test("boundary receiver retries the same seq after redirect failure", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+  const navigations = [];
+  let attempts = 0;
+  const router = {
+    async navigate(to) {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("redirect failed");
+      }
+      navigations.push(to);
+    }
+  };
+  const loader = Loader({ root: document.body, router }).start();
+  const receiver = createBoundaryReceiver({ loader, router });
+  const patch = {
+    boundary: "route",
+    seq: 1,
+    redirect: "/next"
+  };
+
+  await assert.rejects(receiver.apply(patch), /redirect failed/);
+
+  assert.equal(receiver.inspect().boundaries.route.lastSeq, -Infinity);
+
+  const result = await receiver.apply(patch);
+
+  assert.deepEqual(result, {
+    status: "redirected",
+    boundary: "route",
+    seq: 1,
+    redirect: "/next"
+  });
+  assert.deepEqual(navigations, ["/next"]);
+  assert.equal(receiver.inspect().boundaries.route.lastSeq, 1);
+  loader.destroy();
+});
+
+test("boundary receiver serializes concurrent same-boundary patches", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+  const loader = Loader({ root: document.body }).start();
+  let releaseFirstFlush;
+  let flushes = 0;
+  const scheduler = {
+    flush() {
+      flushes += 1;
+      if (flushes === 1) {
+        return new Promise((resolve) => {
+          releaseFirstFlush = resolve;
+        });
+      }
+      return Promise.resolve();
+    }
+  };
+  const receiver = createBoundaryReceiver({ loader, scheduler });
+
+  const first = receiver.apply({ boundary: "route", seq: 1, html: `<h1>One</h1>` });
+  await delay(0);
+  const second = receiver.apply({ boundary: "route", seq: 2, html: `<h1>Two</h1>` });
+  await delay(0);
+
+  assert.equal(typeof releaseFirstFlush, "function");
+  assert.equal(document.querySelector("h1").textContent, "One");
+  assert.equal(receiver.inspect().boundaries.route.lastSeq, -Infinity);
+
+  releaseFirstFlush();
+
+  assert.deepEqual(await first, { status: "applied", boundary: "route", seq: 1 });
+  assert.deepEqual(await second, { status: "applied", boundary: "route", seq: 2 });
+  assert.equal(document.querySelector("h1").textContent, "Two");
+  assert.equal(receiver.inspect().boundaries.route.lastSeq, 2);
+  loader.destroy();
+});
+
 test("boundary receiver allows independent out-of-order boundary patches", async () => {
   const window = new Window();
   const { document } = window;

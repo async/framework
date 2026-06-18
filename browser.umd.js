@@ -5826,101 +5826,25 @@
 
           const normalized = validatePatch(patch);
           const record = boundaryRecord(normalized.boundary);
-          if (normalized.seq <= record.lastSeq) {
-            const result = {
-              status: "ignored-stale",
-              boundary: normalized.boundary,
-              seq: normalized.seq,
-              lastSeq: record.lastSeq
-            };
-            record.ignored += 1;
-            record.lastStatus = result.status;
-            remember(result);
-            onIgnore?.(result, patch);
-            return result;
-          }
+          let releasePending;
+          const previousPending = record.pending ?? Promise.resolve();
+          const pending = new Promise((resolve) => {
+            releasePending = resolve;
+          });
+          record.pending = pending;
 
-          if (normalized.parentScope !== undefined && isScopeDestroyed(normalized.parentScope)) {
-            const result = {
-              status: "ignored-destroyed",
-              boundary: normalized.boundary,
-              seq: normalized.seq,
-              parentScope: normalized.parentScope
-            };
-            record.ignored += 1;
-            record.lastStatus = result.status;
-            remember(result);
-            onIgnore?.(result, patch);
-            return result;
-          }
-
-          record.lastSeq = normalized.seq;
-
-          if (Object.hasOwn(normalized, "error")) {
-            const error = toStableError(normalized.error);
-            const result = {
-              status: "errored",
-              boundary: normalized.boundary,
-              seq: normalized.seq,
-              error
-            };
-            record.errored += 1;
-            record.lastStatus = result.status;
-            remember(result);
-            onError?.(error, result, patch);
-            if (throwOnError) {
-              throw error;
+          try {
+            await previousPending;
+            if (destroyed) {
+              throw new Error("Boundary receiver has been destroyed.");
             }
-            return result;
-          }
-
-          if (normalized.signals) {
-            if (!signals || typeof signals.set !== "function") {
-              throw new Error("Boundary patch includes signals, but no signal registry is available.");
-            }
-            for (const [path, value] of Object.entries(normalized.signals)) {
-              signals.set(path, value);
+            return await applyBoundaryPatch(record, normalized, patch);
+          } finally {
+            releasePending();
+            if (record.pending === pending) {
+              record.pending = undefined;
             }
           }
-
-          if (normalized.cache?.browser) {
-            if (!cache || typeof cache.restore !== "function") {
-              throw new Error("Boundary patch includes browser cache, but no cache registry is available.");
-            }
-            cache.restore(normalized.cache.browser);
-          }
-
-          if (normalized.html != null) {
-            loader.swap(normalized.boundary, normalized.html);
-          }
-
-          await flushScheduler(scheduler, normalized.scope);
-
-          if (normalized.redirect) {
-            await followRedirect(normalized.redirect, router, loader);
-            const result = {
-              status: "redirected",
-              boundary: normalized.boundary,
-              seq: normalized.seq,
-              redirect: normalized.redirect
-            };
-            record.applied += 1;
-            record.lastStatus = result.status;
-            remember(result);
-            onApply?.(result, patch);
-            return result;
-          }
-
-          const result = {
-            status: "applied",
-            boundary: normalized.boundary,
-            seq: normalized.seq
-          };
-          record.applied += 1;
-          record.lastStatus = result.status;
-          remember(result);
-          onApply?.(result, patch);
-          return result;
         },
 
         inspect() {
@@ -5968,6 +5892,105 @@
 
       return receiver;
 
+      async function applyBoundaryPatch(record, normalized, patch) {
+        if (normalized.seq <= record.lastSeq) {
+          const result = {
+            status: "ignored-stale",
+            boundary: normalized.boundary,
+            seq: normalized.seq,
+            lastSeq: record.lastSeq
+          };
+          record.ignored += 1;
+          record.lastStatus = result.status;
+          remember(result);
+          onIgnore?.(result, patch);
+          return result;
+        }
+
+        if (normalized.parentScope !== undefined && isScopeDestroyed(normalized.parentScope)) {
+          const result = {
+            status: "ignored-destroyed",
+            boundary: normalized.boundary,
+            seq: normalized.seq,
+            parentScope: normalized.parentScope
+          };
+          record.ignored += 1;
+          record.lastStatus = result.status;
+          remember(result);
+          onIgnore?.(result, patch);
+          return result;
+        }
+
+        if (Object.hasOwn(normalized, "error")) {
+          const error = toStableError(normalized.error);
+          const result = {
+            status: "errored",
+            boundary: normalized.boundary,
+            seq: normalized.seq,
+            error
+          };
+          record.lastSeq = normalized.seq;
+          record.errored += 1;
+          record.lastStatus = result.status;
+          remember(result);
+          onError?.(error, result, patch);
+          if (throwOnError) {
+            throw error;
+          }
+          return result;
+        }
+
+        if (normalized.signals) {
+          if (!signals || typeof signals.set !== "function") {
+            throw new Error("Boundary patch includes signals, but no signal registry is available.");
+          }
+          for (const [path, value] of Object.entries(normalized.signals)) {
+            signals.set(path, value);
+          }
+        }
+
+        if (normalized.cache?.browser) {
+          if (!cache || typeof cache.restore !== "function") {
+            throw new Error("Boundary patch includes browser cache, but no cache registry is available.");
+          }
+          cache.restore(normalized.cache.browser);
+        }
+
+        if (normalized.html != null) {
+          loader.swap(normalized.boundary, normalized.html);
+        }
+
+        await flushScheduler(scheduler, normalized.scope);
+
+        if (normalized.redirect) {
+          const result = {
+            status: "redirected",
+            boundary: normalized.boundary,
+            seq: normalized.seq,
+            redirect: normalized.redirect
+          };
+          await followRedirect(normalized.redirect, router, loader);
+          record.applied += 1;
+          record.lastSeq = normalized.seq;
+          record.lastStatus = result.status;
+          remember(result);
+          onApply?.(result, patch);
+          return result;
+        }
+
+        const result = {
+          status: "applied",
+          boundary: normalized.boundary,
+          seq: normalized.seq
+        };
+        record.applied += 1;
+        record.lastSeq = normalized.seq;
+        record.lastStatus = result.status;
+        remember(result);
+        onApply?.(result, patch);
+        return result;
+      }
+
       function boundaryRecord(boundary) {
         if (!boundaries.has(boundary)) {
           boundaries.set(boundary, {
@@ -5975,7 +5998,8 @@
             applied: 0,
             ignored: 0,
             errored: 0,
-            lastStatus: undefined
+            lastStatus: undefined,
+            pending: undefined
           });
         }
         return boundaries.get(boundary);
