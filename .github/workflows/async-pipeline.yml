@@ -65,27 +65,65 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check generated workflow
-        run: pnpm async-pipeline github check
-
-      - name: Run pipeline job
-        run: pnpm async-pipeline run publish
+      - name: Run pipeline task pack
+        uses: async/actions/run@v0
+        with:
+          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task pack"
+          check-generated: false
+          artifact-name: async-pipeline-${{ github.job }}-pack-runs
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
-      - name: Explain async-pipeline run
-        if: failure()
-        run: pnpm async-pipeline explain --run latest || true
-
-      - name: Upload async-pipeline run evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Create or update GitHub Release
+        uses: async/actions/publish@v0
         with:
-          name: async-pipeline-${{ github.job }}-runs
-          path: .async/runs
-          if-no-files-found: ignore
+          package-path: "."
+          mode: github-release
+          registry: "https://registry.npmjs.org"
+          dist-tag: "latest"
+        env:
+          CI: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
+
+      - name: Publish GitHub Packages mirror
+        uses: async/actions/publish@v0
+        with:
+          package-path: "."
+          mode: github-packages
+          registry: "https://npm.pkg.github.com"
+          dist-tag: "latest"
+        env:
+          CI: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
+
+      - name: Publish npm package
+        uses: async/actions/publish@v0
+        with:
+          package-path: "."
+          mode: npm
+          registry: "https://registry.npmjs.org"
+          dist-tag: "latest"
+          provenance: true
+        env:
+          CI: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
+
+      - name: Run release doctor
+        uses: async/actions/publish@v0
+        with:
+          package-path: "."
+          mode: doctor
+          registry: "https://registry.npmjs.org"
+          dist-tag: "latest"
+        env:
+          CI: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
   release-doctor:
     name: release-doctor
@@ -118,26 +156,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check generated workflow
-        run: pnpm async-pipeline github check
-
-      - name: Run pipeline job
-        run: pnpm async-pipeline run release-doctor
+      - name: Run pipeline task pack
+        uses: async/actions/run@v0
+        with:
+          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task pack"
+          check-generated: false
+          artifact-name: async-pipeline-${{ github.job }}-pack-runs
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Explain async-pipeline run
-        if: failure()
-        run: pnpm async-pipeline explain --run latest || true
-
-      - name: Upload async-pipeline run evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Run release doctor
+        uses: async/actions/publish@v0
         with:
-          name: async-pipeline-${{ github.job }}-runs
-          path: .async/runs
-          if-no-files-found: ignore
+          package-path: "."
+          mode: doctor
+          registry: "https://registry.npmjs.org"
+          dist-tag: "latest"
+        env:
+          CI: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   verify:
     name: verify
@@ -167,25 +205,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check generated workflow
-        run: pnpm async-pipeline github check
-
       - name: Run pipeline job
-        run: pnpm async-pipeline run verify
+        uses: async/actions/run@v0
+        with:
+          command: "pnpm async-pipeline github check && pnpm async-pipeline run verify"
+          check-generated: false
+          artifact-name: async-pipeline-${{ github.job }}-runs
         env:
           CI: true
-
-      - name: Explain async-pipeline run
-        if: failure()
-        run: pnpm async-pipeline explain --run latest || true
-
-      - name: Upload async-pipeline run evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: async-pipeline-${{ github.job }}-runs
-          path: .async/runs
-          if-no-files-found: ignore
 
   pages:
     name: pages
@@ -215,33 +242,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check generated workflow
-        run: pnpm async-pipeline github check
-
       - name: Run Pages target
-        run: pnpm async-pipeline run-task docs.site
+        uses: async/actions/run@v0
+        with:
+          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task docs.site"
+          check-generated: false
+          artifact-name: async-pipeline-${{ github.job }}-runs
         env:
           CI: true
 
-      - name: Configure Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        uses: async/actions/pages@v0
         with:
+          mode: static
           path: ".async/pages"
-
-      - name: Explain async-pipeline run
-        if: failure()
-        run: pnpm async-pipeline explain --run latest || true
-
-      - name: Upload async-pipeline run evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: async-pipeline-${{ github.job }}-runs
-          path: .async/runs
-          if-no-files-found: ignore
 
   pages-deploy:
     name: pages-deploy
@@ -257,4 +271,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: async/actions/pages@v0
+        with:
+          upload: false
+          deploy: true
