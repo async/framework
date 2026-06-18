@@ -217,6 +217,60 @@ test("scheduler preserves phase order for nested future-phase jobs", async () =>
   assert.deepEqual(seen, ["binding", "lifecycle", "effect", "post"]);
 });
 
+test("scheduler batch accepts thenables without finally", async () => {
+  const scheduler = createScheduler();
+  const seen = [];
+  const result = await scheduler.batch(() => ({
+    then(resolve) {
+      scheduler.enqueue("binding", () => {
+        seen.push("job");
+      });
+      resolve("done");
+    }
+  }));
+
+  await delay(0);
+
+  assert.equal(result, "done");
+  assert.deepEqual(seen, ["job"]);
+});
+
+test("scheduler batch restores after rejected thenables", async () => {
+  const scheduler = createScheduler();
+  const seen = [];
+  const expected = new Error("thenable failed");
+
+  await assert.rejects(
+    scheduler.batch(() => ({
+      then(_resolve, reject) {
+        scheduler.enqueue("binding", () => {
+          seen.push("batched");
+        });
+        reject(expected);
+      }
+    })),
+    expected
+  );
+
+  scheduler.enqueue("binding", () => {
+    seen.push("after");
+  });
+  await delay(0);
+
+  assert.equal(seen.includes("batched"), true);
+  assert.equal(seen.includes("after"), true);
+});
+
+test("scheduler batch preserves promise rejection propagation", async () => {
+  const scheduler = createScheduler();
+  const expected = new Error("promise failed");
+
+  await assert.rejects(
+    scheduler.batch(() => Promise.reject(expected)),
+    expected
+  );
+});
+
 test("scheduler onError receives job metadata and flush continues", async () => {
   const scope = {};
   const failures = [];

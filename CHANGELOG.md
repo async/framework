@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.9 - 2026-06-18
+
+- Normalized scheduler batch thenables with `Promise.resolve(value)` before
+  attaching cleanup, so PromiseLike values that implement `.then()` without
+  `.finally()` are accepted.
+- Preserved batch-depth restoration, post-batch flushing, and manual rejection
+  propagation for fulfilled, rejected, and native Promise batch work.
+- Added scheduler regression coverage for thenables without `.finally()`,
+  rejected thenable batches, and Promise rejection propagation.
+- Bundle size from bundled TypeScript source: `browser.ts` 183,444 B raw /
+  34,419 B gzip -> `browser.min.js` 77,949 B raw / 23,138 B gzip
+  (-105,495 B raw, -11,281 B gzip).
+
 ## 0.11.8 - 2026-06-18
 
 - Scoped server-result application tracking to each framework invocation so the

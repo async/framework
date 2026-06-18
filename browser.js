@@ -3052,7 +3052,7 @@ const __schedulerModule = (() => {
           const value = fn();
           if (value && typeof value.then === "function") {
             asyncBatch = true;
-            return value.finally(() => {
+            return Promise.resolve(value).finally(() => {
               batchDepth -= 1;
               requestFlush();
             });
