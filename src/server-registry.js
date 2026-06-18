@@ -75,7 +75,12 @@ export function createServerRegistry(initialMap = {}, options = {}) {
       return registry;
     },
 
-    _adoptMany() {
+    _adoptMany(map = {}) {
+      for (const [id, fn] of Object.entries(map ?? {})) {
+        if (!entries.has(id)) {
+          registry.register(id, fn);
+        }
+      }
       return registry;
     }
   }, registryStore, type);

@@ -196,6 +196,10 @@
           };
         },
 
+        _cloneSignalDeclaration() {
+          return asyncSignal(id, fn);
+        },
+
         _restore(snapshot = {}) {
           if (!isAsyncSignalSnapshot(snapshot)) {
             return state.set(snapshot);
@@ -967,7 +971,12 @@
           return registryStore.entries(`${type}.entries`);
         },
 
-        _adoptMany() {
+        _adoptMany(map = {}) {
+          for (const [id, definition] of Object.entries(map ?? {})) {
+            if (!definitions.has(id)) {
+              registryApi.register(id, definition);
+            }
+          }
           return registryApi;
         }
       }, registryStore, type);
@@ -1125,6 +1134,10 @@
 
         snapshot() {
           return value;
+        },
+
+        _cloneSignalDeclaration() {
+          return createSignal(value);
         }
       };
 
@@ -1167,6 +1180,10 @@
           return backing.snapshot();
         },
 
+        _cloneSignalDeclaration() {
+          return computed(fn);
+        },
+
         _bindRegistry(registry, id) {
           return registry.effect(() => {
             backing.set(fn.call({
@@ -1191,6 +1208,9 @@
         [effectKind]: true,
         kind: "effect",
         fn,
+        _cloneSignalDeclaration() {
+          return effect(fn);
+        },
         _bindRegistry(registry) {
           return registry.effect(fn);
         }
@@ -1409,10 +1429,14 @@
         },
 
         _adoptMany(map = {}) {
-          for (const id of Object.keys(map ?? {})) {
-            if (entries.has(id)) {
-              bindEntry(id, entries.get(id));
+          for (const [id, signalLike] of Object.entries(map ?? {})) {
+            if (!entries.has(id)) {
+              const entry = cloneSignalDeclaration(signalLike);
+              entries.set(id, entry);
+              bindEntry(id, entry);
+              continue;
             }
+            bindEntry(id, entries.get(id));
           }
           return registry;
         }
@@ -1486,6 +1510,16 @@
     function normalizeSignal(signalLike) {
       if (isSignalLike(signalLike)) {
         return signalLike;
+      }
+      return createSignal(signalLike);
+    }
+
+    function cloneSignalDeclaration(signalLike) {
+      if (typeof signalLike?._cloneSignalDeclaration === "function") {
+        return signalLike._cloneSignalDeclaration();
+      }
+      if (isSignalLike(signalLike)) {
+        return createSignal(typeof signalLike.snapshot === "function" ? signalLike.snapshot() : signalLike.value);
       }
       return createSignal(signalLike);
     }
@@ -1668,7 +1702,7 @@
         frame.add(path);
       }
     }
-    return { createSignal, computed, effect, createSignalRegistry, isSignalRef, signal };
+    return { createSignal, computed, effect, createSignalRegistry, cloneSignalDeclaration, isSignalRef, signal };
   })();
 
   const __htmlModule = (() => {
@@ -1910,7 +1944,12 @@
           return lazyComponents.get(id);
         },
 
-        _adoptMany() {
+        _adoptMany(map = {}) {
+          for (const [id, Component] of Object.entries(map ?? {})) {
+            if (!entries.has(id)) {
+              registry.register(id, Component);
+            }
+          }
           return registry;
         }
       }, registryStore, type);
@@ -2750,7 +2789,12 @@
           return results;
         },
 
-        _adoptMany() {
+        _adoptMany(map = {}) {
+          for (const [id, fn] of Object.entries(map ?? {})) {
+            if (!handlers.has(id)) {
+              registry.register(id, fn);
+            }
+          }
           return registry;
         }
       }, registryStore, type);
@@ -4039,7 +4083,12 @@
           return normalizePartialResult(result, partialContext);
         },
 
-        _adoptMany() {
+        _adoptMany(map = {}) {
+          for (const [id, fn] of Object.entries(map ?? {})) {
+            if (!entries.has(id)) {
+              registry.register(id, fn);
+            }
+          }
           return registry;
         }
       }, registryStore, type);
@@ -4191,7 +4240,11 @@
         },
 
         _adoptMany(map = {}) {
-          for (const pattern of Object.keys(map ?? {})) {
+          for (const [pattern, definition] of Object.entries(map ?? {})) {
+            if (!entries.has(pattern)) {
+              registry.register(pattern, definition);
+              continue;
+            }
             adoptRoute(pattern, entries.get(pattern));
           }
           return registry;
@@ -4687,7 +4740,7 @@
     const { createRouteRegistry, createRouter } = __routerModule;
     const { createScheduler } = __schedulerModule;
     const { createServerNamespace } = __serverModule;
-    const { createSignal, createSignalRegistry } = __signalsModule;
+    const { cloneSignalDeclaration, createSignal, createSignalRegistry } = __signalsModule;
     const { createRegistryStore } = __registryStoreModule;
     const { attributeName, normalizeAttributeConfig } = __attributesModule;
     const { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } = __lazyRegistryModule;
@@ -4770,7 +4823,7 @@
         registryAssets: options.registryAssets,
         importModule: options.importModule
       });
-      const registry = options.registry ?? app.registry.view({ target });
+      const registry = options.registry ?? createRuntimeRegistry(app.registry, { target });
       const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal", lazyRegistry });
       const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler", lazyRegistry });
       const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
@@ -5149,6 +5202,22 @@
         return;
       }
       registry?.registerMany?.(entries);
+    }
+
+    function createRuntimeRegistry(appRegistry, { target } = {}) {
+      const declarations = appRegistry.rawSnapshot();
+      return createRegistryStore({
+        ...declarations,
+        signal: cloneSignalDeclarations(declarations.signal)
+      }, { target });
+    }
+
+    function cloneSignalDeclarations(signals = {}) {
+      const cloned = {};
+      for (const [id, signalLike] of Object.entries(signals ?? {})) {
+        cloned[id] = cloneSignalDeclaration(signalLike);
+      }
+      return cloned;
     }
 
     function emptyDeclarations() {

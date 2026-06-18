@@ -76,7 +76,12 @@ export function createComponentRegistry(initialMap = {}, options = {}) {
       return lazyComponents.get(id);
     },
 
-    _adoptMany() {
+    _adoptMany(map = {}) {
+      for (const [id, Component] of Object.entries(map ?? {})) {
+        if (!entries.has(id)) {
+          registry.register(id, Component);
+        }
+      }
       return registry;
     }
   }, registryStore, type);

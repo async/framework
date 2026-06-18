@@ -181,6 +181,10 @@ export function asyncSignal(id, fn) {
       };
     },
 
+    _cloneSignalDeclaration() {
+      return asyncSignal(id, fn);
+    },
+
     _restore(snapshot = {}) {
       if (!isAsyncSignalSnapshot(snapshot)) {
         return state.set(snapshot);

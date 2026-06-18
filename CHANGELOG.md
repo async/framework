@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.3 - 2026-06-18
+
+- Isolated runtime-owned signal, async-signal, scheduler, request, and cache
+  state so each `createApp(...)` call materializes fresh mutable state from
+  reusable app declarations.
+- Preserved reusable app declarations across runtime destroy/recreate cycles,
+  late `app.use(...)` adoption, server render repetition, and peer async-signal
+  subscribers.
+- Added direct runtime-isolation regression coverage and regenerated the
+  published browser/server artifacts.
+- Bundle size from bundled TypeScript source: `browser.ts` 179,469 B raw /
+  33,612 B gzip -> `browser.min.js` 76,458 B raw / 22,690 B gzip
+  (-103,011 B raw, -10,922 B gzip).
+
 ## 0.11.2 - 2026-06-18
 
 - Published the post-`0.11.1` feedback-regression hardening now on `main`,

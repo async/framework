@@ -71,7 +71,12 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
       return normalizePartialResult(result, partialContext);
     },
 
-    _adoptMany() {
+    _adoptMany(map = {}) {
+      for (const [id, fn] of Object.entries(map ?? {})) {
+        if (!entries.has(id)) {
+          registry.register(id, fn);
+        }
+      }
       return registry;
     }
   }, registryStore, type);

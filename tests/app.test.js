@@ -133,6 +133,163 @@ test("app duplicate ids fail by default", () => {
   );
 });
 
+test("server runtimes isolate signal state and destroy does not mutate app declarations", () => {
+  const app = defineApp({
+    signal: {
+      count: createSignal(0)
+    }
+  });
+  const first = createApp(app, { target: "server" }).start();
+  const second = createApp(app, { target: "server" }).start();
+
+  first.signals.set("count", 41);
+
+  assert.equal(first.signals.get("count"), 41);
+  assert.equal(second.signals.get("count"), 0);
+  assert.equal(app.registry.get("signal", "count").value, 0);
+
+  first.destroy();
+
+  assert.equal(second.signals.get("count"), 0);
+  assert.equal(app.registry.has("signal", "count"), true);
+
+  const third = createApp(app, { target: "server" }).start();
+  assert.equal(third.signals.get("count"), 0);
+
+  second.destroy();
+  third.destroy();
+});
+
+test("late app.use signal declarations materialize independently in live runtimes", () => {
+  const app = defineApp();
+  const first = createApp(app, { target: "server" }).start();
+  const second = createApp(app, { target: "server" }).start();
+
+  app.use("signal", {
+    late: createSignal("initial")
+  });
+
+  assert.equal(first.signals.get("late"), "initial");
+  assert.equal(second.signals.get("late"), "initial");
+
+  first.signals.set("late", "first");
+
+  assert.equal(first.signals.get("late"), "first");
+  assert.equal(second.signals.get("late"), "initial");
+  assert.equal(app.registry.get("signal", "late").value, "initial");
+
+  first.destroy();
+  second.destroy();
+});
+
+test("runtime cache entries are per runtime while declarations remain reusable", () => {
+  const app = defineApp({
+    cache: {
+      browser: {
+        product: defineCache({ ttl: 1000 })
+      },
+      server: {
+        secret: defineCache({ ttl: 1000 })
+      }
+    }
+  });
+  const first = createApp(app, { target: "server" }).start();
+  const second = createApp(app, { target: "server" }).start();
+
+  first.browser.cache.set("product:1", { title: "Keyboard" });
+  first.server.cache.set("secret:1", "server-only");
+
+  assert.deepEqual(first.browser.cache.get("product:1"), { title: "Keyboard" });
+  assert.equal(second.browser.cache.get("product:1"), undefined);
+  assert.equal(second.server.cache.get("secret:1"), undefined);
+  assert.deepEqual(second.browser.cache.resolve("product"), defineCache({ ttl: 1000 }));
+  assert.deepEqual(second.server.cache.resolve("secret"), defineCache({ ttl: 1000 }));
+  assert.deepEqual(app.registry.snapshot().entries.browser, {});
+
+  first.destroy();
+
+  assert.equal(second.browser.cache.get("product:1"), undefined);
+  assert.deepEqual(app.registry.snapshot().cache.browser.product, defineCache({ ttl: 1000 }));
+
+  second.destroy();
+});
+
+test("server render cycles are repeatable after runtime destroy", async () => {
+  const app = defineApp({
+    signal: {
+      productId: createSignal("idle")
+    },
+    partial: {
+      "product.page"({ id }) {
+        this.signals.set("productId", id);
+        return `<h1>${id}</h1>`;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const first = createApp(app, { target: "server" });
+  const firstResponse = await first.render("/products/sku-1");
+
+  assert.equal(firstResponse.status, 200);
+  assert.match(firstResponse.html, /sku-1/);
+  assert.equal(first.signals.get("productId"), "sku-1");
+  assert.equal(app.registry.get("signal", "productId").value, "idle");
+
+  first.destroy();
+
+  const second = createApp(app, { target: "server" });
+  const secondResponse = await second.render("/products/sku-2");
+
+  assert.equal(secondResponse.status, 200);
+  assert.match(secondResponse.html, /sku-2/);
+  assert.equal(second.signals.get("productId"), "sku-2");
+  assert.equal(app.registry.get("signal", "productId").value, "idle");
+
+  second.destroy();
+});
+
+test("destroying one runtime async signal does not dispose peer async signal state", async () => {
+  const app = defineApp({
+    signal: {
+      productId: createSignal("sku-1")
+    },
+    asyncSignal: {
+      product: async function () {
+        return {
+          id: this.signals.get("productId")
+        };
+      }
+    }
+  });
+  const first = createApp(app, { target: "server" }).start();
+  const second = createApp(app, { target: "server" }).start();
+
+  first.signals.set("productId", "first");
+  second.signals.set("productId", "second");
+
+  await first.signals.ref("product").refresh();
+  await second.signals.ref("product").refresh();
+
+  assert.deepEqual(first.signals.get("product.$value"), { id: "first" });
+  assert.deepEqual(second.signals.get("product.$value"), { id: "second" });
+
+  let secondNotifications = 0;
+  const unsubscribe = second.signals.subscribe("product.$value", () => {
+    secondNotifications += 1;
+  });
+
+  first.destroy();
+
+  assert.equal(secondNotifications, 0);
+  assert.deepEqual(second.signals.get("product.$value"), { id: "second" });
+  assert.equal(app.registry.has("asyncSignal", "product"), true);
+
+  unsubscribe();
+  second.destroy();
+});
+
 test("createSignal and defineRoute are canonical while aliases remain compatible", () => {
   const created = createSignal(1);
   const aliased = signal(2);

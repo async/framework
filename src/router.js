@@ -87,7 +87,11 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
     },
 
     _adoptMany(map = {}) {
-      for (const pattern of Object.keys(map ?? {})) {
+      for (const [pattern, definition] of Object.entries(map ?? {})) {
+        if (!entries.has(pattern)) {
+          registry.register(pattern, definition);
+          continue;
+        }
         adoptRoute(pattern, entries.get(pattern));
       }
       return registry;

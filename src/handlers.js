@@ -120,7 +120,12 @@ export function createHandlerRegistry(initialMap = {}, options = {}) {
       return results;
     },
 
-    _adoptMany() {
+    _adoptMany(map = {}) {
+      for (const [id, fn] of Object.entries(map ?? {})) {
+        if (!handlers.has(id)) {
+          registry.register(id, fn);
+        }
+      }
       return registry;
     }
   }, registryStore, type);

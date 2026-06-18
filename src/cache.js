@@ -141,7 +141,12 @@ export function createCacheRegistry(initialMap = {}, { now = () => Date.now(), r
       return registryStore.entries(`${type}.entries`);
     },
 
-    _adoptMany() {
+    _adoptMany(map = {}) {
+      for (const [id, definition] of Object.entries(map ?? {})) {
+        if (!definitions.has(id)) {
+          registryApi.register(id, definition);
+        }
+      }
       return registryApi;
     }
   }, registryStore, type);

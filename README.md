@@ -430,7 +430,9 @@ Singular registry keys are canonical: `signal`, `handler`, `server`,
 ### Registry Inspection
 
 `Async.registry` is the global inspection surface for registered app pieces.
-Every runtime and concrete registry also points at the same backing store:
+Every runtime owns fresh mutable signal and cache state materialized from the
+app declaration store. Concrete registries inside one runtime share that
+runtime's registry view:
 
 ```js
 Async.registry.keys("signal");

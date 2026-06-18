@@ -6,7 +6,7 @@ import { createPartialRegistry } from "./partials.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createScheduler } from "./scheduler.js";
 import { createServerNamespace } from "./server.js";
-import { createSignal, createSignalRegistry } from "./signals.js";
+import { cloneSignalDeclaration, createSignal, createSignalRegistry } from "./signals.js";
 import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
 import { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } from "./lazy-registry.js";
@@ -90,7 +90,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     registryAssets: options.registryAssets,
     importModule: options.importModule
   });
-  const registry = options.registry ?? app.registry.view({ target });
+  const registry = options.registry ?? createRuntimeRegistry(app.registry, { target });
   const signals = options.signals ?? createSignalRegistry(undefined, { registry, type: "signal", lazyRegistry });
   const handlers = options.handlers ?? createHandlerRegistry(undefined, { registry, type: "handler", lazyRegistry });
   const serverCache = createCacheRegistry(undefined, { registry, type: "cache.server" });
@@ -469,6 +469,22 @@ function applyRegistryUse(registry, runtimeRegistry, entries) {
     return;
   }
   registry?.registerMany?.(entries);
+}
+
+function createRuntimeRegistry(appRegistry, { target } = {}) {
+  const declarations = appRegistry.rawSnapshot();
+  return createRegistryStore({
+    ...declarations,
+    signal: cloneSignalDeclarations(declarations.signal)
+  }, { target });
+}
+
+function cloneSignalDeclarations(signals = {}) {
+  const cloned = {};
+  for (const [id, signalLike] of Object.entries(signals ?? {})) {
+    cloned[id] = cloneSignalDeclaration(signalLike);
+  }
+  return cloned;
 }
 
 function emptyDeclarations() {

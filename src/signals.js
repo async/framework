@@ -47,6 +47,10 @@ export function createSignal(initial) {
 
     snapshot() {
       return value;
+    },
+
+    _cloneSignalDeclaration() {
+      return createSignal(value);
     }
   };
 
@@ -89,6 +93,10 @@ export function computed(fn) {
       return backing.snapshot();
     },
 
+    _cloneSignalDeclaration() {
+      return computed(fn);
+    },
+
     _bindRegistry(registry, id) {
       return registry.effect(() => {
         backing.set(fn.call({
@@ -113,6 +121,9 @@ export function effect(fn) {
     [effectKind]: true,
     kind: "effect",
     fn,
+    _cloneSignalDeclaration() {
+      return effect(fn);
+    },
     _bindRegistry(registry) {
       return registry.effect(fn);
     }
@@ -331,10 +342,14 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     },
 
     _adoptMany(map = {}) {
-      for (const id of Object.keys(map ?? {})) {
-        if (entries.has(id)) {
-          bindEntry(id, entries.get(id));
+      for (const [id, signalLike] of Object.entries(map ?? {})) {
+        if (!entries.has(id)) {
+          const entry = cloneSignalDeclaration(signalLike);
+          entries.set(id, entry);
+          bindEntry(id, entry);
+          continue;
         }
+        bindEntry(id, entries.get(id));
       }
       return registry;
     }
@@ -408,6 +423,16 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
 function normalizeSignal(signalLike) {
   if (isSignalLike(signalLike)) {
     return signalLike;
+  }
+  return createSignal(signalLike);
+}
+
+export function cloneSignalDeclaration(signalLike) {
+  if (typeof signalLike?._cloneSignalDeclaration === "function") {
+    return signalLike._cloneSignalDeclaration();
+  }
+  if (isSignalLike(signalLike)) {
+    return createSignal(typeof signalLike.snapshot === "function" ? signalLike.snapshot() : signalLike.value);
   }
   return createSignal(signalLike);
 }

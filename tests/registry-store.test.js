@@ -75,7 +75,7 @@ test("app registry snapshot serializes declarations without executable values", 
   assert.equal(typeof app.snapshot().handler.increment, "function");
 });
 
-test("runtime registry backs concrete registries and late app.use patches the shared store", async () => {
+test("runtime registry backs concrete registries and late app.use patches runtime declarations", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<button on:click="lateRegistry"></button>`;
