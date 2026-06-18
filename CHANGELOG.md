@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.10 - 2026-06-18
+
+- Routed automatic microtask scheduler flush failures through an explicit error
+  channel so failed jobs no longer surface as unhandled promise rejections.
+- Reported automatic flush failures to configured `onError` handlers or
+  `globalThis.reportError`, with scheduler metadata for phase, scope, and key,
+  while preserving manual `scheduler.flush()` rejection behavior.
+- Added regression coverage for automatic `onError` reporting, `reportError`
+  delivery without unhandled rejections, and manual flush rejection metadata.
+- Bundle size from bundled TypeScript source: `browser.ts` 184,238 B raw /
+  34,642 B gzip -> `browser.min.js` 78,267 B raw / 23,232 B gzip
+  (-105,971 B raw, -11,410 B gzip).
+
 ## 0.11.9 - 2026-06-18
 
 - Normalized scheduler batch thenables with `Promise.resolve(value)` before

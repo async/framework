@@ -305,6 +305,92 @@ test("scheduler onError receives job metadata and flush continues", async () => 
   assert.deepEqual(seen, ["post"]);
 });
 
+test("automatic scheduler flush reports errors through onError", async () => {
+  const scope = {};
+  const failures = [];
+  const expected = new Error("automatic effect failed");
+  const scheduler = createScheduler({
+    onError(error, job) {
+      failures.push({ error, job });
+    }
+  });
+
+  scheduler.enqueue("effect", () => {
+    throw expected;
+  }, {
+    scope,
+    key: "auto-effect"
+  });
+  await delay(0);
+
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].error, expected);
+  assert.equal(failures[0].job.phase, "effect");
+  assert.equal(failures[0].job.scope, scope);
+  assert.equal(failures[0].job.key.endsWith(":auto-effect"), true);
+});
+
+test("automatic scheduler flush reports without unhandled rejection", async () => {
+  const originalReportError = globalThis.reportError;
+  const reported = [];
+  let unhandled = false;
+  const onUnhandled = () => {
+    unhandled = true;
+  };
+  const expected = new Error("automatic unhandled guard");
+  const scheduler = createScheduler();
+
+  globalThis.reportError = (error) => {
+    reported.push(error);
+  };
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    scheduler.enqueue("effect", () => {
+      throw expected;
+    }, {
+      key: "auto-report"
+    });
+    await delay(0);
+    await delay(0);
+
+    assert.equal(unhandled, false);
+    assert.deepEqual(reported, [expected]);
+    assert.deepEqual(expected.scheduler, {
+      phase: "effect",
+      scope: undefined,
+      key: "effect:global:auto-report"
+    });
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    if (originalReportError === undefined) {
+      delete globalThis.reportError;
+    } else {
+      globalThis.reportError = originalReportError;
+    }
+  }
+});
+
+test("manual scheduler flush still rejects without onError", async () => {
+  const scheduler = createScheduler({ strategy: "manual" });
+  const expected = new Error("manual effect failed");
+
+  scheduler.enqueue("effect", () => {
+    throw expected;
+  }, {
+    key: "manual-effect"
+  });
+
+  await assert.rejects(
+    scheduler.flush(),
+    (error) => {
+      assert.equal(error, expected);
+      assert.equal(error.scheduler.phase, "effect");
+      assert.equal(error.scheduler.key, "effect:global:manual-effect");
+      return true;
+    }
+  );
+});
+
 test("scheduler maxDepth catches runaway enqueue loops", async () => {
   const scheduler = createScheduler({ strategy: "manual", maxDepth: 2 });
 

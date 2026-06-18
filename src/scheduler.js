@@ -219,7 +219,7 @@ export function createScheduler(options = {}) {
     scheduled = true;
     scheduleMicrotask(() => {
       if (!destroyed) {
-        void api.flush();
+        void api.flush().catch(reportAutomaticFlushError);
       }
     });
   }
@@ -255,10 +255,20 @@ export function createScheduler(options = {}) {
         if (onError) {
           onError(error, job);
         } else {
-          throw error;
+          throw annotateSchedulerError(error, job);
         }
       }
     }
+  }
+
+  function reportAutomaticFlushError(error) {
+    if (typeof globalThis.reportError === "function") {
+      globalThis.reportError(error);
+      return;
+    }
+    setTimeout(() => {
+      throw error;
+    }, 0);
   }
 
   function hasJobs() {
@@ -317,6 +327,25 @@ export function createScheduler(options = {}) {
 
 function isObjectScope(scope) {
   return (typeof scope === "object" && scope !== null) || typeof scope === "function";
+}
+
+function annotateSchedulerError(error, job) {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) {
+    return error;
+  }
+  try {
+    Object.defineProperty(error, "scheduler", {
+      configurable: true,
+      value: {
+        phase: job.phase,
+        scope: job.scope,
+        key: job.key
+      }
+    });
+  } catch {
+    // Non-extensible thrown values still need to propagate through the chosen error channel.
+  }
+  return error;
 }
 
 function scheduleMicrotask(fn) {
