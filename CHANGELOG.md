@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.2 - 2026-06-18
+
+- Published the post-`0.11.1` feedback-regression hardening now on `main`,
+  including scheduler scope revival, server error envelopes, async-signal SSR
+  snapshot restore, lazy component error handling, router prefetch context,
+  server proxy transport validation, and package export smoke coverage.
+- Refreshed the generated Async Pipeline workflow and lock metadata to
+  `@async/pipeline` `0.9.1`.
+- Ignored local `docs/goals/` GoalBuddy planning bundles.
+
 ## 0.11.1 - 2026-06-17
 
 - Removed the literal old global fetch identifier from published release notes
