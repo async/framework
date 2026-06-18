@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1 - 2026-06-17
+
+- Removed the literal old global fetch identifier from published release notes
+  so package-wide text scans stay focused on runtime artifacts.
+
 ## 0.11.0 - 2026-06-17
 
 - Removed the networked `ssr-spa` router mode and route-fragment fetching so
@@ -8,7 +13,7 @@
 - Changed browser navigation to render registered SPA partials locally in
   `spa` and `csr` modes while leaving same-origin document navigation alone in
   `ssr` and `mpa` modes.
-- Replaced the server proxy's implicit `globalThis.fetch` default with an
+- Replaced the server proxy's implicit global fetch default with an
   explicit `transport` callback supplied by application code.
 - Published only generated runtime artifacts and declarations:
   `browser.*`, `server.js`, `framework.ts`, and `framework.d.ts`; source,
