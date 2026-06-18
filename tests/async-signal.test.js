@@ -55,6 +55,61 @@ test("async signals expose loading, ready, and error states", async () => {
   assert.equal(signals.get("broken.$error").message, "no product");
 });
 
+test("async signal snapshots serialize rejected errors with stable public fields", async () => {
+  const signals = createSignalRegistry();
+  const cause = new Error("Product unavailable");
+  cause.code = "PRODUCT_UNAVAILABLE";
+  cause.secret = "do not serialize";
+
+  const ref = signals.asyncSignal("product", async function () {
+    await delay(0, this.abort);
+    throw cause;
+  });
+
+  await delay(5);
+
+  assert.equal(ref.error, cause);
+  const snapshot = JSON.parse(JSON.stringify(signals._entry("product").snapshot()));
+
+  assert.deepEqual(snapshot, {
+    value: null,
+    loading: false,
+    error: {
+      name: "Error",
+      message: "Product unavailable",
+      code: "PRODUCT_UNAVAILABLE"
+    },
+    status: "error",
+    version: 1
+  });
+  assert.equal(Object.hasOwn(snapshot.error, "secret"), false);
+
+  const restored = createSignalRegistry();
+  restored.asyncSignal("product", async () => ({ title: "Client Keyboard" }));
+  restored._entry("product")._restore(snapshot);
+
+  assert.equal(restored.get("product.$status"), "error");
+  assert.equal(restored.get("product.$error.message"), "Product unavailable");
+  assert.equal(restored.get("product.$error.code"), "PRODUCT_UNAVAILABLE");
+});
+
+test("async signal snapshots normalize non-Error rejections", async () => {
+  const signals = createSignalRegistry();
+  const ref = signals.asyncSignal("product", async function () {
+    await delay(0, this.abort);
+    throw "offline";
+  });
+
+  await delay(5);
+
+  const snapshot = JSON.parse(JSON.stringify(signals._entry("product").snapshot()));
+
+  assert.deepEqual(snapshot.error, {
+    name: "Error",
+    message: "offline"
+  });
+});
+
 test("async signal cancel aborts the native signal", async () => {
   const signals = createSignalRegistry();
   let abort;

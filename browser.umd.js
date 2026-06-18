@@ -142,9 +142,9 @@
 
         snapshot() {
           return {
-            value,
+            value: value === undefined && error !== null ? null : value,
             loading,
-            error,
+            error: serializeAsyncError(error),
             status,
             version
           };
@@ -161,7 +161,7 @@
           cancelCurrentRun(new Error(`Async signal "${registeredId}" restored from snapshot.`));
           value = snapshot.value;
           loading = Boolean(snapshot.loading);
-          error = snapshot.error ?? null;
+          error = restoreAsyncError(snapshot.error);
           status = typeof snapshot.status === "string" ? snapshot.status : inferStatus({ value, loading, error });
           if (Number.isFinite(snapshot.version)) {
             version = snapshot.version;
@@ -411,6 +411,51 @@
         return "error";
       }
       return value === undefined ? "idle" : "ready";
+    }
+
+    function serializeAsyncError(value) {
+      if (value == null) {
+        return null;
+      }
+
+      const record = {
+        name: readErrorName(value),
+        message: readErrorMessage(value)
+      };
+      const code = readErrorCode(value);
+      if (code !== undefined) {
+        record.code = code;
+      }
+      return record;
+    }
+
+    function restoreAsyncError(value) {
+      return serializeAsyncError(value);
+    }
+
+    function readErrorName(value) {
+      if (value && typeof value === "object" && typeof value.name === "string" && value.name.length > 0) {
+        return value.name;
+      }
+      return "Error";
+    }
+
+    function readErrorMessage(value) {
+      if (value instanceof Error) {
+        return value.message;
+      }
+      if (value && typeof value === "object" && typeof value.message === "string") {
+        return value.message;
+      }
+      return String(value);
+    }
+
+    function readErrorCode(value) {
+      if (!value || typeof value !== "object" || !Object.hasOwn(value, "code")) {
+        return undefined;
+      }
+      const code = value.code;
+      return typeof code === "string" || typeof code === "number" ? code : undefined;
     }
 
     function attachCancel(signal, controller, onCancel) {

@@ -820,6 +820,71 @@ test("SSR round-trip restores dotted async signal snapshots without immediate re
   runtime.destroy();
 });
 
+test("SSR round-trip restores rejected async signal errors with readable bindings", async () => {
+  let loads = 0;
+  const app = defineApp({
+    asyncSignal: {
+      "product.load": async function () {
+        loads += 1;
+        const error = new Error("Product unavailable");
+        error.code = "PRODUCT_UNAVAILABLE";
+        error.secret = "do not serialize";
+        throw error;
+      }
+    },
+    partial: {
+      async "product.page"() {
+        const product = this.signals.ref("product.load");
+        await product.refresh();
+        return html`
+          <output id="message" signal:text="product.load.$error.message"></output>
+          <output id="code" signal:text="product.load.$error.code"></output>
+          <output id="status" signal:text="product.load.$status"></output>
+        `;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const serverRuntime = createApp(app, { target: "server" });
+  const response = await serverRuntime.render("/products/sku-1");
+  serverRuntime.destroy();
+
+  assert.equal(loads, 1);
+  assert.deepEqual(response.signals["product.load"], {
+    value: null,
+    loading: false,
+    error: {
+      name: "Error",
+      message: "Product unavailable",
+      code: "PRODUCT_UNAVAILABLE"
+    },
+    status: "error",
+    version: 1
+  });
+  assert.equal(Object.hasOwn(response.signals["product.load"].error, "secret"), false);
+
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = response.html;
+
+  const runtime = createApp(app, {
+    root: document.body,
+    router: false
+  }).start();
+  await delay(0);
+
+  assert.equal(loads, 1);
+  assert.equal(runtime.signals.get("product.load.$status"), "error");
+  assert.equal(runtime.signals.get("product.load.$error.message"), "Product unavailable");
+  assert.equal(runtime.signals.get("product.load.$error.code"), "PRODUCT_UNAVAILABLE");
+  assert.equal(document.querySelector("#message").textContent, "Product unavailable");
+  assert.equal(document.querySelector("#code").textContent, "PRODUCT_UNAVAILABLE");
+  assert.equal(document.querySelector("#status").textContent, "error");
+  runtime.destroy();
+});
+
 test("browser runtime can read and apply SSR snapshot scripts automatically", () => {
   const window = new Window();
   const { document } = window;

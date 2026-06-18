@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.11 - 2026-06-18
+
+- Serialized rejected async-signal snapshot errors to stable `name`, `message`,
+  and `code` records so JSON SSR snapshots preserve documented
+  `$error.message` bindings during browser activation.
+- Normalized non-Error rejections into readable error records while omitting
+  arbitrary error object properties from snapshots by default.
+- Added regression coverage for JSON snapshot round-trips, error code
+  preservation, non-Error rejection normalization, and SSR activation bindings.
+- Bundle size from bundled TypeScript source: `browser.ts` 185,440 B raw /
+  34,884 B gzip -> `browser.min.js` 78,754 B raw / 23,362 B gzip
+  (-106,686 B raw, -11,522 B gzip).
+
 ## 0.11.10 - 2026-06-18
 
 - Routed automatic microtask scheduler flush failures through an explicit error
