@@ -368,6 +368,43 @@ test("component templates support inline handlers, signal class values, and sign
   loader.destroy();
 });
 
+test("component form input events bubble to scoped handlers", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const OperationForm = component(function OperationForm() {
+    const command = this.signal("command", "model=qwen3:8b");
+    const updateCommand = this.handler(function ({ event }) {
+      const form = event.currentTarget;
+      command.set(`model=${form.elements.model.value}`);
+    });
+
+    return html`
+      <form id="operation-form" on:input="${updateCommand}" on:change="${updateCommand}">
+        <label>
+          <span>model</span>
+          <input name="model" type="text" value="qwen3:8b">
+        </label>
+      </form>
+      <code id="operation-command" signal:text="${command}"></code>
+    `;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("#app"), OperationForm);
+  await delay(0);
+
+  const input = document.querySelector("input[name='model']");
+  input.value = "llama3.1:8b";
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await delay(0);
+
+  assert.equal(document.querySelector("#operation-command").textContent, "model=llama3.1:8b");
+
+  loader.destroy();
+});
+
 test("component templates support inline signal refs for text, attributes, and properties", async () => {
   const window = new Window();
   const { document } = window;
