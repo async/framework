@@ -27,78 +27,6 @@ permissions:
   contents: read
 
 jobs:
-  pages:
-    name: pages
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'pages'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Restore task cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .async/cache
-          key: async-pipeline-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            async-pipeline-${{ runner.os }}-
-
-      - name: Setup pnpm runtime
-        uses: pnpm/setup@5d160c5bc68a09337ad0d5654e237e03253b5879 # v1.0.0
-        with:
-          version: 11.1.0
-          runtime: node@24
-          install: false
-          cache: true
-          cache-dependency-path: "pnpm-lock.yaml"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check generated workflow
-        run: pnpm async-pipeline github check
-
-      - name: Run pipeline job
-        run: pnpm async-pipeline run pages
-        env:
-          CI: true
-
-      - name: Configure Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
-        with:
-          path: ".async/pages"
-
-      - name: Explain async-pipeline run
-        if: failure()
-        run: pnpm async-pipeline explain --run latest || true
-
-      - name: Upload async-pipeline run evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: async-pipeline-${{ github.job }}-runs
-          path: .async/runs
-          if-no-files-found: ignore
-
-  pages-deploy:
-    name: pages-deploy
-    needs: "pages"
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    environment:
-      name: "github-pages"
-      url: "${{ steps.deployment.outputs.page_url }}"
-    permissions:
-      pages: write
-      id-token: write
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
-
   publish:
     name: publish
     if: (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'publish') || (github.event_name == 'release' && (github.event.action == 'published'))
@@ -123,7 +51,7 @@ jobs:
             async-pipeline-${{ runner.os }}-
 
       - name: Setup pnpm runtime
-        uses: pnpm/setup@5d160c5bc68a09337ad0d5654e237e03253b5879 # v1.0.0
+        uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
           version: 11.1.0
           runtime: node@24
@@ -179,7 +107,7 @@ jobs:
             async-pipeline-${{ runner.os }}-
 
       - name: Setup pnpm runtime
-        uses: pnpm/setup@5d160c5bc68a09337ad0d5654e237e03253b5879 # v1.0.0
+        uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
           version: 11.1.0
           runtime: node@24
@@ -228,7 +156,7 @@ jobs:
             async-pipeline-${{ runner.os }}-
 
       - name: Setup pnpm runtime
-        uses: pnpm/setup@5d160c5bc68a09337ad0d5654e237e03253b5879 # v1.0.0
+        uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
           version: 11.1.0
           runtime: node@24
@@ -258,3 +186,75 @@ jobs:
           name: async-pipeline-${{ github.job }}-runs
           path: .async/runs
           if-no-files-found: ignore
+
+  pages:
+    name: pages
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'pages')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Restore task cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .async/cache
+          key: async-pipeline-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            async-pipeline-${{ runner.os }}-
+
+      - name: Setup pnpm runtime
+        uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
+        with:
+          version: 11.1.0
+          runtime: node@24
+          install: false
+          cache: true
+          cache-dependency-path: "pnpm-lock.yaml"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check generated workflow
+        run: pnpm async-pipeline github check
+
+      - name: Run Pages target
+        run: pnpm async-pipeline run-task docs.site
+        env:
+          CI: true
+
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: ".async/pages"
+
+      - name: Explain async-pipeline run
+        if: failure()
+        run: pnpm async-pipeline explain --run latest || true
+
+      - name: Upload async-pipeline run evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: async-pipeline-${{ github.job }}-runs
+          path: .async/runs
+          if-no-files-found: ignore
+
+  pages-deploy:
+    name: pages-deploy
+    needs: "pages"
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: "github-pages"
+      url: "${{ steps.deployment.outputs.page_url }}"
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

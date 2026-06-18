@@ -115,8 +115,9 @@
     "pack:check": "pnpm run bundle:check && npm pack --dry-run --ignore-scripts",
     "pipeline:github:check": "async-pipeline github check",
     "pipeline:github:generate": "async-pipeline github generate",
-    "pipeline:pages": "async-pipeline run pages",
+    "pipeline:pages": "async-pipeline run-task docs.site",
     "pipeline:publish": "async-pipeline run publish",
+    "pipeline:publish:github:release": "async-pipeline publish github release --package . --registry https://npm.pkg.github.com",
     "pipeline:publish:npm": "async-pipeline publish npm --package .",
     "pipeline:release-doctor": "async-pipeline run release-doctor",
     "pipeline:release:doctor": "async-pipeline release doctor --package .",
@@ -130,7 +131,7 @@
     "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
-    "@async/pipeline": "0.8.5",
+    "@async/pipeline": "0.8.8",
     "happy-dom": "20.10.5",
     "terser": "5.48.0"
   }

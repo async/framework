@@ -14,16 +14,27 @@ export default definePipeline({
   },
 
   sync: {
-    github: true,
+    github: {
+      pages: {
+        target: "docs.site",
+        triggers: {
+          pullRequest: false,
+          main: false,
+          manual: true
+        }
+      }
+    },
     tasks: {
       prefix: "pipeline",
       runners: ["package"],
       targets: [{ package: "@async/framework" }],
-      jobs: ["pages", "publish", "release-doctor", "verify"],
+      jobs: ["publish", "release-doctor", "verify"],
       tasks: ["docs.site"],
       scripts: {
         "github:check": "github check",
         "github:generate": "github generate",
+        "pages": "run-task docs.site",
+        "publish:github:release": "publish github release --package . --registry https://npm.pkg.github.com",
         "publish:npm": "publish npm --package .",
         "release:doctor": "release doctor --package .",
         "release:ensure": "release ensure --package .",
@@ -102,14 +113,22 @@ export default definePipeline({
       run: sh`pnpm async-pipeline release ensure --package ${packagePath}`
     }),
 
-    publish: task({
-      description: "Publish the verified release to npm, then run release doctor.",
+    "publish-github": task({
+      description: "Publish the stable GitHub Packages mirror before npm publishing.",
       dependsOn: ["release-ensure"],
+      inputs: ["source"],
+      cache: false,
+      run: sh`pnpm async-pipeline publish github release --package ${packagePath} --registry https://npm.pkg.github.com`
+    }),
+
+    publish: task({
+      description: "Publish the verified release to npm after the GitHub Packages mirror, then run release doctor.",
+      dependsOn: ["publish-github"],
       inputs: ["source"],
       cache: false,
       run: [
         sh`pnpm async-pipeline publish npm --package ${packagePath}`,
-        sh`node scripts/release-doctor.js`
+        sh`pnpm async-pipeline release doctor --package ${packagePath}`
       ]
     }),
 
@@ -118,7 +137,7 @@ export default definePipeline({
       dependsOn: ["pack"],
       inputs: ["source"],
       cache: false,
-      run: sh`node scripts/release-doctor.js`
+      run: sh`pnpm async-pipeline release doctor --package ${packagePath}`
     })
   },
 
@@ -126,16 +145,6 @@ export default definePipeline({
     verify: job({
       target: "pack",
       trigger: ["pr", "main", "release", "manual"]
-    }),
-
-    pages: job({
-      target: "docs.site",
-      trigger: ["manual"],
-      github: {
-        pages: {
-          build: { kind: "static", path: ".async/pages" }
-        }
-      }
     }),
 
     publish: job({
