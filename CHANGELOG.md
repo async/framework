@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.6 - 2026-06-18
+
+- Owned async-signal runs with private execution tokens so canceled, restored,
+  disposed, unregistered, or superseded work cannot commit late values, errors,
+  or subscriber notifications.
+- Captured per-run `this.abort` and `this.server` context so older async work
+  cannot observe or cancel a newer run's abort signal after an `await`.
+- Settled cancellation state immediately for non-cooperative loaders and
+  canceled queued initial async scheduler work during disposal.
+- Bundle size from bundled TypeScript source: `browser.ts` 183,459 B raw /
+  34,391 B gzip -> `browser.min.js` 77,987 B raw / 23,148 B gzip
+  (-105,472 B raw, -11,243 B gzip).
+
 ## 0.11.5 - 2026-06-18
 
 - Treated materialized signals and lazy async-signal descriptors as one

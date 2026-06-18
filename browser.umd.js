@@ -30,8 +30,9 @@
       let version = 0;
       let registry;
       let registeredId = id;
-      let activeController;
-      let activeAbort;
+      let activeRun;
+      let executionToken = 0;
+      let disposed = false;
       const subscribers = new Set();
       const dependencyCleanups = new Set();
 
@@ -73,109 +74,62 @@
         },
 
         refresh() {
-          if (!registry) {
+          if (!registry || disposed) {
             throw new Error(`Async signal "${registeredId}" is not registered.`);
           }
 
-          if (activeAbort && !activeAbort.aborted) {
-            activeAbort.cancel(new Error(`Async signal "${registeredId}" refreshed.`));
-          }
+          cancelRun(activeRun, new Error(`Async signal "${registeredId}" refreshed.`));
 
+          const runRegistry = registry;
+          const runId = registeredId;
           const runVersion = version + 1;
           version = runVersion;
           loading = true;
           error = null;
           status = "loading";
 
-          const controller = new AbortController();
-          activeController = controller;
-          activeAbort = controller.signal;
-          attachCancel(activeAbort, controller);
+          const run = createRun(runRegistry, runId, runVersion);
+          activeRun = run;
           notify();
 
-          const context = {
-            signals: registry,
-            id: registeredId,
-            get server() {
-              const context = registry._context?.() ?? {};
-              const server = context.server;
-              if (typeof server?._withContext === "function") {
-                return server._withContext({
-                  signals: registry,
-                  router: context.router,
-                  loader: context.loader,
-                  cache: context.cache,
-                  abort: activeAbort,
-                  scheduler: context.scheduler
-                });
-              }
-              return server;
-            },
-            get router() {
-              return registry._context?.().router;
-            },
-            get loader() {
-              return registry._context?.().loader;
-            },
-            get cache() {
-              return registry._context?.().cache;
-            },
-            get scheduler() {
-              return registry._context?.().scheduler;
-            },
-            get version() {
-              return runVersion;
-            },
-            get abort() {
-              return activeAbort;
-            },
-            refresh() {
-              return state.refresh();
-            }
-          };
+          const context = createRunContext(run);
 
           let outcome;
           try {
-            outcome = registry._collectDependencies(() => fn.call(context));
+            outcome = runRegistry._collectDependencies(() => fn.call(context));
           } catch (cause) {
-            finishError(runVersion, cause);
+            finishError(run, cause);
             return Promise.reject(cause);
           }
 
-          syncDependencies(outcome.dependencies);
+          syncDependencies(outcome.dependencies, run);
 
           return Promise.resolve(outcome.value).then(
             (nextValue) => {
-              if (!isCurrent(runVersion)) {
+              if (!isRunCurrent(run)) {
                 return value;
               }
               value = nextValue;
               loading = false;
               error = null;
               status = "ready";
+              activeRun = undefined;
               notify();
               return value;
             },
             (cause) => {
-              if (!isCurrent(runVersion)) {
+              if (!isRunCurrent(run)) {
                 return value;
               }
-              if (activeAbort?.aborted) {
-                loading = false;
-                status = value === undefined ? "idle" : "ready";
-                notify();
-                return value;
-              }
-              finishError(runVersion, cause);
+              finishError(run, cause);
               return value;
             }
           );
         },
 
         cancel(reason) {
-          if (activeAbort && !activeAbort.aborted) {
-            activeAbort.cancel(reason);
-          }
+          cancelCurrentRun(reason, { settle: true, notifyChange: true });
+          return value;
         },
 
         subscribe(fn) {
@@ -204,9 +158,7 @@
           if (!isAsyncSignalSnapshot(snapshot)) {
             return state.set(snapshot);
           }
-          if (activeAbort && !activeAbort.aborted) {
-            activeAbort.cancel(new Error(`Async signal "${registeredId}" restored from snapshot.`));
-          }
+          cancelCurrentRun(new Error(`Async signal "${registeredId}" restored from snapshot.`));
           value = snapshot.value;
           loading = Boolean(snapshot.loading);
           error = snapshot.error ?? null;
@@ -222,7 +174,7 @@
           registry = nextRegistry;
           registeredId = nextId;
           const start = () => {
-            if (registry === nextRegistry && status === "idle") {
+            if (!disposed && registry === nextRegistry && status === "idle") {
               state.refresh();
             }
           };
@@ -238,30 +190,161 @@
         },
 
         _dispose() {
-          state.cancel(new Error(`Async signal "${registeredId}" disposed.`));
+          if (disposed) {
+            return;
+          }
+          disposed = true;
+          cancelQueuedWork();
+          cancelCurrentRun(new Error(`Async signal "${registeredId}" disposed.`));
           for (const cleanup of dependencyCleanups) {
             cleanup();
           }
           dependencyCleanups.clear();
           subscribers.clear();
+          registry = undefined;
         }
       };
 
-      function finishError(runVersion, cause) {
-        if (!isCurrent(runVersion)) {
+      function createRun(runRegistry, runId, runVersion) {
+        const controller = new AbortController();
+        const abort = controller.signal;
+        const runContext = captureRunContext(runRegistry, abort);
+        const run = {
+          token: ++executionToken,
+          version: runVersion,
+          registry: runRegistry,
+          id: runId,
+          controller,
+          abort,
+          ...runContext
+        };
+        attachCancel(abort, controller, (reason) => {
+          cancelRun(run, reason, { settle: true, notifyChange: true });
+        });
+        return run;
+      }
+
+      function captureRunContext(runRegistry, abort) {
+        const context = runRegistry._context?.() ?? {};
+        const serverContext = {
+          signals: runRegistry,
+          router: context.router,
+          loader: context.loader,
+          cache: context.cache,
+          abort,
+          scheduler: context.scheduler
+        };
+        const server = typeof context.server?._withContext === "function"
+          ? context.server._withContext(serverContext)
+          : context.server;
+
+        return {
+          signals: runRegistry,
+          server,
+          router: context.router,
+          loader: context.loader,
+          cache: context.cache,
+          scheduler: context.scheduler
+        };
+      }
+
+      function createRunContext(run) {
+        return {
+          signals: run.signals,
+          id: run.id,
+          get server() {
+            return run.server;
+          },
+          get router() {
+            return run.router;
+          },
+          get loader() {
+            return run.loader;
+          },
+          get cache() {
+            return run.cache;
+          },
+          get scheduler() {
+            return run.scheduler;
+          },
+          get version() {
+            return run.version;
+          },
+          get abort() {
+            return run.abort;
+          },
+          refresh() {
+            return state.refresh();
+          }
+        };
+      }
+
+      function finishError(run, cause) {
+        if (!isRunCurrent(run)) {
           return;
         }
         loading = false;
         error = cause;
         status = "error";
+        activeRun = undefined;
         notify();
       }
 
-      function isCurrent(runVersion) {
-        return runVersion === version && activeController?.signal === activeAbort;
+      function isRunCurrent(run) {
+        return Boolean(run)
+          && !disposed
+          && activeRun === run
+          && run.token === executionToken
+          && run.registry === registry
+          && run.id === registeredId
+          && !run.abort.aborted;
       }
 
-      function syncDependencies(dependencies) {
+      function cancelCurrentRun(reason, options = {}) {
+        const run = activeRun;
+        const shouldSettle = Boolean(run) || loading;
+        if (run) {
+          cancelRun(run, reason);
+        } else if (shouldSettle) {
+          executionToken += 1;
+        }
+        if (options.settle && shouldSettle && !disposed) {
+          settleCanceled(options.notifyChange);
+        }
+      }
+
+      function cancelRun(run, reason, options = {}) {
+        if (!run) {
+          return;
+        }
+        const wasActive = activeRun === run;
+        if (wasActive) {
+          executionToken += 1;
+          activeRun = undefined;
+        }
+        if (!run.abort.aborted) {
+          run.controller.abort(reason);
+        }
+        if (wasActive && options.settle && !disposed) {
+          settleCanceled(options.notifyChange);
+        }
+      }
+
+      function settleCanceled(notifyChange = false) {
+        const nextStatus = value === undefined ? "idle" : "ready";
+        const changed = loading || error !== null || status !== nextStatus;
+        loading = false;
+        error = null;
+        status = nextStatus;
+        if (notifyChange && changed) {
+          notify();
+        }
+      }
+
+      function syncDependencies(dependencies, run) {
+        if (!isRunCurrent(run)) {
+          return;
+        }
         for (const cleanup of dependencyCleanups) {
           cleanup();
         }
@@ -270,15 +353,16 @@
         for (const dependency of dependencies) {
           const dependencyId = String(dependency).split(".")[0];
           if (dependencyId && dependencyId !== registeredId) {
-            dependencyCleanups.add(registry.subscribe(dependency, () => scheduleRefresh()));
+            dependencyCleanups.add(run.registry.subscribe(dependency, () => scheduleRefresh()));
           }
         }
       }
 
       function scheduleRefresh() {
-        if (activeAbort && !activeAbort.aborted) {
-          activeAbort.cancel(new Error(`Async signal "${registeredId}" dependency changed.`));
+        if (disposed || !registry) {
+          return;
         }
+        cancelRun(activeRun, new Error(`Async signal "${registeredId}" dependency changed.`));
         const scheduler = registry?._context?.().scheduler;
         if (!scheduler) {
           state.refresh();
@@ -288,6 +372,11 @@
           scope: registeredId,
           key: `asyncSignal:${registeredId}:refresh`
         });
+      }
+
+      function cancelQueuedWork() {
+        const scheduler = registry?._context?.().scheduler;
+        scheduler?.cancelScope?.(registeredId);
       }
 
       function notify() {
@@ -324,11 +413,15 @@
       return value === undefined ? "idle" : "ready";
     }
 
-    function attachCancel(signal, controller) {
+    function attachCancel(signal, controller, onCancel) {
       Object.defineProperty(signal, "cancel", {
         configurable: true,
         enumerable: false,
         value(reason) {
+          if (typeof onCancel === "function") {
+            onCancel(reason);
+            return;
+          }
           controller.abort(reason);
         }
       });

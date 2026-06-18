@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   Loader,
+  createScheduler,
   createServerProxy,
   createServerRegistry,
   createSignalRegistry,
@@ -76,6 +77,223 @@ test("async signal cancel aborts the native signal", async () => {
   assert.equal(signals.get("slow.$status"), "idle");
 });
 
+test("async signal cancel invalidates non-cooperative fulfillment and settles immediately", async () => {
+  const signals = createSignalRegistry();
+  const pending = deferred();
+  const ref = signals.asyncSignal("slow", function () {
+    return pending.promise;
+  });
+
+  await delay(0);
+  assert.equal(ref.status, "loading");
+
+  let notifications = 0;
+  ref.subscribe(() => {
+    notifications += 1;
+  });
+
+  ref.cancel(new Error("manual"));
+  assert.equal(ref.loading, false);
+  assert.equal(ref.status, "idle");
+
+  const afterCancelNotifications = notifications;
+  pending.resolve("late");
+  await delay(0);
+
+  assert.equal(ref.value, undefined);
+  assert.equal(ref.status, "idle");
+  assert.equal(ref.error, null);
+  assert.equal(notifications, afterCancelNotifications);
+});
+
+test("async signal cancel invalidates non-cooperative rejection", async () => {
+  const signals = createSignalRegistry();
+  const pending = deferred();
+  const ref = signals.asyncSignal("slow", function () {
+    return pending.promise;
+  });
+
+  await delay(0);
+  ref.cancel(new Error("manual"));
+  pending.reject(new Error("late failure"));
+  await delay(0);
+
+  assert.equal(ref.value, undefined);
+  assert.equal(ref.loading, false);
+  assert.equal(ref.status, "idle");
+  assert.equal(ref.error, null);
+});
+
+test("async signal restore invalidates pending non-cooperative runs", async () => {
+  const signals = createSignalRegistry();
+  const pending = deferred();
+  signals.asyncSignal("product", function () {
+    return pending.promise;
+  });
+
+  await delay(0);
+  signals._entry("product")._restore({
+    value: {
+      id: "restored"
+    },
+    loading: false,
+    error: null,
+    status: "ready",
+    version: 1
+  });
+
+  pending.resolve({
+    id: "late"
+  });
+  await delay(0);
+
+  assert.equal(signals.get("product.id"), "restored");
+  assert.equal(signals.get("product.$status"), "ready");
+  assert.equal(signals.get("product.$version"), 1);
+});
+
+test("async signal unregister prevents late non-cooperative notifications", async () => {
+  const signals = createSignalRegistry();
+  const pending = deferred();
+  const ref = signals.asyncSignal("slow", function () {
+    return pending.promise;
+  });
+
+  await delay(0);
+  let notifications = 0;
+  ref.subscribe(() => {
+    notifications += 1;
+  });
+
+  assert.equal(signals.unregister("slow"), true);
+  pending.resolve("late");
+  await delay(0);
+
+  assert.equal(signals.has("slow"), false);
+  assert.equal(notifications, 0);
+});
+
+test("async signal unregister before scheduler flush cancels queued initial work", async () => {
+  const scheduler = createScheduler({ strategy: "manual" });
+  const signals = createSignalRegistry();
+  signals._setContext({ scheduler });
+  let calls = 0;
+
+  signals.asyncSignal("slow", async function () {
+    calls += 1;
+    return "done";
+  });
+
+  assert.equal(scheduler.inspect().pending.async, 1);
+  assert.equal(signals.unregister("slow"), true);
+  await scheduler.flush();
+
+  assert.equal(calls, 0);
+  assert.equal(scheduler.inspect().pending.async, 0);
+});
+
+test("async signal run abort context is stable and cannot cancel newer runs", async () => {
+  const signals = createSignalRegistry({
+    productId: signal("a")
+  });
+  const firstGate = deferred();
+  const contexts = [];
+
+  signals.asyncSignal("product", async function () {
+    const productId = this.signals.get("productId");
+    const record = {
+      productId,
+      before: this.abort,
+      after: null
+    };
+    contexts.push(record);
+
+    if (productId === "a") {
+      await firstGate.promise;
+      record.after = this.abort;
+      this.abort.cancel(new Error("old run cancel"));
+      return { id: productId };
+    }
+
+    await delay(10, this.abort);
+    record.after = this.abort;
+    return { id: productId };
+  });
+
+  await delay(0);
+  signals.set("productId", "b");
+  await delay(0);
+  firstGate.resolve();
+  await delay(20);
+
+  assert.equal(contexts[0].before, contexts[0].after);
+  assert.equal(contexts[1].before, contexts[1].after);
+  assert.notEqual(contexts[0].before, contexts[1].before);
+  assert.equal(contexts[0].before.aborted, true);
+  assert.equal(contexts[1].before.aborted, false);
+  assert.equal(signals.get("product.id"), "b");
+  assert.equal(signals.get("product.$status"), "ready");
+});
+
+test("async signal delayed server calls use the originating run abort signal", async () => {
+  const signals = createSignalRegistry({
+    productId: signal("sku-1")
+  });
+  const firstGate = deferred();
+  const runAborts = [];
+  const serverCalls = [];
+  const server = createServerProxy({
+    endpoint: "/__async/server",
+    signals,
+    transport: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      serverCalls.push({
+        id: body.args[0],
+        signal: init.signal
+      });
+      return new Response(
+        JSON.stringify({
+          value: {
+            id: body.args[0]
+          }
+        }),
+        {
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    }
+  });
+
+  signals._setContext({ server });
+  signals.asyncSignal("product", async function () {
+    const id = this.signals.get("productId");
+    runAborts.push({
+      id,
+      abort: this.abort
+    });
+    if (id === "sku-1") {
+      await firstGate.promise;
+    }
+    return this.server.products.get(id);
+  });
+
+  await delay(0);
+  signals.set("productId", "sku-2");
+  await delay(0);
+  firstGate.resolve();
+  await delay(0);
+
+  const firstCall = serverCalls.find((call) => call.id === "sku-1");
+  const secondCall = serverCalls.find((call) => call.id === "sku-2");
+
+  assert.equal(firstCall.signal, runAborts.find((run) => run.id === "sku-1").abort);
+  assert.equal(secondCall.signal, runAborts.find((run) => run.id === "sku-2").abort);
+  assert.notEqual(firstCall.signal, secondCall.signal);
+  assert.equal(signals.get("product.id"), "sku-2");
+});
+
 test("async signal context exposes this.server from the loader runtime", async () => {
   const window = new Window();
   const signals = createSignalRegistry({
@@ -108,6 +326,16 @@ test("async signal context exposes this.server from the loader runtime", async (
 
   loader.destroy();
 });
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
 
 test("async signal server proxy calls unwrap values and apply returned effects", async () => {
   const window = new Window();
