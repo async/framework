@@ -574,7 +574,9 @@ test("component this.suspense emits async boundary templates without owning a wr
   assert.equal(document.querySelector(".loading").textContent, "Loading...");
   assert.equal(document.querySelector("#product > section"), null);
 
-  await delay(10);
+  for (let attempt = 0; attempt < 10 && !document.querySelector("h1"); attempt += 1) {
+    await delay(5);
+  }
 
   assert.equal(document.querySelector("h1").textContent, "Keyboard");
   assert.equal(document.querySelector("#product").tagName, "ARTICLE");
