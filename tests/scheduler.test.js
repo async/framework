@@ -42,6 +42,45 @@ test("scheduler dedupes keyed jobs in the same phase and scope", async () => {
   assert.equal(runs, 1);
 });
 
+test("scheduler tracks destroyed object scopes weakly and can revive scopes", async () => {
+  const scheduler = createScheduler({ strategy: "manual" });
+  const objectScope = {};
+  const seen = [];
+
+  scheduler.markScopeDestroyed(objectScope);
+  scheduler.markScopeDestroyed("component.scope");
+
+  assert.equal(scheduler.isScopeDestroyed(objectScope), true);
+  assert.equal(scheduler.isScopeDestroyed("component.scope"), true);
+  assert.equal(scheduler.inspect().scopesDestroyed, 1);
+
+  scheduler.enqueue("binding", () => {
+    seen.push("blocked-object");
+  }, { scope: objectScope });
+  scheduler.enqueue("binding", () => {
+    seen.push("blocked-primitive");
+  }, { scope: "component.scope" });
+  await scheduler.flush();
+  assert.deepEqual(seen, []);
+
+  scheduler.reviveScope(objectScope);
+  scheduler.reviveScope("component.scope");
+
+  assert.equal(scheduler.isScopeDestroyed(objectScope), false);
+  assert.equal(scheduler.isScopeDestroyed("component.scope"), false);
+  assert.equal(scheduler.inspect().scopesDestroyed, 0);
+
+  scheduler.enqueue("binding", () => {
+    seen.push("object");
+  }, { scope: objectScope });
+  scheduler.enqueue("binding", () => {
+    seen.push("primitive");
+  }, { scope: "component.scope" });
+  await scheduler.flush();
+
+  assert.deepEqual(seen, ["object", "primitive"]);
+});
+
 test("manual scheduler keeps signal reads synchronous while delaying DOM bindings", async () => {
   const window = new Window();
   const { document } = window;

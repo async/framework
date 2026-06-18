@@ -44,6 +44,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
 
     scan(rootOrFragment = rootNode) {
       assertActive();
+      reviveScopes(rootOrFragment);
       bindSignalAttributes(rootOrFragment);
       bindClassAttributes(rootOrFragment);
       bindEventAttributes(rootOrFragment);
@@ -544,6 +545,12 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
   function markDestroyedScopes(scope) {
     for (const element of elementsIn(scope)) {
       schedulerInstance.markScopeDestroyed(element);
+    }
+  }
+
+  function reviveScopes(scope) {
+    for (const element of elementsIn(scope)) {
+      schedulerInstance.reviveScope?.(element);
     }
   }
 

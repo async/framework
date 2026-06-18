@@ -662,6 +662,13 @@ function sameSnapshotValue(left, right) {
 function setOrRegisterSignal(signals, path, value) {
   const id = String(path).split(".")[0];
   if (signals.has?.(id)) {
+    if (path === id) {
+      const entry = signals._entry?.(id);
+      if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
+        entry._restore(value);
+        return;
+      }
+    }
     signals.set(path, value);
     return;
   }
@@ -669,6 +676,17 @@ function setOrRegisterSignal(signals, path, value) {
   if (path !== id) {
     signals.set(path, value);
   }
+}
+
+function isAsyncSignalSnapshot(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.hasOwn(value, "value")
+    && (Object.hasOwn(value, "loading")
+      || Object.hasOwn(value, "error")
+      || Object.hasOwn(value, "status")
+      || Object.hasOwn(value, "version"));
 }
 
 function attachServerCache(server, cache) {

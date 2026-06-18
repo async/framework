@@ -403,6 +403,65 @@ test("browser runtime activates SSR HTML and snapshot without implicit fetch", a
   }
 });
 
+test("browser runtime restores SSR async signal snapshots without immediate refresh", async () => {
+  let loads = 0;
+  const app = defineApp({
+    asyncSignal: {
+      product: async function () {
+        loads += 1;
+        return { title: `Keyboard ${loads}` };
+      }
+    },
+    partial: {
+      async "product.page"() {
+        const product = this.signals.ref("product");
+        await product.refresh();
+        return html`
+          <article async:boundary="product">
+            <template async:loading="product"><p class="loading">Loading</p></template>
+            <template async:ready="product">
+              <h1 id="product-title" signal:text="product.$value.title"></h1>
+            </template>
+          </article>
+          <output id="product-value" signal:text="product.title"></output>
+          <output id="product-status" signal:text="product.$status"></output>
+        `;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const serverRuntime = createApp(app, { target: "server" });
+  const response = await serverRuntime.render("/products/sku-1");
+  serverRuntime.destroy();
+
+  assert.equal(loads, 1);
+  assert.equal(response.signals.product.status, "ready");
+  assert.deepEqual(response.signals.product.value, { title: "Keyboard 1" });
+
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = response.html;
+
+  const runtime = createApp(app, {
+    root: document.body,
+    router: false
+  }).start();
+  await delay(0);
+
+  assert.equal(loads, 1);
+  assert.deepEqual(runtime.signals.get("product.$value"), { title: "Keyboard 1" });
+  assert.equal(runtime.signals.get("product.$status"), "ready");
+  assert.equal(runtime.signals.get("product.$version"), 1);
+  assert.equal(document.querySelector("#product-title").textContent, "Keyboard 1");
+  assert.equal(document.querySelector("#product-value").textContent, "Keyboard 1");
+  assert.equal(document.querySelector("#product-status").textContent, "ready");
+  assert.equal(document.querySelector(".loading"), null);
+
+  runtime.destroy();
+});
+
 test("browser runtime restores SSR signal and browser cache snapshots", () => {
   const window = new Window();
   const { document } = window;
@@ -645,6 +704,37 @@ test("rootless runtime detachRoot cancels pending scoped scheduler jobs", async 
   runtime.destroy();
 });
 
+test("rootless runtime can detach and reattach the same root with live signal bindings", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<output signal:text="status"></output>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const app = defineApp({
+    signal: {
+      status: createSignal("idle")
+    }
+  });
+
+  const runtime = createApp(app, { router: false, scheduler }).start();
+  runtime.attachRoot(document.body);
+
+  assert.equal(document.querySelector("output").textContent, "idle");
+
+  runtime.detachRoot(document.body);
+  runtime.signals.set("status", "while-detached");
+  await scheduler.flush();
+  assert.equal(document.querySelector("output").textContent, "idle");
+
+  runtime.attachRoot(document.body);
+  assert.equal(document.querySelector("output").textContent, "while-detached");
+
+  runtime.signals.set("status", "reattached");
+  await scheduler.flush();
+  assert.equal(document.querySelector("output").textContent, "reattached");
+
+  runtime.destroy();
+});
+
 test("rootless runtime applySnapshot updates all attached roots", async () => {
   const window = new Window();
   const { document } = window;
@@ -739,6 +829,57 @@ test("async-container self attaches to the active runtime without double binding
   document.querySelector("button").click();
   await delay(0);
   assert.equal(document.querySelector("output").textContent, "2");
+
+  runtime.destroy();
+});
+
+test("async-container can disconnect and reconnect the same element with live bindings", async () => {
+  const window = new Window();
+  const { document } = window;
+  const app = defineApp({
+    signal: {
+      count: createSignal(0)
+    },
+    handler: {
+      increment() {
+        this.signals.update("count", (count) => count + 1);
+      }
+    }
+  });
+  const runtime = app.start({ router: false });
+  defineAsyncContainerElement({
+    app,
+    customElements: window.customElements,
+    HTMLElement: window.HTMLElement
+  });
+
+  const container = document.createElement("async-container");
+  container.innerHTML = `
+    <button on:click="increment">+</button>
+    <output signal:text="count"></output>
+  `;
+  document.body.append(container);
+
+  await delay(0);
+  container.disconnectedCallback();
+  container.connectedCallback();
+  document.querySelector("button").click();
+  await delay(0);
+  assert.equal(document.querySelector("output").textContent, "1");
+
+  runtime.signals.set("count", 4);
+  container.disconnectedCallback();
+  assert.equal(runtime.inspectRoots().count, 0);
+
+  container.connectedCallback();
+  runtime.signals.set("count", 5);
+  await delay(0);
+  assert.equal(runtime.inspectRoots().count, 1);
+  assert.equal(document.querySelector("output").textContent, "5");
+
+  document.querySelector("button").click();
+  await delay(0);
+  assert.equal(document.querySelector("output").textContent, "6");
 
   runtime.destroy();
 });

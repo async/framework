@@ -4,6 +4,12 @@
 
 - Removed the literal old global fetch identifier from published release notes
   so package-wide text scans stay focused on runtime artifacts.
+- Hardened scheduler scope revival, server error envelopes, async-signal SSR
+  snapshot restore, lazy component sync-rendering errors, router prefetch
+  context, server proxy transport validation, and package export smoke tests.
+- Bundle size from bundled TypeScript source: `browser.ts` 177,243 B raw /
+  33,354 B gzip -> `browser.min.js` 75,517 B raw / 22,516 B gzip
+  (-101,726 B raw, -10,838 B gzip).
 
 ## 0.11.0 - 2026-06-17
 

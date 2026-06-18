@@ -124,12 +124,16 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
   });
 
   const output = Component.call(context, props);
+  if (output && typeof output.then === "function") {
+    throw new TypeError(`Component "${componentName(Component)}" returned a Promise. Async components are not supported by synchronous renderComponent(). Use an async partial or handler instead.`);
+  }
   const html = renderScopedTemplate(output);
 
   return {
     html,
     attach(target) {
-      for (const hook of attachHooks) {
+      for (let index = 0; index < attachHooks.length; index += 1) {
+        const hook = attachHooks[index];
         runtime.scheduler?.enqueue("lifecycle", () => {
           const cleanup = hook(target);
           if (typeof cleanup === "function") {
@@ -137,7 +141,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
           }
         }, {
           scope,
-          key: `attach:${attachHooks.indexOf(hook)}`
+          key: `attach:${index}`
         }) ?? runAttachHook(hook, target);
       }
     },
@@ -145,8 +149,12 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
       this.attach(target);
     },
     visible(target, observeVisible) {
-      for (const hook of visibleHooks) {
-        const cleanup = observeVisible(target, () => {
+      if (visibleHooks.length === 0) {
+        return;
+      }
+      const cleanup = observeVisible(target, () => {
+        for (let index = 0; index < visibleHooks.length; index += 1) {
+          const hook = visibleHooks[index];
           runtime.scheduler?.enqueue("lifecycle", () => {
             const hookCleanup = hook(target);
             if (typeof hookCleanup === "function") {
@@ -154,12 +162,12 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
             }
           }, {
             scope,
-            key: `visible:${visibleHooks.indexOf(hook)}`
+            key: `visible:${index}`
           }) ?? runVisibleHook(hook, target);
-        });
-        if (typeof cleanup === "function") {
-          cleanups.push(cleanup);
         }
+      });
+      if (typeof cleanup === "function") {
+        cleanups.push(cleanup);
       }
     },
     cleanup() {

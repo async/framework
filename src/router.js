@@ -199,7 +199,10 @@ export function createRouter({
       }
       const matched = api.match(url);
       if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
-        return partials.render(matched.route.partial, matched.params, contextFor(matched));
+        return partials.render(matched.route.partial, matched.params, {
+          ...contextFor(matched),
+          prefetch: true
+        });
       }
       return Promise.resolve(null);
     },

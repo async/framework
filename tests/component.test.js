@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { Loader, component, createScheduler, createServerRegistry, delay, html } from "../src/index.js";
+import { Loader, component, createComponentRegistry, createScheduler, createServerRegistry, delay, html } from "../src/index.js";
 
 test("component helpers create scoped signals, handlers, effects, children, and lifecycle cleanup", async () => {
   const window = new Window();
@@ -120,8 +120,13 @@ test("component identical attach callbacks both run", async () => {
   document.body.innerHTML = `<main id="app"></main>`;
   const scheduler = createScheduler({ strategy: "manual" });
   const events = [];
+  let cleanups = 0;
+  const cleanup = () => {
+    cleanups += 1;
+  };
   const attach = () => {
     events.push("attach");
+    return cleanup;
   };
 
   const ReusedHook = component(function ReusedHook() {
@@ -135,6 +140,137 @@ test("component identical attach callbacks both run", async () => {
   await scheduler.flush();
 
   assert.deepEqual(events, ["attach", "attach"]);
+  loader.destroy();
+  assert.equal(cleanups, 2);
+});
+
+test("component identical visible callbacks both run", async () => {
+  const window = new Window();
+  const { document } = window;
+  window.IntersectionObserver = undefined;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+  let cleanups = 0;
+  const cleanup = () => {
+    cleanups += 1;
+  };
+  const visible = () => {
+    events.push("visible");
+    return cleanup;
+  };
+
+  const ReusedVisibleHook = component(function ReusedVisibleHook() {
+    this.on("visible", visible);
+    this.on("visible", visible);
+    return html`<span>ready</span>`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  loader.mount(document.querySelector("#app"), ReusedVisibleHook);
+  await scheduler.flush();
+
+  assert.deepEqual(events, ["visible", "visible"]);
+  loader.destroy();
+  assert.equal(cleanups, 2);
+});
+
+test("component child render attach hooks do not dedupe each other", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+
+  const Child = component(function Child() {
+    this.onMount(() => {
+      events.push("child");
+    });
+    return html`<span>child</span>`;
+  });
+
+  const Parent = component(function Parent() {
+    return html`${this.render(Child)}${this.render(Child)}`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  loader.mount(document.querySelector("#app"), Parent);
+  await scheduler.flush();
+
+  assert.deepEqual(events, ["child", "child"]);
+  loader.destroy();
+});
+
+test("component returning a Promise throws a clear unsupported error", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const AsyncComponent = component(async function AsyncComponent() {
+    return html`<span>async</span>`;
+  });
+
+  const loader = Loader({ root: document });
+
+  assert.throws(
+    () => loader.mount(document.querySelector("#app"), AsyncComponent),
+    /Component "AsyncComponent" returned a Promise\. Async components are not supported/
+  );
+
+  loader.destroy();
+});
+
+test("lazy component descriptors mounted through Loader throw a clear unsupported error", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const components = createComponentRegistry({
+    ProductCard: { url: "ProductCard.js" }
+  }, {
+    importModule() {
+      return {
+        ProductCard: component(function ProductCard() {
+          return html`<span>Product</span>`;
+        })
+      };
+    }
+  });
+  const loader = Loader({ root: document });
+
+  assert.throws(
+    () => loader.mount(document.querySelector("#app"), components.resolve("ProductCard")),
+    /Component "LazyComponent" returned a Promise\. Async components are not supported/
+  );
+
+  loader.destroy();
+});
+
+test("lazy component descriptors used through this.render throw a clear unsupported error", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const components = createComponentRegistry({
+    ProductCard: { url: "ProductCard.js" }
+  }, {
+    importModule() {
+      return {
+        ProductCard: component(function ProductCard() {
+          return html`<span>Product</span>`;
+        })
+      };
+    }
+  });
+  const LazyProductCard = components.resolve("ProductCard");
+  const Parent = component(function Parent() {
+    return html`${this.render(LazyProductCard)}`;
+  });
+  const loader = Loader({ root: document });
+
+  assert.throws(
+    () => loader.mount(document.querySelector("#app"), Parent),
+    /Component "LazyComponent" returned a Promise\. Async components are not supported/
+  );
+
   loader.destroy();
 });
 

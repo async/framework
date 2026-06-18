@@ -4,7 +4,8 @@ export function createScheduler(options = {}) {
   const phases = [...(options.phases ?? defaultPhases)];
   const queues = new Map(phases.map((phase) => [phase, []]));
   const keyedJobs = new Map();
-  const destroyedScopes = new Set();
+  const destroyedObjectScopes = new WeakSet();
+  const destroyedPrimitiveScopes = new Set();
   const objectScopeIds = new WeakMap();
   const onError = typeof options.onError === "function" ? options.onError : undefined;
   const maxDepth = options.maxDepth ?? 100;
@@ -52,7 +53,7 @@ export function createScheduler(options = {}) {
         throw new TypeError("scheduler.enqueue(phase, fn) requires a function.");
       }
       const scope = options.scope;
-      if (scope !== undefined && destroyedScopes.has(scope)) {
+      if (isScopeDestroyed(scope)) {
         return noop;
       }
 
@@ -156,14 +157,29 @@ export function createScheduler(options = {}) {
 
     markScopeDestroyed(scope) {
       if (scope !== undefined) {
-        destroyedScopes.add(scope);
+        if (isObjectScope(scope)) {
+          destroyedObjectScopes.add(scope);
+        } else {
+          destroyedPrimitiveScopes.add(scope);
+        }
         api.cancelScope(scope);
       }
       return api;
     },
 
+    reviveScope(scope) {
+      if (scope !== undefined) {
+        if (isObjectScope(scope)) {
+          destroyedObjectScopes.delete(scope);
+        } else {
+          destroyedPrimitiveScopes.delete(scope);
+        }
+      }
+      return api;
+    },
+
     isScopeDestroyed(scope) {
-      return scope !== undefined && destroyedScopes.has(scope);
+      return isScopeDestroyed(scope);
     },
 
     inspect() {
@@ -175,7 +191,7 @@ export function createScheduler(options = {}) {
         strategy,
         phases: [...phases],
         pending: counts,
-        scopesDestroyed: destroyedScopes.size,
+        scopesDestroyed: destroyedPrimitiveScopes.size,
         flushing,
         scheduled
       };
@@ -190,7 +206,7 @@ export function createScheduler(options = {}) {
         queue.length = 0;
       }
       keyedJobs.clear();
-      destroyedScopes.clear();
+      destroyedPrimitiveScopes.clear();
     }
   };
 
@@ -230,7 +246,7 @@ export function createScheduler(options = {}) {
       if (job.key) {
         keyedJobs.delete(job.key);
       }
-      if (job.canceled || (job.scope !== undefined && destroyedScopes.has(job.scope))) {
+      if (job.canceled || isScopeDestroyed(job.scope)) {
         continue;
       }
       try {
@@ -287,6 +303,20 @@ export function createScheduler(options = {}) {
     }
     return String(scope);
   }
+
+  function isScopeDestroyed(scope) {
+    if (scope === undefined) {
+      return false;
+    }
+    if (isObjectScope(scope)) {
+      return destroyedObjectScopes.has(scope);
+    }
+    return destroyedPrimitiveScopes.has(scope);
+  }
+}
+
+function isObjectScope(scope) {
+  return (typeof scope === "object" && scope !== null) || typeof scope === "function";
 }
 
 function scheduleMicrotask(fn) {

@@ -208,6 +208,75 @@ test("temporary project can import installed package subpaths", async () => {
   }
 });
 
+test("packed package can be installed and resolves browser/server entrypoints", async () => {
+  const root = await mkdtemp(join(tmpdir(), "async-framework-pack-install-"));
+  try {
+    const packOutput = JSON.parse((await execFileAsync("npm", [
+      "pack",
+      repoRoot,
+      "--json",
+      "--ignore-scripts"
+    ], { cwd: root })).stdout);
+    const tarball = join(root, packOutput[0].filename);
+    const project = join(root, "project");
+    await mkdir(project);
+    await writeFile(join(project, "package.json"), `{"type":"module"}`, "utf8");
+    await execFileAsync("npm", [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--package-lock=false",
+      tarball
+    ], { cwd: project });
+    await writeFile(join(project, "check.mjs"), `
+      import * as rootPackage from "@async/framework";
+      import * as browserPackage from "@async/framework/browser";
+      import * as serverPackage from "@async/framework/server";
+      import manifest from "@async/framework/package.json" with { type: "json" };
+
+      console.log(JSON.stringify({
+        rootServerRegistry: typeof rootPackage.createServerRegistry,
+        rootRequestContextStore: typeof rootPackage.createRequestContextStore,
+        browserServerRegistry: typeof browserPackage.createServerRegistry,
+        browserRequestContextStore: typeof browserPackage.createRequestContextStore,
+        browserServerProxy: typeof browserPackage.createServerProxy,
+        serverRequestContextStore: typeof serverPackage.createRequestContextStore,
+        version: manifest.version
+      }));
+    `, "utf8");
+    await writeFile(join(project, "check-browser-condition.mjs"), `
+      import * as rootPackage from "@async/framework";
+      console.log(JSON.stringify({
+        serverRegistry: typeof rootPackage.createServerRegistry,
+        requestContextStore: typeof rootPackage.createRequestContextStore
+      }));
+    `, "utf8");
+
+    const installed = JSON.parse((await execFileAsync(process.execPath, ["check.mjs"], { cwd: project })).stdout);
+    const browserCondition = JSON.parse((await execFileAsync(process.execPath, [
+      "--conditions=browser",
+      "check-browser-condition.mjs"
+    ], { cwd: project })).stdout);
+
+    assert.deepEqual(installed, {
+      rootServerRegistry: "function",
+      rootRequestContextStore: "function",
+      browserServerRegistry: "undefined",
+      browserRequestContextStore: "undefined",
+      browserServerProxy: "function",
+      serverRequestContextStore: "function",
+      version: manifest.version
+    });
+    assert.deepEqual(browserCondition, {
+      serverRegistry: "undefined",
+      requestContextStore: "undefined"
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("package metadata keeps legacy size analyzers on the browser entry", () => {
   assert.equal(manifest.main, "./server.js");
   assert.equal(manifest.module, "./browser.min.js");

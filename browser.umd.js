@@ -196,6 +196,24 @@
           };
         },
 
+        _restore(snapshot = {}) {
+          if (!isAsyncSignalSnapshot(snapshot)) {
+            return state.set(snapshot);
+          }
+          if (activeAbort && !activeAbort.aborted) {
+            activeAbort.cancel(new Error(`Async signal "${registeredId}" restored from snapshot.`));
+          }
+          value = snapshot.value;
+          loading = Boolean(snapshot.loading);
+          error = snapshot.error ?? null;
+          status = typeof snapshot.status === "string" ? snapshot.status : inferStatus({ value, loading, error });
+          if (Number.isFinite(snapshot.version)) {
+            version = snapshot.version;
+          }
+          notify();
+          return state;
+        },
+
         _bindRegistry(nextRegistry, nextId) {
           registry = nextRegistry;
           registeredId = nextId;
@@ -279,6 +297,27 @@
 
     function isAsyncSignal(value) {
       return Boolean(value?.[asyncSignalKind]);
+    }
+
+    function isAsyncSignalSnapshot(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return false;
+      }
+      return Object.hasOwn(value, "value")
+        && (Object.hasOwn(value, "loading")
+          || Object.hasOwn(value, "error")
+          || Object.hasOwn(value, "status")
+          || Object.hasOwn(value, "version"));
+    }
+
+    function inferStatus({ value, loading, error }) {
+      if (loading) {
+        return "loading";
+      }
+      if (error) {
+        return "error";
+      }
+      return value === undefined ? "idle" : "ready";
     }
 
     function attachCancel(signal, controller) {
@@ -1919,12 +1958,16 @@
       });
 
       const output = Component.call(context, props);
+      if (output && typeof output.then === "function") {
+        throw new TypeError(`Component "${componentName(Component)}" returned a Promise. Async components are not supported by synchronous renderComponent(). Use an async partial or handler instead.`);
+      }
       const html = renderScopedTemplate(output);
 
       return {
         html,
         attach(target) {
-          for (const hook of attachHooks) {
+          for (let index = 0; index < attachHooks.length; index += 1) {
+            const hook = attachHooks[index];
             runtime.scheduler?.enqueue("lifecycle", () => {
               const cleanup = hook(target);
               if (typeof cleanup === "function") {
@@ -1932,7 +1975,7 @@
               }
             }, {
               scope,
-              key: `attach:${attachHooks.indexOf(hook)}`
+              key: `attach:${index}`
             }) ?? runAttachHook(hook, target);
           }
         },
@@ -1940,8 +1983,12 @@
           this.attach(target);
         },
         visible(target, observeVisible) {
-          for (const hook of visibleHooks) {
-            const cleanup = observeVisible(target, () => {
+          if (visibleHooks.length === 0) {
+            return;
+          }
+          const cleanup = observeVisible(target, () => {
+            for (let index = 0; index < visibleHooks.length; index += 1) {
+              const hook = visibleHooks[index];
               runtime.scheduler?.enqueue("lifecycle", () => {
                 const hookCleanup = hook(target);
                 if (typeof hookCleanup === "function") {
@@ -1949,12 +1996,12 @@
                 }
               }, {
                 scope,
-                key: `visible:${visibleHooks.indexOf(hook)}`
+                key: `visible:${index}`
               }) ?? runVisibleHook(hook, target);
-            });
-            if (typeof cleanup === "function") {
-              cleanups.push(cleanup);
             }
+          });
+          if (typeof cleanup === "function") {
+            cleanups.push(cleanup);
           }
         },
         cleanup() {
@@ -2210,11 +2257,12 @@
           signal: context.abort
         });
 
+        assertTransportResponse(id, response);
         if (!response.ok) {
           throw new Error(`Server function "${id}" failed with ${response.status}.`);
         }
 
-        const result = await readServerResponse(response);
+        const result = await readServerResponse(id, response);
         await applyServerResult(result, runContext);
         return markAppliedServerValue(unwrapServerResult(result));
       }
@@ -2255,6 +2303,11 @@
         return result;
       }
 
+      if (result.error) {
+        markAppliedServerResult(result);
+        throw toError(result.error);
+      }
+
       if (result.signals && context.signals) {
         for (const [path, value] of Object.entries(result.signals)) {
           context.signals.set?.(path, value);
@@ -2273,15 +2326,7 @@
         await context.router?.navigate?.(result.redirect);
       }
 
-      if (result.error) {
-        throw toError(result.error);
-      }
-
-      Object.defineProperty(result, appliedServerResult, {
-        configurable: true,
-        enumerable: false,
-        value: true
-      });
+      markAppliedServerResult(result);
 
       return result;
     }
@@ -2298,6 +2343,15 @@
         appliedServerValues.add(value);
       }
       return value;
+    }
+
+    function markAppliedServerResult(result) {
+      Object.defineProperty(result, appliedServerResult, {
+        configurable: true,
+        enumerable: false,
+        value: true
+      });
+      return result;
     }
 
     function defaultInput(context = {}) {
@@ -2377,10 +2431,37 @@
       return namespace([]);
     }
 
-    async function readServerResponse(response) {
+    function assertTransportResponse(id, response) {
+      if (!response || typeof response !== "object") {
+        throw new Error(`Server function "${id}" transport returned an invalid response: expected a fetch Response-like object.`);
+      }
+      if (typeof response.ok !== "boolean") {
+        throw new Error(`Server function "${id}" transport returned an invalid response: missing boolean ok.`);
+      }
+      if (!response.headers || typeof response.headers.get !== "function") {
+        throw new Error(`Server function "${id}" transport returned an invalid response: missing headers.get(name).`);
+      }
+    }
+
+    async function readServerResponse(id, response) {
+      if (response.status === 204) {
+        return { value: undefined };
+      }
       const type = response.headers.get("content-type") ?? "";
       if (type.includes("application/json")) {
-        return response.json();
+        if (typeof response.json !== "function") {
+          throw new Error(`Server function "${id}" transport returned an invalid response: missing json().`);
+        }
+        try {
+          return await response.json();
+        } catch (cause) {
+          throw new Error(`Server function "${id}" returned invalid JSON: ${errorMessage(cause)}`, {
+            cause
+          });
+        }
+      }
+      if (typeof response.text !== "function") {
+        throw new Error(`Server function "${id}" transport returned an invalid response: missing text().`);
       }
       return { value: await response.text() };
     }
@@ -2493,6 +2574,9 @@
       if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
         throw new Error("Server proxy JSON transport does not support File, Blob, or FormData values yet.");
       }
+      if (isUnsupportedJsonTransportObject(value, tag)) {
+        throw new Error("Server proxy JSON transport does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values yet.");
+      }
       if (Array.isArray(value)) {
         for (const item of value) {
           assertJsonTransportable(item, stack);
@@ -2504,6 +2588,16 @@
         assertJsonTransportable(item, stack);
       }
       stack.delete(value);
+    }
+
+    function isUnsupportedJsonTransportObject(value, tag = Object.prototype.toString.call(value)) {
+      return tag === "[object URLSearchParams]"
+        || tag === "[object Headers]"
+        || tag === "[object Request]"
+        || tag === "[object Response]"
+        || tag === "[object ReadableStream]"
+        || tag === "[object ArrayBuffer]"
+        || ArrayBuffer.isView(value);
     }
 
     function joinEndpoint(endpoint, id) {
@@ -2525,6 +2619,10 @@
         return Object.assign(new Error(value.message), value);
       }
       return new Error(String(value));
+    }
+
+    function errorMessage(error) {
+      return error instanceof Error ? error.message : String(error);
     }
 
     function assertServerId(id) {
@@ -2759,7 +2857,8 @@
       const phases = [...(options.phases ?? defaultPhases)];
       const queues = new Map(phases.map((phase) => [phase, []]));
       const keyedJobs = new Map();
-      const destroyedScopes = new Set();
+      const destroyedObjectScopes = new WeakSet();
+      const destroyedPrimitiveScopes = new Set();
       const objectScopeIds = new WeakMap();
       const onError = typeof options.onError === "function" ? options.onError : undefined;
       const maxDepth = options.maxDepth ?? 100;
@@ -2807,7 +2906,7 @@
             throw new TypeError("scheduler.enqueue(phase, fn) requires a function.");
           }
           const scope = options.scope;
-          if (scope !== undefined && destroyedScopes.has(scope)) {
+          if (isScopeDestroyed(scope)) {
             return noop;
           }
 
@@ -2911,14 +3010,29 @@
 
         markScopeDestroyed(scope) {
           if (scope !== undefined) {
-            destroyedScopes.add(scope);
+            if (isObjectScope(scope)) {
+              destroyedObjectScopes.add(scope);
+            } else {
+              destroyedPrimitiveScopes.add(scope);
+            }
             api.cancelScope(scope);
           }
           return api;
         },
 
+        reviveScope(scope) {
+          if (scope !== undefined) {
+            if (isObjectScope(scope)) {
+              destroyedObjectScopes.delete(scope);
+            } else {
+              destroyedPrimitiveScopes.delete(scope);
+            }
+          }
+          return api;
+        },
+
         isScopeDestroyed(scope) {
-          return scope !== undefined && destroyedScopes.has(scope);
+          return isScopeDestroyed(scope);
         },
 
         inspect() {
@@ -2930,7 +3044,7 @@
             strategy,
             phases: [...phases],
             pending: counts,
-            scopesDestroyed: destroyedScopes.size,
+            scopesDestroyed: destroyedPrimitiveScopes.size,
             flushing,
             scheduled
           };
@@ -2945,7 +3059,7 @@
             queue.length = 0;
           }
           keyedJobs.clear();
-          destroyedScopes.clear();
+          destroyedPrimitiveScopes.clear();
         }
       };
 
@@ -2985,7 +3099,7 @@
           if (job.key) {
             keyedJobs.delete(job.key);
           }
-          if (job.canceled || (job.scope !== undefined && destroyedScopes.has(job.scope))) {
+          if (job.canceled || isScopeDestroyed(job.scope)) {
             continue;
           }
           try {
@@ -3042,6 +3156,20 @@
         }
         return String(scope);
       }
+
+      function isScopeDestroyed(scope) {
+        if (scope === undefined) {
+          return false;
+        }
+        if (isObjectScope(scope)) {
+          return destroyedObjectScopes.has(scope);
+        }
+        return destroyedPrimitiveScopes.has(scope);
+      }
+    }
+
+    function isObjectScope(scope) {
+      return (typeof scope === "object" && scope !== null) || typeof scope === "function";
     }
 
     function scheduleMicrotask(fn) {
@@ -3102,6 +3230,7 @@
 
         scan(rootOrFragment = rootNode) {
           assertActive();
+          reviveScopes(rootOrFragment);
           bindSignalAttributes(rootOrFragment);
           bindClassAttributes(rootOrFragment);
           bindEventAttributes(rootOrFragment);
@@ -3602,6 +3731,12 @@
       function markDestroyedScopes(scope) {
         for (const element of elementsIn(scope)) {
           schedulerInstance.markScopeDestroyed(element);
+        }
+      }
+
+      function reviveScopes(scope) {
+        for (const element of elementsIn(scope)) {
+          schedulerInstance.reviveScope?.(element);
         }
       }
 
@@ -4168,7 +4303,10 @@
           }
           const matched = api.match(url);
           if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
-            return partials.render(matched.route.partial, matched.params, contextFor(matched));
+            return partials.render(matched.route.partial, matched.params, {
+              ...contextFor(matched),
+              prefetch: true
+            });
           }
           return Promise.resolve(null);
         },
@@ -5204,6 +5342,13 @@
     function setOrRegisterSignal(signals, path, value) {
       const id = String(path).split(".")[0];
       if (signals.has?.(id)) {
+        if (path === id) {
+          const entry = signals._entry?.(id);
+          if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
+            entry._restore(value);
+            return;
+          }
+        }
         signals.set(path, value);
         return;
       }
@@ -5211,6 +5356,17 @@
       if (path !== id) {
         signals.set(path, value);
       }
+    }
+
+    function isAsyncSignalSnapshot(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return false;
+      }
+      return Object.hasOwn(value, "value")
+        && (Object.hasOwn(value, "loading")
+          || Object.hasOwn(value, "error")
+          || Object.hasOwn(value, "status")
+          || Object.hasOwn(value, "version"));
     }
 
     function attachServerCache(server, cache) {

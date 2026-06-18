@@ -181,6 +181,24 @@ export function asyncSignal(id, fn) {
       };
     },
 
+    _restore(snapshot = {}) {
+      if (!isAsyncSignalSnapshot(snapshot)) {
+        return state.set(snapshot);
+      }
+      if (activeAbort && !activeAbort.aborted) {
+        activeAbort.cancel(new Error(`Async signal "${registeredId}" restored from snapshot.`));
+      }
+      value = snapshot.value;
+      loading = Boolean(snapshot.loading);
+      error = snapshot.error ?? null;
+      status = typeof snapshot.status === "string" ? snapshot.status : inferStatus({ value, loading, error });
+      if (Number.isFinite(snapshot.version)) {
+        version = snapshot.version;
+      }
+      notify();
+      return state;
+    },
+
     _bindRegistry(nextRegistry, nextId) {
       registry = nextRegistry;
       registeredId = nextId;
@@ -264,6 +282,27 @@ export function asyncSignal(id, fn) {
 
 export function isAsyncSignal(value) {
   return Boolean(value?.[asyncSignalKind]);
+}
+
+function isAsyncSignalSnapshot(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.hasOwn(value, "value")
+    && (Object.hasOwn(value, "loading")
+      || Object.hasOwn(value, "error")
+      || Object.hasOwn(value, "status")
+      || Object.hasOwn(value, "version"));
+}
+
+function inferStatus({ value, loading, error }) {
+  if (loading) {
+    return "loading";
+  }
+  if (error) {
+    return "error";
+  }
+  return value === undefined ? "idle" : "ready";
 }
 
 function attachCancel(signal, controller) {

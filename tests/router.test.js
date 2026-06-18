@@ -567,6 +567,87 @@ test("SPA router ignores same-document hash links", async () => {
   router.destroy();
 });
 
+test("SPA router prefetch executes partials without mutating route state, history, or DOM", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
+  const cache = createCacheRegistry();
+  const signals = createSignalRegistry({
+    prefetched: signal(false)
+  });
+  const contexts = [];
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": route("product.page")
+    }),
+    signals,
+    cache,
+    partials: createPartialRegistry({
+      "product.page": function ({ id }) {
+        contexts.push({
+          id,
+          prefetch: this.prefetch,
+          path: this.signals.get("router.path")
+        });
+        this.cache.set(`prefetch:${id}`, { id });
+        return {
+          html: `<h1 id="route-title">${id}</h1>`,
+          signals: {
+            prefetched: true
+          }
+        };
+      }
+    })
+  }).start();
+
+  const result = await router.prefetch("/products/sku-1");
+
+  assert.equal(result.html, `<h1 id="route-title">sku-1</h1>`);
+  assert.deepEqual(contexts, [{
+    id: "sku-1",
+    prefetch: true,
+    path: "/"
+  }]);
+  assert.deepEqual(cache.get("prefetch:sku-1"), { id: "sku-1" });
+  assert.equal(signals.get("prefetched"), false);
+  assert.equal(signals.get("router.pending"), false);
+  assert.equal(signals.get("router.path"), "/");
+  assert.equal(window.location.href, "http://app.test/");
+  assert.equal(document.querySelector("#route-title").textContent, "Home");
+
+  router.destroy();
+});
+
+test("SPA router prefetch returns partial errors to the caller", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/broken": route("broken")
+    }),
+    partials: createPartialRegistry({
+      broken() {
+        throw new Error("prefetch failed");
+      }
+    })
+  }).start();
+
+  await assert.rejects(
+    router.prefetch("/broken"),
+    /prefetch failed/
+  );
+  assert.equal(document.querySelector("#route-title").textContent, "Home");
+
+  router.destroy();
+});
+
 test("removed SSR-SPA router mode is rejected", () => {
   assert.throws(
     () => createRouter({ mode: "ssr-spa" }),

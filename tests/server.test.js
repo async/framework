@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  applyServerResult,
+  createCacheRegistry,
   createRequestContextStore,
   createHandlerRegistry,
   createServerProxy,
@@ -43,6 +45,35 @@ test("server request context store isolates overlapping async calls", async () =
 
   assert.equal(left, "left");
   assert.equal(right, "right");
+});
+
+test("nested server calls preserve request context", async () => {
+  const requestContext = createRequestContextStore();
+  const server = createServerRegistry({
+    "request.inner"() {
+      return {
+        header: this.headers.trace,
+        cookie: this.cookies.session,
+        local: this.locals.id
+      };
+    },
+    async "request.outer"() {
+      return this.server.request.inner();
+    }
+  });
+  server._setContext({ requestContext });
+
+  const result = await requestContext.run({
+    headers: { trace: "trace-1" },
+    cookies: { session: "session-1" },
+    locals: { id: "local-1" }
+  }, () => server.request.outer());
+
+  assert.deepEqual(result, {
+    header: "trace-1",
+    cookie: "session-1",
+    local: "local-1"
+  });
 });
 
 test("server proxy posts args, input, signals, and applies returned signal patches", async () => {
@@ -168,6 +199,103 @@ test("server proxy does not apply unwrapped envelope-shaped values as effects", 
   assert.equal(signals.get("status"), "right");
 });
 
+test("server error envelopes do not apply signal patches", async () => {
+  const signals = createSignalRegistry({
+    status: signal("idle")
+  });
+
+  await assert.rejects(
+    applyServerResult({
+      error: { message: "server failed" },
+      signals: {
+        status: "mutated"
+      }
+    }, { signals }),
+    /server failed/
+  );
+
+  assert.equal(signals.get("status"), "idle");
+});
+
+test("server error envelopes do not restore browser cache", async () => {
+  const cache = createCacheRegistry();
+
+  await assert.rejects(
+    applyServerResult({
+      error: { message: "cache failed" },
+      cache: {
+        browser: {
+          "product:sku-1": { title: "Keyboard" }
+        }
+      }
+    }, { cache }),
+    /cache failed/
+  );
+
+  assert.equal(cache.get("product:sku-1"), undefined);
+});
+
+test("server error envelopes do not swap boundary HTML", async () => {
+  let swaps = 0;
+
+  await assert.rejects(
+    applyServerResult({
+      error: { message: "boundary failed" },
+      boundary: "product",
+      html: "<h1>Mutated</h1>"
+    }, {
+      loader: {
+        swap() {
+          swaps += 1;
+        }
+      }
+    }),
+    /boundary failed/
+  );
+
+  assert.equal(swaps, 0);
+});
+
+test("server error envelopes do not redirect", async () => {
+  let redirects = 0;
+
+  await assert.rejects(
+    applyServerResult({
+      error: { message: "redirect failed" },
+      redirect: "/login"
+    }, {
+      router: {
+        navigate() {
+          redirects += 1;
+        }
+      }
+    }),
+    /redirect failed/
+  );
+
+  assert.equal(redirects, 0);
+});
+
+test("server error envelopes are consumed before throwing", async () => {
+  const signals = createSignalRegistry({
+    status: signal("idle")
+  });
+  const result = {
+    error: { message: "only once" },
+    signals: {
+      status: "mutated"
+    }
+  };
+
+  await assert.rejects(
+    applyServerResult(result, { signals }),
+    /only once/
+  );
+
+  assert.equal(await applyServerResult(result, { signals }), result);
+  assert.equal(signals.get("status"), "idle");
+});
+
 test("server proxy forwards abort signals to transport", async () => {
   const controller = new AbortController();
   let transportSignal;
@@ -184,6 +312,56 @@ test("server proxy forwards abort signals to transport", async () => {
 
   assert.equal(await server.run("products.get", [], { abort: controller.signal }), "ok");
   assert.equal(transportSignal, controller.signal);
+});
+
+test("server proxy transport returning undefined throws an Async-specific error", async () => {
+  const server = createServerProxy({
+    transport: async () => undefined
+  });
+
+  await assert.rejects(
+    server.run("products.get"),
+    /transport returned an invalid response: expected a fetch Response-like object/
+  );
+});
+
+test("server proxy transport returning object without ok throws an Async-specific error", async () => {
+  const server = createServerProxy({
+    transport: async () => ({
+      headers: new Headers(),
+      json: async () => ({ value: "ok" })
+    })
+  });
+
+  await assert.rejects(
+    server.run("products.get"),
+    /transport returned an invalid response: missing boolean ok/
+  );
+});
+
+test("server proxy transport returning JSON content-type but invalid JSON throws an Async-specific error", async () => {
+  const server = createServerProxy({
+    transport: async () => new Response("{nope", {
+      headers: {
+        "content-type": "application/json"
+      }
+    })
+  });
+
+  await assert.rejects(
+    server.run("products.get"),
+    /returned invalid JSON/
+  );
+});
+
+test("server proxy handles 204 no-content responses as undefined values", async () => {
+  const server = createServerProxy({
+    transport: async () => new Response(null, {
+      status: 204
+    })
+  });
+
+  assert.equal(await server.run("products.delete"), undefined);
 });
 
 test("server proxy rejects file-like values instead of silently JSON stringifying them", async () => {
@@ -281,6 +459,30 @@ test("server proxy rejects BigInt values with an Async-specific error", async ()
     server.run("products.save", [{ id: 1n }]),
     /does not support BigInt values/
   );
+});
+
+test("server proxy rejects unsupported Web platform values before transport runs", async () => {
+  const unsupported = [
+    new URLSearchParams("q=keyboard"),
+    new Headers(),
+    new Request("http://app.test/products"),
+    new Response("ok"),
+    new ReadableStream(),
+    new ArrayBuffer(8),
+    new Uint8Array([1, 2, 3])
+  ];
+  const server = createServerProxy({
+    transport() {
+      throw new Error("transport should not run for unsupported JSON values.");
+    }
+  });
+
+  for (const value of unsupported) {
+    await assert.rejects(
+      server.run("products.save", [value]),
+      /does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values/
+    );
+  }
 });
 
 test("server proxy preserves current JSON undefined handling", async () => {

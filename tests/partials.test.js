@@ -35,3 +35,26 @@ test("missing partials fail with a useful error", async () => {
     /Partial "missing" is not registered/
   );
 });
+
+test("lazy partial descriptors render through the async partial path", async () => {
+  const imports = [];
+  const partials = createPartialRegistry({
+    "product.card": { url: "product.card.js" }
+  }, {
+    importModule(url) {
+      imports.push(url);
+      return {
+        card({ id }) {
+          return html`<article>${id}</article>`;
+        }
+      };
+    }
+  });
+
+  const result = await partials.render("product.card", { id: "sku-1" });
+
+  assert.deepEqual(imports, ["/_async/partial/product.card.js"]);
+  assert.deepEqual(result, {
+    html: "<article>sku-1</article>"
+  });
+});

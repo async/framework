@@ -38,11 +38,12 @@ export function createServerProxy({
       signal: context.abort
     });
 
+    assertTransportResponse(id, response);
     if (!response.ok) {
       throw new Error(`Server function "${id}" failed with ${response.status}.`);
     }
 
-    const result = await readServerResponse(response);
+    const result = await readServerResponse(id, response);
     await applyServerResult(result, runContext);
     return markAppliedServerValue(unwrapServerResult(result));
   }
@@ -83,6 +84,11 @@ export async function applyServerResult(result, context = {}) {
     return result;
   }
 
+  if (result.error) {
+    markAppliedServerResult(result);
+    throw toError(result.error);
+  }
+
   if (result.signals && context.signals) {
     for (const [path, value] of Object.entries(result.signals)) {
       context.signals.set?.(path, value);
@@ -101,15 +107,7 @@ export async function applyServerResult(result, context = {}) {
     await context.router?.navigate?.(result.redirect);
   }
 
-  if (result.error) {
-    throw toError(result.error);
-  }
-
-  Object.defineProperty(result, appliedServerResult, {
-    configurable: true,
-    enumerable: false,
-    value: true
-  });
+  markAppliedServerResult(result);
 
   return result;
 }
@@ -126,6 +124,15 @@ function markAppliedServerValue(value) {
     appliedServerValues.add(value);
   }
   return value;
+}
+
+function markAppliedServerResult(result) {
+  Object.defineProperty(result, appliedServerResult, {
+    configurable: true,
+    enumerable: false,
+    value: true
+  });
+  return result;
 }
 
 export function defaultInput(context = {}) {
@@ -205,10 +212,37 @@ export function createServerNamespace(run, root = {}, contextProvider = () => ({
   return namespace([]);
 }
 
-async function readServerResponse(response) {
+function assertTransportResponse(id, response) {
+  if (!response || typeof response !== "object") {
+    throw new Error(`Server function "${id}" transport returned an invalid response: expected a fetch Response-like object.`);
+  }
+  if (typeof response.ok !== "boolean") {
+    throw new Error(`Server function "${id}" transport returned an invalid response: missing boolean ok.`);
+  }
+  if (!response.headers || typeof response.headers.get !== "function") {
+    throw new Error(`Server function "${id}" transport returned an invalid response: missing headers.get(name).`);
+  }
+}
+
+async function readServerResponse(id, response) {
+  if (response.status === 204) {
+    return { value: undefined };
+  }
   const type = response.headers.get("content-type") ?? "";
   if (type.includes("application/json")) {
-    return response.json();
+    if (typeof response.json !== "function") {
+      throw new Error(`Server function "${id}" transport returned an invalid response: missing json().`);
+    }
+    try {
+      return await response.json();
+    } catch (cause) {
+      throw new Error(`Server function "${id}" returned invalid JSON: ${errorMessage(cause)}`, {
+        cause
+      });
+    }
+  }
+  if (typeof response.text !== "function") {
+    throw new Error(`Server function "${id}" transport returned an invalid response: missing text().`);
   }
   return { value: await response.text() };
 }
@@ -321,6 +355,9 @@ function assertJsonTransportable(value, stack = new Set()) {
   if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
     throw new Error("Server proxy JSON transport does not support File, Blob, or FormData values yet.");
   }
+  if (isUnsupportedJsonTransportObject(value, tag)) {
+    throw new Error("Server proxy JSON transport does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values yet.");
+  }
   if (Array.isArray(value)) {
     for (const item of value) {
       assertJsonTransportable(item, stack);
@@ -332,6 +369,16 @@ function assertJsonTransportable(value, stack = new Set()) {
     assertJsonTransportable(item, stack);
   }
   stack.delete(value);
+}
+
+function isUnsupportedJsonTransportObject(value, tag = Object.prototype.toString.call(value)) {
+  return tag === "[object URLSearchParams]"
+    || tag === "[object Headers]"
+    || tag === "[object Request]"
+    || tag === "[object Response]"
+    || tag === "[object ReadableStream]"
+    || tag === "[object ArrayBuffer]"
+    || ArrayBuffer.isView(value);
 }
 
 function joinEndpoint(endpoint, id) {
@@ -353,6 +400,10 @@ function toError(value) {
     return Object.assign(new Error(value.message), value);
   }
   return new Error(String(value));
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function assertServerId(id) {
