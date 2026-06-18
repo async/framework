@@ -56,12 +56,12 @@ test("server commands read signal args and apply returned signal patches", async
   const server = createServerRegistry({
     "cart.add": async function (productId, quantity) {
       seen.push([productId, quantity, this.input.value]);
-      return {
+      return serverEnvelope({
         value: { ok: true },
         signals: {
           cartCount: 3
         }
-      };
+      });
     }
   });
   const handlers = createHandlerRegistry();
@@ -87,7 +87,7 @@ test("server commands resolve event locals and default form input", async () => 
   const server = createServerRegistry({
     "products.save": function (productId, form, dataset) {
       seen.push({ productId, form, dataset, input: this.input });
-      return { value: "saved" };
+      return "saved";
     }
   });
   const handlers = createHandlerRegistry();
@@ -129,6 +129,13 @@ test("server commands resolve event locals and default form input", async () => 
     }
   ]);
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}
 
 test("missing handlers fail with a useful error", async () => {
   const handlers = createHandlerRegistry();

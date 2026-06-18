@@ -52,6 +52,7 @@ serverApp.use({
     async "ssrDemo.product.page"({ id }) {
       const product = await this.server.ssrDemo.products.get(id);
       return {
+        __async_server_result__: 1,
         html: html`
           <article>
             <h1>${product.title}</h1>

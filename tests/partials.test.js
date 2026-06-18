@@ -5,12 +5,12 @@ import { createPartialRegistry, createServerRegistry, html } from "../src/index.
 test("partial registry renders templates and can call this.server", async () => {
   const server = createServerRegistry({
     "products.get"(id) {
-      return {
+      return serverEnvelope({
         value: {
           id,
           title: "Keyboard"
         }
-      };
+      });
     }
   });
   const partials = createPartialRegistry({
@@ -26,6 +26,13 @@ test("partial registry renders templates and can call this.server", async () => 
     html: `<article data-id="sku-1">Keyboard</article>`
   });
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}
 
 test("missing partials fail with a useful error", async () => {
   const partials = createPartialRegistry();

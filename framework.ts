@@ -2381,9 +2381,10 @@ const __componentModule = (() => {
 })();
 
 const __serverModule = (() => {
-  const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
+  const serverEnvelopeKind = Symbol.for("@async/framework.serverResult");
+  const serverEnvelopeWireKey = "__async_server_result__";
+  const serverEnvelopeWireVersion = 1;
   const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
-  const appliedServerValues = new WeakSet();
 
   function createServerProxy({
     endpoint = "/__async/server",
@@ -2426,9 +2427,7 @@ const __serverModule = (() => {
         throw new Error(`Server function "${id}" failed with ${response.status}.`);
       }
 
-      const result = await readServerResponse(id, response);
-      await applyServerResult(result, runContext);
-      return markAppliedServerValue(unwrapServerResult(result));
+      return consumeServerResult(await readServerResponse(id, response), runContext);
     }
 
     return createServerNamespace(run, {
@@ -2463,7 +2462,7 @@ const __serverModule = (() => {
     if (!isServerEnvelope(result)) {
       return result;
     }
-    if (result[appliedServerResult] || appliedServerValues.has(result)) {
+    if (result[appliedServerResult]) {
       return result;
     }
 
@@ -2495,18 +2494,16 @@ const __serverModule = (() => {
     return result;
   }
 
-  function unwrapServerResult(result) {
-    if (isServerEnvelope(result) && Object.hasOwn(result, "value")) {
-      return result.value;
-    }
-    return result;
+  async function consumeServerResult(result, context = {}) {
+    await applyServerResult(result, context);
+    return unwrapServerResult(result);
   }
 
-  function markAppliedServerValue(value) {
-    if (value && typeof value === "object") {
-      appliedServerValues.add(value);
+  function unwrapServerResult(result) {
+    if (isServerEnvelope(result)) {
+      return Object.hasOwn(result, "value") ? result.value : undefined;
     }
-    return value;
+    return result;
   }
 
   function markAppliedServerResult(result) {
@@ -2550,9 +2547,7 @@ const __serverModule = (() => {
           throw new Error("Server namespace is not directly callable.");
         }
         const context = contextProvider() ?? {};
-        const result = await run(parts.join("."), args, context);
-        await applyServerResult(result, context);
-        return unwrapServerResult(result);
+        return run(parts.join("."), args, context);
       };
 
       const proxy = new Proxy(callable, {
@@ -2609,7 +2604,7 @@ const __serverModule = (() => {
 
   async function readServerResponse(id, response) {
     if (response.status === 204) {
-      return { value: undefined };
+      return undefined;
     }
     const type = response.headers.get("content-type") ?? "";
     if (type.includes("application/json")) {
@@ -2627,7 +2622,7 @@ const __serverModule = (() => {
     if (typeof response.text !== "function") {
       throw new Error(`Server function "${id}" transport returned an invalid response: missing text().`);
     }
-    return { value: await response.text() };
+    return response.text();
   }
 
   function snapshotSignalPaths(paths = [], signals) {
@@ -2772,7 +2767,8 @@ const __serverModule = (() => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return false;
     }
-    return Object.keys(value).some((key) => serverEnvelopeKeys.has(key));
+    return value[serverEnvelopeKind] === true
+      || value[serverEnvelopeWireKey] === serverEnvelopeWireVersion;
   }
 
   function toError(value) {
@@ -2794,11 +2790,11 @@ const __serverModule = (() => {
       throw new TypeError("Server function id must be a non-empty string.");
     }
   }
-  return { createServerProxy, resolveServerCommandArguments, applyServerResult, unwrapServerResult, defaultInput, createServerNamespace, createSignalReader, assertServerId };
+  return { createServerProxy, resolveServerCommandArguments, applyServerResult, consumeServerResult, unwrapServerResult, defaultInput, createServerNamespace, createSignalReader, assertServerId };
 })();
 
 const __handlersModule = (() => {
-  const { applyServerResult, defaultInput, resolveServerCommandArguments, unwrapServerResult } = __serverModule;
+  const { defaultInput, resolveServerCommandArguments } = __serverModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
   const { createLazyRegistry, isLazyDescriptor } = __lazyRegistryModule;
   const builtInTokens = new Set(["prevent", "preventDefault", "stopPropagation", "stopImmediatePropagation"]);
@@ -2896,8 +2892,7 @@ const __handlersModule = (() => {
               signalPaths: resolved.signalPaths,
               signalValues: resolved.signalValues
             });
-            await applyServerResult(result, runContext);
-            results.push(unwrapServerResult(result));
+            results.push(result);
             continue;
           }
 
@@ -5752,7 +5747,7 @@ const __requestContextModule = (() => {
 const __serverRegistryModule = (() => {
   const { readRequestContext } = __requestContextModule;
   const { attachRegistryInspection, createRegistryStore } = __registryStoreModule;
-  const { assertServerId, createServerNamespace, createSignalReader } = __serverModule;
+  const { assertServerId, consumeServerResult, createServerNamespace, createSignalReader } = __serverModule;
   function createServerRegistry(initialMap = {}, options = {}) {
     const registryStore = options.registry ?? createRegistryStore();
     const type = options.type ?? "server";
@@ -5818,7 +5813,7 @@ const __serverRegistryModule = (() => {
           server
         };
 
-        return fn.call(runContext, ...args);
+        return consumeServerResult(await fn.call(runContext, ...args), runContext);
       },
 
       _setContext(context = {}) {

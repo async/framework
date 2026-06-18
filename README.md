@@ -806,6 +806,7 @@ import {
 const server = createServerRegistry({
   "cart.add"(productId, quantity) {
     return {
+      __async_server_result__: 1,
       value: { ok: true },
       signals: {
         cartCount: 3

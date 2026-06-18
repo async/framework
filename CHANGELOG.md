@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.7 - 2026-06-18
+
+- Introduced an explicit `__async_server_result__: 1` marker for framework
+  server-result envelopes so ordinary domain objects with fields such as
+  `value`, `signals`, `cache`, `html`, `boundary`, `redirect`, or `error`
+  remain application values.
+- Centralized server-result effect application and unwrapping across local
+  registry, remote proxy, and handler command paths so `.run(...)` and
+  namespaced calls return equivalent values without double-applying effects.
+- Kept cache-only and other effect-only server envelopes representable through
+  the explicit marker and updated server-call, router, partial, and SSR
+  examples to use the protocol.
+- Bundle size from bundled TypeScript source: `browser.ts` 183,176 B raw /
+  34,360 B gzip -> `browser.min.js` 77,854 B raw / 23,100 B gzip
+  (-105,322 B raw, -11,260 B gzip).
+
 ## 0.11.6 - 2026-06-18
 
 - Owned async-signal runs with private execution tokens so canceled, restored,

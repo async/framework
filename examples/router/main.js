@@ -15,6 +15,7 @@ Async.use({
   server: {
     "routerDemo.cart.add"(productId) {
       return {
+        __async_server_result__: 1,
         value: { productId },
         signals: {
           "routerDemo.cartCount": 1

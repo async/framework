@@ -252,11 +252,11 @@ test("async signal delayed server calls use the originating run abort signal", a
         signal: init.signal
       });
       return new Response(
-        JSON.stringify({
+        JSON.stringify(serverEnvelope({
           value: {
             id: body.args[0]
           }
-        }),
+        })),
         {
           headers: {
             "content-type": "application/json"
@@ -301,7 +301,7 @@ test("async signal context exposes this.server from the loader runtime", async (
   });
   const server = createServerRegistry({
     "products.get"(id) {
-      return {
+      return serverEnvelope({
         value: {
           id,
           title: "Keyboard"
@@ -309,7 +309,7 @@ test("async signal context exposes this.server from the loader runtime", async (
         signals: {
           cartCount: 1
         }
-      };
+      });
     }
   });
 
@@ -346,7 +346,7 @@ test("async signal server proxy calls unwrap values and apply returned effects",
     endpoint: "/__async/server",
     signals,
     transport: async () => new Response(
-      JSON.stringify({
+      JSON.stringify(serverEnvelope({
         value: {
           id: "sku-1",
           title: "Keyboard"
@@ -354,7 +354,7 @@ test("async signal server proxy calls unwrap values and apply returned effects",
         signals: {
           cartCount: 2
         }
-      }),
+      })),
       {
         headers: {
           "content-type": "application/json"
@@ -390,11 +390,11 @@ test("async signal server proxy calls receive the active abort signal", async ()
       aborts.push(init.signal);
       await delay(aborts.length === 1 ? 30 : 0, init.signal);
       return new Response(
-        JSON.stringify({
+        JSON.stringify(serverEnvelope({
           value: {
             id: signals.get("productId")
           }
-        }),
+        })),
         {
           headers: {
             "content-type": "application/json"
@@ -429,12 +429,12 @@ test("async signal stores normalized server errors with stable messages", async 
   const server = createServerProxy({
     endpoint: "/__async/server",
     transport: async () => new Response(
-      JSON.stringify({
+      JSON.stringify(serverEnvelope({
         error: {
           message: "No product",
           code: "NOT_FOUND"
         }
-      }),
+      })),
       {
         headers: {
           "content-type": "application/json"
@@ -456,3 +456,10 @@ test("async signal stores normalized server errors with stable messages", async 
 
   loader.destroy();
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}

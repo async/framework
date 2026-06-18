@@ -1,6 +1,6 @@
 import { readRequestContext } from "./request-context.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
-import { assertServerId, createServerNamespace, createSignalReader } from "./server.js";
+import { assertServerId, consumeServerResult, createServerNamespace, createSignalReader } from "./server.js";
 
 export function createServerRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
@@ -67,7 +67,7 @@ export function createServerRegistry(initialMap = {}, options = {}) {
         server
       };
 
-      return fn.call(runContext, ...args);
+      return consumeServerResult(await fn.call(runContext, ...args), runContext);
     },
 
     _setContext(context = {}) {

@@ -357,11 +357,11 @@ test("server commands receive server cache while handlers receive browser cache"
     server: {
       "commandCache.save"(id) {
         this.cache.set(`commandCache:${id}`, "server");
-        return {
+        return serverEnvelope({
           signals: {
             "commandCache.status": this.cache.get(`commandCache:${id}`)
           }
-        };
+        });
       }
     }
   });
@@ -424,7 +424,7 @@ test("SSR render serializes signals and browser cache, never server cache", asyn
     partial: {
       "product.page"() {
         this.cache.set("secret:token", "do-not-ship");
-        return {
+        return serverEnvelope({
           html: `<h1>Keyboard</h1>`,
           signals: {
             productId: "sku-1"
@@ -434,7 +434,7 @@ test("SSR render serializes signals and browser cache, never server cache", asyn
               "product:sku-1": { title: "Keyboard" }
             }
           }
-        };
+        });
       }
     },
     route: {
@@ -498,7 +498,7 @@ test("browser runtime activates SSR HTML and snapshot without implicit fetch", a
     },
     partial: {
       "product.page"({ id }) {
-        return {
+        return serverEnvelope({
           html: html`
             <article>
               <a id="next" href="/products/sku-2">Next</a>
@@ -514,7 +514,7 @@ test("browser runtime activates SSR HTML and snapshot without implicit fetch", a
               [`product:${id}`]: { id, title: "Keyboard" }
             }
           }
-        };
+        });
       }
     },
     route: {
@@ -1506,3 +1506,10 @@ test("app runtime starts a CSR router from registered routes and partials", asyn
 
   runtime.destroy();
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}

@@ -224,12 +224,12 @@ test("Loader runs semicolon commands with server calls from DOM events", async (
   });
   const server = createServerRegistry({
     "products.save"(productId, form) {
-      return {
+      return serverEnvelope({
         value: { id: productId, ...form },
         signals: {
           savedTitle: form.title
         }
-      };
+      });
     }
   });
   const loader = Loader({ root: document.body, signals, server }).start();
@@ -244,6 +244,13 @@ test("Loader runs semicolon commands with server calls from DOM events", async (
 
   loader.destroy();
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}
 
 test("Loader treats on:attach as the attach pseudo-event and on:mount as an alias", async () => {
   const window = new Window();

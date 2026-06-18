@@ -9,6 +9,7 @@ Async.use({
   server: {
     "partialsDemo.products.get"(id) {
       return {
+        __async_server_result__: 1,
         value: {
           id,
           title: "Keyboard"

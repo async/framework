@@ -41,7 +41,7 @@ test("CSR router renders the current route partial into an empty boundary on sta
   const productRoute = route("product.page");
   const partials = createPartialRegistry({
     "product.page": function ({ id }) {
-      return {
+      return serverEnvelope({
         html: html`
           <article>
             <h1 id="product-title">${id}</h1>
@@ -58,7 +58,7 @@ test("CSR router renders the current route partial into an empty boundary on sta
             [`product:${id}`]: { id }
           }
         }
-      };
+      });
     }
   });
   const loader = Loader({ root: document.body, signals, handlers, cache }).start();
@@ -198,7 +198,7 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
       await new Promise((resolve) => {
         record.resolve = resolve;
       });
-      return {
+      return serverEnvelope({
         html: `<h1 id="route-title">${id}</h1>`,
         signals: {
           "routerTest.loaded": id
@@ -208,7 +208,7 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
             [`route:${id}`]: { id }
           }
         }
-      };
+      });
     }
   });
   const signals = createSignalRegistry({
@@ -789,4 +789,11 @@ async function collectUnhandledRejections(fn) {
   } finally {
     process.off("unhandledRejection", onUnhandled);
   }
+}
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
 }

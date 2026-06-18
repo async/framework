@@ -15,17 +15,38 @@ import {
 test("server registry runs functions with this.server for local fan-out", async () => {
   const server = createServerRegistry({
     "math.one"() {
-      return { value: 1 };
+      return serverEnvelope({ value: 1 });
     },
     async "math.two"() {
-      return {
+      return serverEnvelope({
         value: (await this.server.math.one()) + 1
-      };
+      });
     }
   });
 
-  assert.deepEqual(await server.run("math.two"), { value: 2 });
+  assert.equal(await server.run("math.two"), 2);
   assert.equal(await server.math.two(), 2);
+});
+
+test("server registry preserves unmarked domain objects with reserved fields", async () => {
+  const domain = {
+    value: 5,
+    unit: "kg",
+    signals: "domain",
+    cache: "domain",
+    error: "domain",
+    html: "<strong>domain</strong>",
+    boundary: "domain",
+    redirect: "/domain"
+  };
+  const server = createServerRegistry({
+    "products.weight"() {
+      return domain;
+    }
+  });
+
+  assert.deepEqual(await server.run("products.weight"), domain);
+  assert.deepEqual(await server.products.weight(), domain);
 });
 
 test("server request context store isolates overlapping async calls", async () => {
@@ -91,12 +112,12 @@ test("server proxy posts args, input, signals, and applies returned signal patch
       requestUrl = url;
       requestBody = JSON.parse(init.body);
       return new Response(
-        JSON.stringify({
+        JSON.stringify(serverEnvelope({
           value: { ok: true },
           signals: {
             cartCount: 4
           }
-        }),
+        })),
         {
           status: 200,
           headers: {
@@ -128,10 +149,10 @@ test("server proxy envelopes are applied once through namespace and handler call
   let swaps = 0;
   const server = createServerProxy({
     transport: async () => new Response(
-      JSON.stringify({
+      JSON.stringify(serverEnvelope({
         boundary: "cart",
         html: "<aside>Cart</aside>"
-      }),
+      })),
       {
         headers: {
           "content-type": "application/json"
@@ -165,7 +186,7 @@ test("server proxy does not apply unwrapped envelope-shaped values as effects", 
   const server = createServerProxy({
     signals,
     transport: async () => new Response(
-      JSON.stringify({
+      JSON.stringify(serverEnvelope({
         value: {
           ok: true,
           signals: {
@@ -175,7 +196,7 @@ test("server proxy does not apply unwrapped envelope-shaped values as effects", 
         signals: {
           status: "right"
         }
-      }),
+      })),
       {
         headers: {
           "content-type": "application/json"
@@ -199,18 +220,79 @@ test("server proxy does not apply unwrapped envelope-shaped values as effects", 
   assert.equal(signals.get("status"), "right");
 });
 
+test("server proxy preserves unmarked domain objects with reserved fields", async () => {
+  const domain = {
+    value: 5,
+    unit: "kg",
+    signals: "domain",
+    cache: "domain",
+    error: "domain",
+    html: "<strong>domain</strong>",
+    boundary: "domain",
+    redirect: "/domain"
+  };
+  const server = createServerProxy({
+    transport: async () => new Response(JSON.stringify(domain), {
+      headers: {
+        "content-type": "application/json"
+      }
+    })
+  });
+
+  assert.deepEqual(await server.run("products.weight"), domain);
+  assert.deepEqual(await server.products.weight(), domain);
+});
+
+test("applyServerResult applies cache-only explicit envelopes", async () => {
+  const cache = createCacheRegistry();
+
+  assert.equal(await applyServerResult(serverEnvelope({
+    cache: {
+      browser: {
+        "product:sku-1": { title: "Keyboard" }
+      }
+    }
+  }), { cache }).then(unwrapEnvelope), undefined);
+
+  assert.deepEqual(cache.get("product:sku-1"), { title: "Keyboard" });
+});
+
+test("server proxy applies cache-only explicit envelopes", async () => {
+  const cache = createCacheRegistry();
+  const server = createServerProxy({
+    cache,
+    transport: async () => new Response(
+      JSON.stringify(serverEnvelope({
+        cache: {
+          browser: {
+            "product:sku-1": { title: "Keyboard" }
+          }
+        }
+      })),
+      {
+        headers: {
+          "content-type": "application/json"
+        }
+      }
+    )
+  });
+
+  assert.equal(await server.products.prime(), undefined);
+  assert.deepEqual(cache.get("product:sku-1"), { title: "Keyboard" });
+});
+
 test("server error envelopes do not apply signal patches", async () => {
   const signals = createSignalRegistry({
     status: signal("idle")
   });
 
   await assert.rejects(
-    applyServerResult({
+    applyServerResult(serverEnvelope({
       error: { message: "server failed" },
       signals: {
         status: "mutated"
       }
-    }, { signals }),
+    }), { signals }),
     /server failed/
   );
 
@@ -221,14 +303,14 @@ test("server error envelopes do not restore browser cache", async () => {
   const cache = createCacheRegistry();
 
   await assert.rejects(
-    applyServerResult({
+    applyServerResult(serverEnvelope({
       error: { message: "cache failed" },
       cache: {
         browser: {
           "product:sku-1": { title: "Keyboard" }
         }
       }
-    }, { cache }),
+    }), { cache }),
     /cache failed/
   );
 
@@ -239,11 +321,11 @@ test("server error envelopes do not swap boundary HTML", async () => {
   let swaps = 0;
 
   await assert.rejects(
-    applyServerResult({
+    applyServerResult(serverEnvelope({
       error: { message: "boundary failed" },
       boundary: "product",
       html: "<h1>Mutated</h1>"
-    }, {
+    }), {
       loader: {
         swap() {
           swaps += 1;
@@ -260,10 +342,10 @@ test("server error envelopes do not redirect", async () => {
   let redirects = 0;
 
   await assert.rejects(
-    applyServerResult({
+    applyServerResult(serverEnvelope({
       error: { message: "redirect failed" },
       redirect: "/login"
-    }, {
+    }), {
       router: {
         navigate() {
           redirects += 1;
@@ -280,12 +362,12 @@ test("server error envelopes are consumed before throwing", async () => {
   const signals = createSignalRegistry({
     status: signal("idle")
   });
-  const result = {
+  const result = serverEnvelope({
     error: { message: "only once" },
     signals: {
       status: "mutated"
     }
-  };
+  });
 
   await assert.rejects(
     applyServerResult(result, { signals }),
@@ -302,7 +384,7 @@ test("server proxy forwards abort signals to transport", async () => {
   const server = createServerProxy({
     transport: async (_url, init) => {
       transportSignal = init.signal;
-      return new Response(JSON.stringify({ value: "ok" }), {
+      return new Response(JSON.stringify("ok"), {
         headers: {
           "content-type": "application/json"
         }
@@ -417,7 +499,7 @@ test("server proxy allows repeated non-circular references", async () => {
   const server = createServerProxy({
     transport: async (_url, init) => {
       requestBody = JSON.parse(init.body);
-      return new Response(JSON.stringify({ value: "ok" }), {
+      return new Response(JSON.stringify("ok"), {
         headers: {
           "content-type": "application/json"
         }
@@ -490,7 +572,7 @@ test("server proxy preserves current JSON undefined handling", async () => {
   const server = createServerProxy({
     transport: async (_url, init) => {
       requestBody = JSON.parse(init.body);
-      return new Response(JSON.stringify({ value: "ok" }), {
+      return new Response(JSON.stringify("ok"), {
         headers: {
           "content-type": "application/json"
         }
@@ -507,3 +589,14 @@ test("server proxy preserves current JSON undefined handling", async () => {
   assert.deepEqual(requestBody.args, [null]);
   assert.deepEqual(requestBody.input, { kept: true });
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}
+
+function unwrapEnvelope(result) {
+  return Object.hasOwn(result, "value") ? result.value : undefined;
+}

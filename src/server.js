@@ -1,6 +1,7 @@
-const serverEnvelopeKeys = new Set(["value", "signals", "boundary", "html", "redirect", "error"]);
+const serverEnvelopeKind = Symbol.for("@async/framework.serverResult");
+const serverEnvelopeWireKey = "__async_server_result__";
+const serverEnvelopeWireVersion = 1;
 const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
-const appliedServerValues = new WeakSet();
 
 export function createServerProxy({
   endpoint = "/__async/server",
@@ -43,9 +44,7 @@ export function createServerProxy({
       throw new Error(`Server function "${id}" failed with ${response.status}.`);
     }
 
-    const result = await readServerResponse(id, response);
-    await applyServerResult(result, runContext);
-    return markAppliedServerValue(unwrapServerResult(result));
+    return consumeServerResult(await readServerResponse(id, response), runContext);
   }
 
   return createServerNamespace(run, {
@@ -80,7 +79,7 @@ export async function applyServerResult(result, context = {}) {
   if (!isServerEnvelope(result)) {
     return result;
   }
-  if (result[appliedServerResult] || appliedServerValues.has(result)) {
+  if (result[appliedServerResult]) {
     return result;
   }
 
@@ -112,18 +111,16 @@ export async function applyServerResult(result, context = {}) {
   return result;
 }
 
-export function unwrapServerResult(result) {
-  if (isServerEnvelope(result) && Object.hasOwn(result, "value")) {
-    return result.value;
-  }
-  return result;
+export async function consumeServerResult(result, context = {}) {
+  await applyServerResult(result, context);
+  return unwrapServerResult(result);
 }
 
-function markAppliedServerValue(value) {
-  if (value && typeof value === "object") {
-    appliedServerValues.add(value);
+export function unwrapServerResult(result) {
+  if (isServerEnvelope(result)) {
+    return Object.hasOwn(result, "value") ? result.value : undefined;
   }
-  return value;
+  return result;
 }
 
 function markAppliedServerResult(result) {
@@ -167,9 +164,7 @@ export function createServerNamespace(run, root = {}, contextProvider = () => ({
         throw new Error("Server namespace is not directly callable.");
       }
       const context = contextProvider() ?? {};
-      const result = await run(parts.join("."), args, context);
-      await applyServerResult(result, context);
-      return unwrapServerResult(result);
+      return run(parts.join("."), args, context);
     };
 
     const proxy = new Proxy(callable, {
@@ -226,7 +221,7 @@ function assertTransportResponse(id, response) {
 
 async function readServerResponse(id, response) {
   if (response.status === 204) {
-    return { value: undefined };
+    return undefined;
   }
   const type = response.headers.get("content-type") ?? "";
   if (type.includes("application/json")) {
@@ -244,7 +239,7 @@ async function readServerResponse(id, response) {
   if (typeof response.text !== "function") {
     throw new Error(`Server function "${id}" transport returned an invalid response: missing text().`);
   }
-  return { value: await response.text() };
+  return response.text();
 }
 
 function snapshotSignalPaths(paths = [], signals) {
@@ -389,7 +384,8 @@ function isServerEnvelope(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
-  return Object.keys(value).some((key) => serverEnvelopeKeys.has(key));
+  return value[serverEnvelopeKind] === true
+    || value[serverEnvelopeWireKey] === serverEnvelopeWireVersion;
 }
 
 function toError(value) {

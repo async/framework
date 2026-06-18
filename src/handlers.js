@@ -1,8 +1,6 @@
 import {
-  applyServerResult,
   defaultInput,
-  resolveServerCommandArguments,
-  unwrapServerResult
+  resolveServerCommandArguments
 } from "./server.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
@@ -102,8 +100,7 @@ export function createHandlerRegistry(initialMap = {}, options = {}) {
             signalPaths: resolved.signalPaths,
             signalValues: resolved.signalValues
           });
-          await applyServerResult(result, runContext);
-          results.push(unwrapServerResult(result));
+          results.push(result);
           continue;
         }
 

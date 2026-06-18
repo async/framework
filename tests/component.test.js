@@ -15,7 +15,7 @@ test("component helpers create scoped signals, handlers, effects, children, and 
   let cleaned = 0;
   const server = createServerRegistry({
     "toggle.next"(value) {
-      return { value: !value };
+      return serverEnvelope({ value: !value });
     }
   });
 
@@ -78,6 +78,13 @@ test("component helpers create scoped signals, handlers, effects, children, and 
   loader.destroy();
   assert.equal(cleaned, 1);
 });
+
+function serverEnvelope(fields = {}) {
+  return {
+    __async_server_result__: 1,
+    ...fields
+  };
+}
 
 test("component this.on supports rootless fragment lifecycle fallback", async () => {
   const window = new Window();

@@ -10,6 +10,7 @@ Async.use({
   server: {
     "serverCall.products.save"(productId, form) {
       return {
+        __async_server_result__: 1,
         value: { id: productId, ...form },
         signals: {
           "serverCall.savedTitle": form.title
