@@ -4,17 +4,65 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import vm from "node:vm";
 import * as bundle from "../browser.js";
 import * as minBundle from "../browser.min.js";
 import * as source from "../src/browser.js";
+import * as serverSource from "../src/index.js";
 import manifest from "../package.json" with { type: "json" };
 
 const execFileAsync = promisify(execFile);
 const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+
+function resolvePackageTarget(target, conditions) {
+  if (typeof target === "string") {
+    return target;
+  }
+  for (const [condition, value] of Object.entries(target)) {
+    if (conditions.includes(condition) || condition === "default") {
+      return resolvePackageTarget(value, conditions);
+    }
+  }
+  throw new Error(`No package export target matched conditions: ${conditions.join(", ")}`);
+}
+
+function valueDeclarationExports(sourceText) {
+  return [...sourceText.matchAll(/^export declare (?:async )?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/gm)]
+    .map((match) => match[1])
+    .sort();
+}
+
+function assertDeclarationRuntimeParity(label, declarationText, runtimeModule) {
+  assert.deepEqual(
+    Object.keys(runtimeModule).sort(),
+    valueDeclarationExports(declarationText),
+    `${label} declaration value exports must match runtime exports`
+  );
+}
+
+async function assertPackedExportParity(packageRoot, exportKey, runtimeConditions, typeConditions) {
+  const packageManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  const exportTarget = packageManifest.exports[exportKey];
+  const runtimeTarget = resolvePackageTarget(exportTarget, runtimeConditions);
+  const declarationTarget = resolvePackageTarget(exportTarget, typeConditions);
+  const runtimeModule = await import(pathToFileURL(join(packageRoot, runtimeTarget)).href);
+  const declarationText = readFileSync(join(packageRoot, declarationTarget), "utf8");
+
+  assertDeclarationRuntimeParity(
+    `${exportKey} (${runtimeConditions.join("+")})`,
+    declarationText,
+    runtimeModule
+  );
+
+  return {
+    declarationTarget,
+    runtimeTarget,
+    valueExports: valueDeclarationExports(declarationText)
+  };
+}
 
 test("browser ESM bundles export the public browser runtime API", () => {
   assert.deepEqual(Object.keys(bundle).sort(), Object.keys(source).sort());
@@ -272,6 +320,69 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       serverRegistry: "undefined",
       requestContextStore: "undefined"
     });
+
+    const packageRoot = join(project, "node_modules", "@async", "framework");
+    const rootNode = await assertPackedExportParity(
+      packageRoot,
+      ".",
+      ["node", "import", "default"],
+      ["node", "types", "import", "default"]
+    );
+    const rootBrowser = await assertPackedExportParity(
+      packageRoot,
+      ".",
+      ["browser", "import", "default"],
+      ["browser", "types", "import", "default"]
+    );
+    const explicitServer = await assertPackedExportParity(
+      packageRoot,
+      "./server",
+      ["node", "import", "default"],
+      ["node", "types", "import", "default"]
+    );
+    const explicitBrowser = await assertPackedExportParity(
+      packageRoot,
+      "./browser",
+      ["browser", "import", "default"],
+      ["types", "browser", "import", "default"]
+    );
+
+    assert.deepEqual(
+      {
+        rootNode: [rootNode.declarationTarget, rootNode.runtimeTarget],
+        rootBrowser: [rootBrowser.declarationTarget, rootBrowser.runtimeTarget],
+        explicitServer: [explicitServer.declarationTarget, explicitServer.runtimeTarget],
+        explicitBrowser: [explicitBrowser.declarationTarget, explicitBrowser.runtimeTarget]
+      },
+      {
+        rootNode: ["./framework.d.ts", "./server.js"],
+        rootBrowser: ["./browser.d.ts", "./browser.min.js"],
+        explicitServer: ["./framework.d.ts", "./server.js"],
+        explicitBrowser: ["./browser.d.ts", "./browser.js"]
+      }
+    );
+
+    await writeFile(join(project, "check-root-static.mjs"), `
+      import { ${rootNode.valueExports.join(", ")} } from "@async/framework";
+      console.log("ok");
+    `, "utf8");
+    await writeFile(join(project, "check-root-browser-static.mjs"), `
+      import { ${rootBrowser.valueExports.join(", ")} } from "@async/framework";
+      console.log("ok");
+    `, "utf8");
+    await writeFile(join(project, "check-server-static.mjs"), `
+      import { ${explicitServer.valueExports.join(", ")} } from "@async/framework/server";
+      console.log("ok");
+    `, "utf8");
+    await writeFile(join(project, "check-browser-static.mjs"), `
+      import { ${explicitBrowser.valueExports.join(", ")} } from "@async/framework/browser";
+      console.log("ok");
+    `, "utf8");
+
+    await execFileAsync(process.execPath, ["check-root-static.mjs"], { cwd: project });
+    await execFileAsync(process.execPath, ["--conditions=browser", "check-root-browser-static.mjs"], { cwd: project });
+    await execFileAsync(process.execPath, ["check-server-static.mjs"], { cwd: project });
+    await execFileAsync(process.execPath, ["check-browser-static.mjs"], { cwd: project });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -282,8 +393,22 @@ test("package metadata keeps legacy size analyzers on the browser entry", () => 
   assert.equal(manifest.module, "./browser.min.js");
   assert.equal(manifest.browser, "./browser.min.js");
   assert.equal(manifest.types, "./framework.d.ts");
-  assert.equal(manifest.exports["."].browser, "./browser.min.js");
-  assert.equal(manifest.exports["."].import, "./server.js");
+  assert.deepEqual(manifest.exports["."].browser, {
+    types: "./browser.d.ts",
+    default: "./browser.min.js"
+  });
+  assert.deepEqual(manifest.exports["."].node, {
+    types: "./framework.d.ts",
+    default: "./server.js"
+  });
+  assert.deepEqual(manifest.exports["."].import, {
+    types: "./framework.d.ts",
+    default: "./server.js"
+  });
+  assert.equal(resolvePackageTarget(manifest.exports["."], ["browser", "import", "default"]), "./browser.min.js");
+  assert.equal(resolvePackageTarget(manifest.exports["."], ["browser", "types", "import", "default"]), "./browser.d.ts");
+  assert.equal(resolvePackageTarget(manifest.exports["."], ["node", "import", "default"]), "./server.js");
+  assert.equal(resolvePackageTarget(manifest.exports["."], ["node", "types", "import", "default"]), "./framework.d.ts");
   assert.equal(manifest.exports["./browser"].import, "./browser.js");
   assert.equal(manifest.exports["./server"].import, "./server.js");
   assert.equal(manifest.sideEffects, false);
@@ -320,9 +445,8 @@ test("browser and server declarations expose the right public APIs", () => {
   const browserDeclarations = readFileSync(new URL("../browser.d.ts", import.meta.url), "utf8");
   const serverDeclarations = readFileSync(new URL("../framework.d.ts", import.meta.url), "utf8");
 
-  for (const key of Object.keys(source)) {
-    assert.match(browserDeclarations, new RegExp(`\\b${key}\\b`));
-  }
+  assertDeclarationRuntimeParity("browser", browserDeclarations, source);
+  assertDeclarationRuntimeParity("server", serverDeclarations, serverSource);
   assert.doesNotMatch(browserDeclarations, /createServerRegistry/);
   assert.doesNotMatch(browserDeclarations, /createRequestContextStore/);
   assert.match(serverDeclarations, /createServerRegistry/);

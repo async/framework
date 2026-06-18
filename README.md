@@ -306,6 +306,9 @@ patches, and browser-cache patches. Async does not ship a component resume graph
 For npm consumers, `@async/framework` uses conditional exports: browser-aware
 tooling receives the browser entry, while Node receives the server-capable
 entry. Use explicit subpaths when the target matters.
+The root export also uses condition-specific declarations, so browser-conditioned
+root imports expose the same API as `@async/framework/browser`; server-only APIs
+remain declared on the Node/server entrypoints.
 
 ```js
 import {

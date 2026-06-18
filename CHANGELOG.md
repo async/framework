@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.14 - 2026-06-18
+
+- Added condition-specific root declaration targets so browser-conditioned root
+  imports resolve to browser declarations while Node/default root imports keep
+  server-capable declarations.
+- Preserved the root browser runtime condition and documented that server-only
+  APIs remain on the Node/server entrypoints.
+- Added packed-artifact export-map, declaration/runtime parity, and static
+  import checks for root browser, root Node, explicit `/browser`, and explicit
+  `/server` entrypoints.
+- Bundle size from bundled TypeScript source: `browser.ts` 187,564 B raw /
+  35,332 B gzip -> `browser.min.js` 80,009 B raw / 23,677 B gzip
+  (-107,555 B raw, -11,655 B gzip).
+
 ## 0.11.13 - 2026-06-18
 
 - Validated server proxy arguments, default input payloads, and selected signal

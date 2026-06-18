@@ -1,6 +1,6 @@
 {
   "name": "@async/framework",
-  "version": "0.11.13",
+  "version": "0.11.14",
   "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "main": "./server.js",
@@ -37,10 +37,19 @@
   "jsdelivr": "./browser.umd.min.js",
   "exports": {
     ".": {
+      "browser": {
+        "types": "./browser.d.ts",
+        "default": "./browser.min.js"
+      },
+      "node": {
+        "types": "./framework.d.ts",
+        "default": "./server.js"
+      },
+      "import": {
+        "types": "./framework.d.ts",
+        "default": "./server.js"
+      },
       "types": "./framework.d.ts",
-      "browser": "./browser.min.js",
-      "node": "./server.js",
-      "import": "./server.js",
       "default": "./server.js"
     },
     "./browser": {
