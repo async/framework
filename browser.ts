@@ -1409,6 +1409,24 @@ const __signalsModule = (() => {
         return requireEntry(entries, id);
       },
 
+      _setPath(path, value) {
+        const parsed = parseRootPath(path);
+        if (!entries.has(parsed.id)) {
+          if (asyncDescriptors.has(parsed.id)) {
+            materializeAsyncSignal(parsed.id);
+          } else {
+            registry.register(parsed.id, createSignal(parsed.parts.length === 0 ? value : {}));
+          }
+        }
+        const entry = requireEntry(entries, parsed.id);
+        if (parsed.parts.length === 0) {
+          return entry.set(value);
+        }
+        const nextValue = setPath(entry.value, parsed.parts, value);
+        entry.set(nextValue);
+        return value;
+      },
+
       _setContext(context = {}) {
         Object.assign(runtimeContext, context);
         return registry;
@@ -1462,6 +1480,14 @@ const __signalsModule = (() => {
         }
       }
       const [id, ...parts] = segments;
+      return { id, parts, path };
+    }
+
+    function parseRootPath(path) {
+      if (typeof path !== "string" || path.length === 0) {
+        throw new TypeError("Signal path must be a non-empty string.");
+      }
+      const [id, ...parts] = path.split(".");
       return { id, parts, path };
     }
 
@@ -5005,7 +5031,7 @@ const __appModule = (() => {
 
         if (result.signals) {
           for (const [path, value] of Object.entries(result.signals)) {
-            setOrRegisterSignal(signals, path, value);
+            applySignalPatch(signals, path, value);
           }
         }
         if (result.cache?.browser) {
@@ -5283,8 +5309,9 @@ const __appModule = (() => {
 
   function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {
     const normalized = normalizeSnapshot(snapshot);
-    for (const [path, value] of Object.entries(normalized.signal)) {
-      setOrRegisterSignal(runtime.signals, path, value);
+    mergeRegistryEntries(runtime, "asyncSignal", normalized.asyncSignal, null, options);
+    for (const [id, value] of Object.entries(normalized.signal)) {
+      restoreSignalEntry(runtime.signals, id, value);
     }
     runtime.browser.cache.restore(normalized.cache.browser);
     mergeRegistryEntries(runtime, "handler", normalized.handler, runtime.handlers, options);
@@ -5292,7 +5319,6 @@ const __appModule = (() => {
     mergeRegistryEntries(runtime, "partial", normalized.partial, runtime.partials, options);
     mergeRegistryEntries(runtime, "route", normalized.route, runtime.routes, options);
     mergeRegistryEntries(runtime, "component", normalized.component, runtime.components, options);
-    mergeRegistryEntries(runtime, "asyncSignal", normalized.asyncSignal, null, options);
     return runtime;
   }
 
@@ -5398,16 +5424,26 @@ const __appModule = (() => {
     }
   }
 
-  function setOrRegisterSignal(signals, path, value) {
+  function restoreSignalEntry(signals, id, value) {
+    if (signals.has?.(id)) {
+      const entry = signals._entry?.(id);
+      if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
+        entry._restore(value);
+        return;
+      }
+      signals.set(id, value);
+      return;
+    }
+    signals.register(id, createSignal(value));
+  }
+
+  function applySignalPatch(signals, path, value) {
+    if (typeof signals._setPath === "function") {
+      signals._setPath(path, value);
+      return;
+    }
     const id = String(path).split(".")[0];
     if (signals.has?.(id)) {
-      if (path === id) {
-        const entry = signals._entry?.(id);
-        if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
-          entry._restore(value);
-          return;
-        }
-      }
       signals.set(path, value);
       return;
     }

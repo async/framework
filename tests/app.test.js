@@ -654,6 +654,172 @@ test("browser runtime restores SSR signal and browser cache snapshots", () => {
   runtime.destroy();
 });
 
+test("browser runtime restores dotted plain and component-scoped signal snapshot IDs exactly", async () => {
+  const window = new Window();
+  const { document } = window;
+  const scopedId = "component.ProductCard.1.signal.1";
+  document.body.innerHTML = `
+    <output id="product" signal:text="product.load"></output>
+    <output id="scoped" signal:text="${scopedId}"></output>
+  `;
+  const app = defineApp({
+    signal: {
+      "product.load": createSignal("idle"),
+      [scopedId]: createSignal("pending")
+    }
+  });
+
+  const runtime = createApp(app, {
+    root: document.body,
+    snapshot: {
+      signals: {
+        "product.load": "restored",
+        [scopedId]: "scoped-restored"
+      }
+    },
+    router: false
+  }).start();
+  await delay(0);
+
+  assert.equal(runtime.signals.get("product.load"), "restored");
+  assert.equal(runtime.signals.get(scopedId), "scoped-restored");
+  assert.equal(runtime.signals.has("product"), false);
+  assert.equal(runtime.signals.has("component"), false);
+  assert.equal(document.querySelector("#product").textContent, "restored");
+  assert.equal(document.querySelector("#scoped").textContent, "scoped-restored");
+  runtime.destroy();
+});
+
+test("SSR round-trip restores dotted plain signal snapshot IDs exactly", async () => {
+  const app = defineApp({
+    signal: {
+      "product.load": createSignal("server-ready")
+    },
+    partial: {
+      "product.page"() {
+        return html`<output id="product" signal:text="product.load"></output>`;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const serverRuntime = createApp(app, { target: "server" });
+  const response = await serverRuntime.render("/products/sku-1");
+  serverRuntime.destroy();
+
+  assert.equal(response.signals["product.load"], "server-ready");
+
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = response.html;
+
+  const runtime = createApp(app, {
+    root: document.body,
+    router: false
+  }).start();
+  await delay(0);
+
+  assert.equal(runtime.signals.get("product.load"), "server-ready");
+  assert.equal(runtime.signals.has("product"), false);
+  assert.equal(document.querySelector("#product").textContent, "server-ready");
+  runtime.destroy();
+});
+
+test("browser runtime restores dotted async signal snapshot after adopting descriptor", async () => {
+  let loads = 0;
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <output id="title" signal:text="product.load.$value.title"></output>
+    <output id="status" signal:text="product.load.$status"></output>
+  `;
+  const app = defineApp();
+
+  const runtime = createApp(app, {
+    root: document.body,
+    snapshot: {
+      signals: {
+        "product.load": {
+          value: { title: "SSR Keyboard" },
+          loading: false,
+          error: null,
+          status: "ready",
+          version: 7
+        }
+      },
+      asyncSignal: {
+        "product.load": async () => {
+          loads += 1;
+          return { title: "Client Keyboard" };
+        }
+      }
+    },
+    router: false
+  }).start();
+  await delay(0);
+
+  assert.equal(loads, 0);
+  assert.deepEqual(runtime.signals.get("product.load.$value"), { title: "SSR Keyboard" });
+  assert.equal(runtime.signals.get("product.load.$status"), "ready");
+  assert.equal(runtime.signals.get("product.load.$version"), 7);
+  assert.equal(runtime.signals.has("product"), false);
+  assert.equal(document.querySelector("#title").textContent, "SSR Keyboard");
+  assert.equal(document.querySelector("#status").textContent, "ready");
+  runtime.destroy();
+});
+
+test("SSR round-trip restores dotted async signal snapshots without immediate refresh", async () => {
+  let loads = 0;
+  const app = defineApp({
+    asyncSignal: {
+      "product.load": async function () {
+        loads += 1;
+        return { title: `Keyboard ${loads}` };
+      }
+    },
+    partial: {
+      async "product.page"() {
+        const product = this.signals.ref("product.load");
+        await product.refresh();
+        return html`
+          <output id="title" signal:text="product.load.$value.title"></output>
+          <output id="status" signal:text="product.load.$status"></output>
+        `;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const serverRuntime = createApp(app, { target: "server" });
+  const response = await serverRuntime.render("/products/sku-1");
+  serverRuntime.destroy();
+
+  assert.equal(loads, 1);
+  assert.equal(response.signals["product.load"].status, "ready");
+  assert.deepEqual(response.signals["product.load"].value, { title: "Keyboard 1" });
+
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = response.html;
+
+  const runtime = createApp(app, {
+    root: document.body,
+    router: false
+  }).start();
+  await delay(0);
+
+  assert.equal(loads, 1);
+  assert.deepEqual(runtime.signals.get("product.load.$value"), { title: "Keyboard 1" });
+  assert.equal(runtime.signals.get("product.load.$status"), "ready");
+  assert.equal(runtime.signals.get("product.load.$version"), 1);
+  assert.equal(runtime.signals.has("product"), false);
+  assert.equal(document.querySelector("#title").textContent, "Keyboard 1");
+  assert.equal(document.querySelector("#status").textContent, "ready");
+  runtime.destroy();
+});
+
 test("browser runtime can read and apply SSR snapshot scripts automatically", () => {
   const window = new Window();
   const { document } = window;

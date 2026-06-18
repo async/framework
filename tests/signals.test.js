@@ -47,6 +47,18 @@ test("ensure creates a signal once and subscribe observes nested changes", () =>
   assert.equal(signals.ensure("settings", { enabled: "ignored" }).value.enabled, true);
 });
 
+test("signal registry internal patches keep first-segment path semantics", () => {
+  const signals = createSignalRegistry({
+    product: signal({ title: "Keyboard" }),
+    "product.title": signal("Exact Title")
+  });
+
+  signals._setPath("product.title", "Mouse");
+
+  assert.deepEqual(signals.get("product"), { title: "Mouse" });
+  assert.equal(signals.get("product.title"), "Exact Title");
+});
+
 test("computed signals update from tracked registry reads", () => {
   const signals = createSignalRegistry({
     count: signal(2),

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.4 - 2026-06-18
+
+- Restored snapshot signal keys as exact IDs so dotted plain, async, and
+  component-scoped signal IDs such as `product.load` survive SSR activation
+  without becoming nested properties under their first segment.
+- Adopted async-signal descriptors before restoring matching snapshot state so
+  dotted async signals preserve `$value`, `$status`, and `$version` without an
+  immediate client refresh.
+- Kept server-result signal patches on nested first-segment path semantics for
+  updates such as `product.title`.
+- Bundle size from bundled TypeScript source: `browser.ts` 180,585 B raw /
+  33,742 B gzip -> `browser.min.js` 76,946 B raw / 22,793 B gzip
+  (-103,639 B raw, -10,949 B gzip).
+
 ## 0.11.3 - 2026-06-18
 
 - Isolated runtime-owned signal, async-signal, scheduler, request, and cache

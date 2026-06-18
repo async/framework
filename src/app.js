@@ -282,7 +282,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
       if (result.signals) {
         for (const [path, value] of Object.entries(result.signals)) {
-          setOrRegisterSignal(signals, path, value);
+          applySignalPatch(signals, path, value);
         }
       }
       if (result.cache?.browser) {
@@ -560,8 +560,9 @@ function ensureRuntime(app) {
 
 function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {
   const normalized = normalizeSnapshot(snapshot);
-  for (const [path, value] of Object.entries(normalized.signal)) {
-    setOrRegisterSignal(runtime.signals, path, value);
+  mergeRegistryEntries(runtime, "asyncSignal", normalized.asyncSignal, null, options);
+  for (const [id, value] of Object.entries(normalized.signal)) {
+    restoreSignalEntry(runtime.signals, id, value);
   }
   runtime.browser.cache.restore(normalized.cache.browser);
   mergeRegistryEntries(runtime, "handler", normalized.handler, runtime.handlers, options);
@@ -569,7 +570,6 @@ function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {
   mergeRegistryEntries(runtime, "partial", normalized.partial, runtime.partials, options);
   mergeRegistryEntries(runtime, "route", normalized.route, runtime.routes, options);
   mergeRegistryEntries(runtime, "component", normalized.component, runtime.components, options);
-  mergeRegistryEntries(runtime, "asyncSignal", normalized.asyncSignal, null, options);
   return runtime;
 }
 
@@ -675,16 +675,26 @@ function sameSnapshotValue(left, right) {
   }
 }
 
-function setOrRegisterSignal(signals, path, value) {
+function restoreSignalEntry(signals, id, value) {
+  if (signals.has?.(id)) {
+    const entry = signals._entry?.(id);
+    if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
+      entry._restore(value);
+      return;
+    }
+    signals.set(id, value);
+    return;
+  }
+  signals.register(id, createSignal(value));
+}
+
+function applySignalPatch(signals, path, value) {
+  if (typeof signals._setPath === "function") {
+    signals._setPath(path, value);
+    return;
+  }
   const id = String(path).split(".")[0];
   if (signals.has?.(id)) {
-    if (path === id) {
-      const entry = signals._entry?.(id);
-      if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
-        entry._restore(value);
-        return;
-      }
-    }
     signals.set(path, value);
     return;
   }
