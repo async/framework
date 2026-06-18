@@ -117,6 +117,7 @@
     "pipeline:github:generate": "async-pipeline github generate",
     "pipeline:pages": "async-pipeline run-task docs.site",
     "pipeline:publish": "async-pipeline run publish",
+    "pipeline:publish:github:release": "async-pipeline publish github release --package . --registry https://npm.pkg.github.com",
     "pipeline:publish:npm": "async-pipeline publish npm --package .",
     "pipeline:release-doctor": "async-pipeline run release-doctor",
     "pipeline:release:doctor": "async-pipeline release doctor --package .",

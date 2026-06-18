@@ -34,6 +34,7 @@ export default definePipeline({
         "github:check": "github check",
         "github:generate": "github generate",
         "pages": "run-task docs.site",
+        "publish:github:release": "publish github release --package . --registry https://npm.pkg.github.com",
         "publish:npm": "publish npm --package .",
         "release:doctor": "release doctor --package .",
         "release:ensure": "release ensure --package .",
@@ -112,9 +113,17 @@ export default definePipeline({
       run: sh`pnpm async-pipeline release ensure --package ${packagePath}`
     }),
 
-    publish: task({
-      description: "Publish the verified release to npm after release ensure, then run release doctor.",
+    "publish-github": task({
+      description: "Publish the stable GitHub Packages mirror before npm publishing.",
       dependsOn: ["release-ensure"],
+      inputs: ["source"],
+      cache: false,
+      run: sh`pnpm async-pipeline publish github release --package ${packagePath} --registry https://npm.pkg.github.com`
+    }),
+
+    publish: task({
+      description: "Publish the verified release to npm after the GitHub Packages mirror, then run release doctor.",
+      dependsOn: ["publish-github"],
       inputs: ["source"],
       cache: false,
       run: [
@@ -154,7 +163,8 @@ export default definePipeline({
       },
       github: {
         permissions: {
-          contents: "write"
+          contents: "write",
+          packages: "write"
         }
       }
     }),
