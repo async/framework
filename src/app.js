@@ -590,6 +590,9 @@ function mergeRegistryEntries(runtime, type, entries, concreteRegistry, options 
     return;
   }
   for (const [id, value] of Object.entries(entries)) {
+    if (type === "asyncSignal" && runtime.signals?.has?.(id) && !runtime.registry.has(type, id)) {
+      throw new Error(`Signal "${id}" is already registered.`);
+    }
     registerSnapshotEntry(runtime.registry, type, id, value, options);
   }
   concreteRegistry?._adoptMany?.(entries);

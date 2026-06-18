@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.5 - 2026-06-18
+
+- Treated materialized signals and lazy async-signal descriptors as one
+  logical namespace so duplicate IDs are rejected consistently.
+- Fixed lazy async-signal `unregister(...)` before and after materialization so
+  removed descriptors cannot rematerialize.
+- Preserved reusable app async-signal declarations when materialized runtime
+  async state is destroyed.
+- Bundle size from bundled TypeScript source: `browser.ts` 181,266 B raw /
+  33,853 B gzip -> `browser.min.js` 77,285 B raw / 22,868 B gzip
+  (-103,981 B raw, -10,985 B gzip).
+
 ## 0.11.4 - 2026-06-18
 
 - Restored snapshot signal keys as exact IDs so dotted plain, async, and

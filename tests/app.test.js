@@ -1342,6 +1342,104 @@ test("lazy async signal descriptors materialize on ref access", async () => {
   runtime.destroy();
 });
 
+test("lazy async signal descriptors can unregister before materialization", () => {
+  const runtime = createApp(defineApp(), {
+    target: "server",
+    snapshot: {
+      asyncSignal: {
+        "product.load": async () => ({ title: "Keyboard" })
+      }
+    }
+  });
+
+  assert.equal(runtime.signals.unregister("product.load"), true);
+  assert.equal(runtime.signals.has("product.load"), false);
+  const missing = runtime.signals.ref("product.load");
+  assert.equal(runtime.signals.has("product.load"), false);
+  assert.throws(() => missing.value, /Signal "product" is not registered/);
+  runtime.destroy();
+});
+
+test("lazy async signal descriptors unregister after materialization and cannot rematerialize", async () => {
+  const runtime = createApp(defineApp(), {
+    target: "server",
+    snapshot: {
+      signals: {
+        "product.load": {
+          value: { title: "SSR Keyboard" },
+          loading: false,
+          error: null,
+          status: "ready",
+          version: 1
+        }
+      },
+      asyncSignal: {
+        "product.load": async () => ({ title: "Client Keyboard" })
+      }
+    }
+  });
+
+  assert.equal(runtime.signals.ref("product.load").status, "ready");
+  assert.equal(runtime.signals.unregister("product.load"), true);
+  assert.equal(runtime.signals.has("product.load"), false);
+  const missing = runtime.signals.ref("product.load");
+  assert.equal(runtime.signals.has("product.load"), false);
+  assert.throws(() => missing.value, /Signal "product" is not registered/);
+  runtime.destroy();
+});
+
+test("plain signals and lazy async descriptors cannot use the same id", () => {
+  const descriptorFirst = createApp(defineApp(), {
+    target: "server",
+    snapshot: {
+      asyncSignal: {
+        product: async () => ({ title: "Keyboard" })
+      }
+    }
+  });
+
+  assert.throws(
+    () => descriptorFirst.signals.register("product", createSignal("manual")),
+    /Signal "product" is already registered/
+  );
+  descriptorFirst.destroy();
+
+  const signalFirst = createApp(defineApp({
+    signal: {
+      product: createSignal("manual")
+    }
+  }), { target: "server" });
+
+  assert.throws(
+    () => signalFirst.applySnapshot({
+      asyncSignal: {
+        product: async () => ({ title: "Keyboard" })
+      }
+    }),
+    /Signal "product" is already registered/
+  );
+  signalFirst.destroy();
+});
+
+test("destroying materialized async descriptors preserves app declarations", () => {
+  const app = defineApp({
+    asyncSignal: {
+      product: async () => ({ title: "Keyboard" })
+    }
+  });
+  const runtime = createApp(app, { target: "server" });
+
+  assert.equal(runtime.signals.has("product"), true);
+  runtime.signals.ref("product");
+  runtime.destroy();
+
+  assert.equal(Object.hasOwn(app.snapshot().asyncSignal, "product"), true);
+
+  const next = createApp(app, { target: "server" });
+  assert.equal(next.signals.has("product"), true);
+  next.destroy();
+});
+
 test("conflicting streamed descriptors fail in strict mode", () => {
   const runtime = createApp(defineApp(), { router: false }).start();
   runtime.applySnapshot({

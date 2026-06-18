@@ -1221,10 +1221,16 @@ const __signalsModule = (() => {
     let subscriptionCounter = 0;
     let effectCounter = 0;
 
+    for (const id of entries.keys()) {
+      if (asyncDescriptors.has(id)) {
+        throw new Error(`Signal "${id}" is already registered.`);
+      }
+    }
+
     const registry = attachRegistryInspection({
       register(id, signalLike) {
         assertId(id);
-        if (entries.has(id)) {
+        if (entries.has(id) || asyncDescriptors.has(id)) {
           throw new Error(`Signal "${id}" is already registered.`);
         }
         const entry = normalizeSignal(signalLike);
@@ -1242,14 +1248,19 @@ const __signalsModule = (() => {
 
       unregister(id) {
         assertId(id);
-        if (!entries.has(id)) {
+        const hadEntry = entries.has(id);
+        const hadDescriptor = asyncDescriptors.has(id);
+        if (!hadEntry && !hadDescriptor) {
           return false;
         }
-        registryCleanups.get(id)?.();
-        registryCleanups.delete(id);
-        entries.get(id)?._dispose?.();
-        entries.delete(id);
-        boundEntries.delete(id);
+        if (hadEntry) {
+          registryCleanups.get(id)?.();
+          registryCleanups.delete(id);
+          entries.get(id)?._dispose?.();
+          entries.delete(id);
+          boundEntries.delete(id);
+        }
+        asyncDescriptors.delete(id);
         return true;
       },
 
@@ -1441,6 +1452,9 @@ const __signalsModule = (() => {
       _adoptMany(map = {}) {
         for (const [id, signalLike] of Object.entries(map ?? {})) {
           if (!entries.has(id)) {
+            if (asyncDescriptors.has(id)) {
+              throw new Error(`Signal "${id}" is already registered.`);
+            }
             const entry = cloneSignalDeclaration(signalLike);
             entries.set(id, entry);
             bindEntry(id, entry);
@@ -5341,6 +5355,9 @@ const __appModule = (() => {
       return;
     }
     for (const [id, value] of Object.entries(entries)) {
+      if (type === "asyncSignal" && runtime.signals?.has?.(id) && !runtime.registry.has(type, id)) {
+        throw new Error(`Signal "${id}" is already registered.`);
+      }
       registerSnapshotEntry(runtime.registry, type, id, value, options);
     }
     concreteRegistry?._adoptMany?.(entries);

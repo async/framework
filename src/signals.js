@@ -142,10 +142,16 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
   let subscriptionCounter = 0;
   let effectCounter = 0;
 
+  for (const id of entries.keys()) {
+    if (asyncDescriptors.has(id)) {
+      throw new Error(`Signal "${id}" is already registered.`);
+    }
+  }
+
   const registry = attachRegistryInspection({
     register(id, signalLike) {
       assertId(id);
-      if (entries.has(id)) {
+      if (entries.has(id) || asyncDescriptors.has(id)) {
         throw new Error(`Signal "${id}" is already registered.`);
       }
       const entry = normalizeSignal(signalLike);
@@ -163,14 +169,19 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
 
     unregister(id) {
       assertId(id);
-      if (!entries.has(id)) {
+      const hadEntry = entries.has(id);
+      const hadDescriptor = asyncDescriptors.has(id);
+      if (!hadEntry && !hadDescriptor) {
         return false;
       }
-      registryCleanups.get(id)?.();
-      registryCleanups.delete(id);
-      entries.get(id)?._dispose?.();
-      entries.delete(id);
-      boundEntries.delete(id);
+      if (hadEntry) {
+        registryCleanups.get(id)?.();
+        registryCleanups.delete(id);
+        entries.get(id)?._dispose?.();
+        entries.delete(id);
+        boundEntries.delete(id);
+      }
+      asyncDescriptors.delete(id);
       return true;
     },
 
@@ -362,6 +373,9 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     _adoptMany(map = {}) {
       for (const [id, signalLike] of Object.entries(map ?? {})) {
         if (!entries.has(id)) {
+          if (asyncDescriptors.has(id)) {
+            throw new Error(`Signal "${id}" is already registered.`);
+          }
           const entry = cloneSignalDeclaration(signalLike);
           entries.set(id, entry);
           bindEntry(id, entry);
