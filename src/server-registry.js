@@ -1,6 +1,6 @@
 import { readRequestContext } from "./request-context.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
-import { assertServerId, consumeServerResult, createServerNamespace, createSignalReader } from "./server.js";
+import { assertServerId, consumeServerResult, createServerNamespace, createServerResultContext, createSignalReader } from "./server.js";
 
 export function createServerRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
@@ -56,7 +56,7 @@ export function createServerRegistry(initialMap = {}, options = {}) {
         cache: defaults.cache ?? context.cache
       });
 
-      runContext = {
+      runContext = createServerResultContext({
         ...mergedContext,
         id,
         args,
@@ -65,7 +65,7 @@ export function createServerRegistry(initialMap = {}, options = {}) {
         abort: mergedContext.abort,
         cache: mergedContext.cache,
         server
-      };
+      });
 
       return consumeServerResult(await fn.call(runContext, ...args), runContext);
     },

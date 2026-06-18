@@ -97,6 +97,69 @@ test("nested server calls preserve request context", async () => {
   });
 });
 
+test("server registry applies shared envelopes once inside one invocation chain", async () => {
+  let writes = 0;
+  const signals = {
+    get() {
+      return undefined;
+    },
+    set(path, value) {
+      writes += 1;
+      assert.equal(path, "cartCount");
+      assert.equal(value, 1);
+    }
+  };
+  const result = serverEnvelope({
+    signals: {
+      cartCount: 1
+    }
+  });
+  const server = createServerRegistry({
+    "cart.inner"() {
+      return result;
+    },
+    async "cart.outer"() {
+      await this.server.cart.inner();
+      return result;
+    }
+  });
+  server._setContext({ signals });
+
+  assert.equal(await server.cart.outer(), undefined);
+  assert.equal(writes, 1);
+  assert.deepEqual(Object.getOwnPropertySymbols(result), []);
+});
+
+test("server registry reapplies shared envelopes for independent invocations", async () => {
+  let writes = 0;
+  const signals = {
+    get() {
+      return undefined;
+    },
+    set(path, value) {
+      writes += 1;
+      assert.equal(path, "cartCount");
+      assert.equal(value, 1);
+    }
+  };
+  const result = serverEnvelope({
+    signals: {
+      cartCount: 1
+    }
+  });
+  const server = createServerRegistry({
+    "cart.prime"() {
+      return result;
+    }
+  });
+  server._setContext({ signals });
+
+  assert.equal(await server.cart.prime(), undefined);
+  assert.equal(await server.cart.prime(), undefined);
+  assert.equal(writes, 2);
+  assert.deepEqual(Object.getOwnPropertySymbols(result), []);
+});
+
 test("server proxy posts args, input, signals, and applies returned signal patches", async () => {
   const signals = createSignalRegistry({
     productId: signal("sku-1"),
@@ -257,6 +320,53 @@ test("applyServerResult applies cache-only explicit envelopes", async () => {
   assert.deepEqual(cache.get("product:sku-1"), { title: "Keyboard" });
 });
 
+test("applyServerResult does not mutate extensible explicit envelopes", async () => {
+  const signals = createSignalRegistry({
+    status: signal("idle")
+  });
+  const result = serverEnvelope({
+    signals: {
+      status: "ready"
+    }
+  });
+  const keys = Reflect.ownKeys(result);
+
+  await applyServerResult(result, { signals });
+
+  assert.equal(signals.get("status"), "ready");
+  assert.deepEqual(Reflect.ownKeys(result), keys);
+});
+
+test("applyServerResult accepts frozen and sealed explicit envelopes", async () => {
+  const signals = createSignalRegistry({
+    status: signal("idle")
+  });
+  const frozen = Object.freeze(serverEnvelope({
+    signals: {
+      status: "ready"
+    }
+  }));
+
+  await applyServerResult(frozen, { signals });
+
+  assert.equal(signals.get("status"), "ready");
+  assert.deepEqual(Object.getOwnPropertySymbols(frozen), []);
+
+  const cache = createCacheRegistry();
+  const sealed = Object.seal(serverEnvelope({
+    cache: {
+      browser: {
+        "product:sku-1": { title: "Keyboard" }
+      }
+    }
+  }));
+
+  await applyServerResult(sealed, { cache });
+
+  assert.deepEqual(cache.get("product:sku-1"), { title: "Keyboard" });
+  assert.deepEqual(Object.getOwnPropertySymbols(sealed), []);
+});
+
 test("server proxy applies cache-only explicit envelopes", async () => {
   const cache = createCacheRegistry();
   const server = createServerProxy({
@@ -358,24 +468,47 @@ test("server error envelopes do not redirect", async () => {
   assert.equal(redirects, 0);
 });
 
-test("server error envelopes are consumed before throwing", async () => {
+test("server error envelopes throw for each independent invocation without mutation", async () => {
   const signals = createSignalRegistry({
     status: signal("idle")
   });
-  const result = serverEnvelope({
-    error: { message: "only once" },
+  const result = Object.freeze(serverEnvelope({
+    error: { message: "repeatable" },
     signals: {
       status: "mutated"
     }
-  });
+  }));
 
   await assert.rejects(
     applyServerResult(result, { signals }),
-    /only once/
+    /repeatable/
   );
 
-  assert.equal(await applyServerResult(result, { signals }), result);
+  await assert.rejects(
+    applyServerResult(result, { signals }),
+    /repeatable/
+  );
+
   assert.equal(signals.get("status"), "idle");
+  assert.deepEqual(Object.getOwnPropertySymbols(result), []);
+});
+
+test("server redirect envelopes apply for each independent invocation", async () => {
+  const result = Object.freeze(serverEnvelope({
+    redirect: "/login"
+  }));
+  const navigations = [];
+  const router = {
+    navigate(path) {
+      navigations.push(path);
+    }
+  };
+
+  await applyServerResult(result, { router });
+  await applyServerResult(result, { router });
+
+  assert.deepEqual(navigations, ["/login", "/login"]);
+  assert.deepEqual(Object.getOwnPropertySymbols(result), []);
 });
 
 test("server proxy forwards abort signals to transport", async () => {

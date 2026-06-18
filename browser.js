@@ -2381,7 +2381,7 @@ const __serverModule = (() => {
   const serverEnvelopeKind = Symbol.for("@async/framework.serverResult");
   const serverEnvelopeWireKey = "__async_server_result__";
   const serverEnvelopeWireVersion = 1;
-  const appliedServerResult = Symbol.for("@async/framework.appliedServerResult");
+  const serverResultInvocation = Symbol("@async/framework.serverResultInvocation");
 
   function createServerProxy({
     endpoint = "/__async/server",
@@ -2401,7 +2401,7 @@ const __serverModule = (() => {
 
     async function run(id, args = [], context = {}) {
       assertServerId(id);
-      const runContext = { ...defaults, ...context };
+      const runContext = createServerResultContext({ ...defaults, ...context });
       const body = {
         args,
         input: context.input ?? defaultInput(runContext),
@@ -2459,12 +2459,13 @@ const __serverModule = (() => {
     if (!isServerEnvelope(result)) {
       return result;
     }
-    if (result[appliedServerResult]) {
+    const invocation = getServerResultInvocation(context);
+    if (invocation.applied.has(result)) {
       return result;
     }
+    invocation.applied.add(result);
 
     if (result.error) {
-      markAppliedServerResult(result);
       throw toError(result.error);
     }
 
@@ -2486,8 +2487,6 @@ const __serverModule = (() => {
       await context.router?.navigate?.(result.redirect);
     }
 
-    markAppliedServerResult(result);
-
     return result;
   }
 
@@ -2503,13 +2502,20 @@ const __serverModule = (() => {
     return result;
   }
 
-  function markAppliedServerResult(result) {
-    Object.defineProperty(result, appliedServerResult, {
-      configurable: true,
-      enumerable: false,
-      value: true
-    });
-    return result;
+  function createServerResultContext(context = {}) {
+    const invocation = context[serverResultInvocation] ?? {
+      applied: new WeakSet()
+    };
+    return {
+      ...context,
+      [serverResultInvocation]: invocation
+    };
+  }
+
+  function getServerResultInvocation(context = {}) {
+    return context[serverResultInvocation] ?? {
+      applied: new WeakSet()
+    };
   }
 
   function defaultInput(context = {}) {
@@ -2787,7 +2793,7 @@ const __serverModule = (() => {
       throw new TypeError("Server function id must be a non-empty string.");
     }
   }
-  return { createServerProxy, resolveServerCommandArguments, applyServerResult, consumeServerResult, unwrapServerResult, defaultInput, createServerNamespace, createSignalReader, assertServerId };
+  return { createServerProxy, resolveServerCommandArguments, applyServerResult, consumeServerResult, unwrapServerResult, createServerResultContext, defaultInput, createServerNamespace, createSignalReader, assertServerId };
 })();
 
 const __handlersModule = (() => {

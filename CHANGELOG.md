@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.8 - 2026-06-18
+
+- Scoped server-result application tracking to each framework invocation so the
+  same envelope object can apply effects again for separate calls without
+  double-applying inside one nested server call chain.
+- Stopped mutating caller-owned server-result objects to record application
+  state, including extensible, sealed, frozen, redirect, and error envelopes.
+- Added regression coverage for repeated shared-envelope invocations,
+  frozen/sealed envelopes, original server errors, repeatable redirects, and
+  unchanged result-object own keys.
+- Bundle size from bundled TypeScript source: `browser.ts` 183,427 B raw /
+  34,417 B gzip -> `browser.min.js` 77,932 B raw / 23,134 B gzip
+  (-105,495 B raw, -11,283 B gzip).
+
 ## 0.11.7 - 2026-06-18
 
 - Introduced an explicit `__async_server_result__: 1` marker for framework
