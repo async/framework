@@ -700,27 +700,112 @@ test("server proxy rejects unsupported Web platform values before transport runs
   }
 });
 
-test("server proxy preserves current JSON undefined handling", async () => {
-  let requestBody;
+test("server proxy rejects Map and Set values before transport runs", async () => {
   const server = createServerProxy({
-    transport: async (_url, init) => {
-      requestBody = JSON.parse(init.body);
-      return new Response(JSON.stringify("ok"), {
-        headers: {
-          "content-type": "application/json"
-        }
-      });
+    transport() {
+      throw new Error("transport should not run for non-plain JSON values.");
     }
   });
 
-  assert.equal(await server.run("products.save", [undefined], {
-    input: {
-      omitted: undefined,
-      kept: true
+  await assert.rejects(
+    server.run("products.search", [{ filters: new Map([["q", "keyboard"]]) }]),
+    /only supports plain objects at \$\.args\[0\]\.filters/
+  );
+  await assert.rejects(
+    server.run("products.search", [{ tags: new Set(["sale"]) }]),
+    /only supports plain objects at \$\.args\[0\]\.tags/
+  );
+});
+
+test("server proxy rejects non-finite numbers before transport runs", async () => {
+  const server = createServerProxy({
+    transport() {
+      throw new Error("transport should not run for non-finite JSON values.");
     }
-  }), "ok");
-  assert.deepEqual(requestBody.args, [null]);
-  assert.deepEqual(requestBody.input, { kept: true });
+  });
+
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    await assert.rejects(
+      server.run("products.save", [{ price: value }]),
+      /does not support non-finite numbers at \$\.args\[0\]\.price/
+    );
+  }
+});
+
+test("server proxy rejects functions and symbols before transport runs", async () => {
+  const server = createServerProxy({
+    transport() {
+      throw new Error("transport should not run for function or symbol JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [[() => "sku-1"]]),
+    /does not support function values at \$\.args\[0\]\[0\]/
+  );
+  await assert.rejects(
+    server.run("products.save", [{ token: Symbol("sku-1") }]),
+    /does not support symbol values at \$\.args\[0\]\.token/
+  );
+});
+
+test("server proxy rejects class instances and Dates before transport runs", async () => {
+  class Product {
+    constructor(id) {
+      this.id = id;
+    }
+  }
+  const server = createServerProxy({
+    transport() {
+      throw new Error("transport should not run for class or Date JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [new Product("sku-1")]),
+    /only supports plain objects at \$\.args\[0\]/
+  );
+  await assert.rejects(
+    server.run("products.save", [{ createdAt: new Date("2026-06-18T00:00:00Z") }]),
+    /only supports plain objects at \$\.args\[0\]\.createdAt/
+  );
+});
+
+test("server proxy rejects sparse arrays before transport runs", async () => {
+  const sparse = [];
+  sparse[1] = "sku-1";
+  const server = createServerProxy({
+    transport() {
+      throw new Error("transport should not run for sparse arrays.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [sparse]),
+    /does not support sparse arrays at \$\.args\[0\]\[0\]/
+  );
+});
+
+test("server proxy rejects undefined values before transport runs", async () => {
+  const server = createServerProxy({
+    transport() {
+      throw new Error("transport should not run for undefined JSON values.");
+    }
+  });
+
+  await assert.rejects(
+    server.run("products.save", [undefined]),
+    /does not support undefined values at \$\.args\[0\]/
+  );
+  await assert.rejects(
+    server.run("products.save", [], {
+      input: {
+        omitted: undefined,
+        kept: true
+      }
+    }),
+    /does not support undefined values at \$\.input\.omitted/
+  );
 });
 
 function serverEnvelope(fields = {}) {

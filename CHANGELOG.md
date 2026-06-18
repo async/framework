@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.13 - 2026-06-18
+
+- Validated server proxy arguments, default input payloads, and selected signal
+  values against an explicit JSON transport model before requests leave the
+  caller.
+- Rejected values that `JSON.stringify` would silently corrupt, including
+  `undefined`, non-finite numbers, functions, symbols, sparse arrays, circular
+  structures, class instances, dates, maps, sets, buffers, streams, and web
+  platform request/body objects.
+- Added path-aware regression coverage for invalid transport values and
+  documented the supported server-call JSON model.
+- Bundle size from bundled TypeScript source: `browser.ts` 187,564 B raw /
+  35,332 B gzip -> `browser.min.js` 80,009 B raw / 23,677 B gzip
+  (-107,555 B raw, -11,655 B gzip).
+
 ## 0.11.12 - 2026-06-18
 
 - Deferred boundary receiver sequence commits until patch effects complete so

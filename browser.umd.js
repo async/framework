@@ -2584,12 +2584,17 @@
       if (!element) {
         return {};
       }
-
-      return {
-        value: "value" in element ? element.value : undefined,
-        checked: "checked" in element ? element.checked : undefined,
-        dataset: element.dataset ? { ...element.dataset } : {}
-      };
+      const input = {};
+      if ("value" in element) {
+        input.value = element.value;
+      }
+      if ("checked" in element) {
+        input.checked = element.checked;
+      }
+      if (element.dataset) {
+        input.dataset = { ...element.dataset };
+      }
+      return input;
     }
 
     function createServerNamespace(run, root = {}, contextProvider = () => ({})) {
@@ -2776,36 +2781,74 @@
       return output;
     }
 
-    function assertJsonTransportable(value, stack = new Set()) {
-      if (typeof value === "bigint") {
-        throw new Error("Server proxy JSON transport does not support BigInt values.");
-      }
-      if (value == null || typeof value !== "object") {
+    function assertJsonTransportable(value, path = "$", stack = new Set()) {
+      if (value === null) {
         return;
       }
+
+      const type = typeof value;
+      if (type === "boolean" || type === "string") {
+        return;
+      }
+      if (type === "number") {
+        if (!Number.isFinite(value)) {
+          throw new Error(`Server proxy JSON transport does not support non-finite numbers at ${path}.`);
+        }
+        return;
+      }
+      if (type === "bigint") {
+        throw new Error(`Server proxy JSON transport does not support BigInt values at ${path}.`);
+      }
+      if (type === "undefined") {
+        throw new Error(`Server proxy JSON transport does not support undefined values at ${path}.`);
+      }
+      if (type === "function" || type === "symbol") {
+        throw new Error(`Server proxy JSON transport does not support ${type} values at ${path}.`);
+      }
+      if (type !== "object") {
+        throw new Error(`Server proxy JSON transport does not support ${type} values at ${path}.`);
+      }
+
       if (stack.has(value)) {
-        throw new Error("Server proxy JSON transport does not support circular values.");
+        throw new Error(`Server proxy JSON transport does not support circular values at ${path}.`);
       }
       stack.add(value);
 
       const tag = Object.prototype.toString.call(value);
       if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
-        throw new Error("Server proxy JSON transport does not support File, Blob, or FormData values yet.");
+        throw new Error(`Server proxy JSON transport does not support File, Blob, or FormData values yet at ${path}.`);
       }
       if (isUnsupportedJsonTransportObject(value, tag)) {
-        throw new Error("Server proxy JSON transport does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values yet.");
+        throw new Error(`Server proxy JSON transport does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values yet at ${path}.`);
       }
       if (Array.isArray(value)) {
-        for (const item of value) {
-          assertJsonTransportable(item, stack);
+        for (let index = 0; index < value.length; index += 1) {
+          if (!Object.hasOwn(value, index)) {
+            throw new Error(`Server proxy JSON transport does not support sparse arrays at ${path}[${index}].`);
+          }
+          assertJsonTransportable(value[index], `${path}[${index}]`, stack);
         }
         stack.delete(value);
         return;
       }
-      for (const item of Object.values(value)) {
-        assertJsonTransportable(item, stack);
+
+      if (!isPlainJsonObject(value)) {
+        throw new Error(`Server proxy JSON transport only supports plain objects at ${path}.`);
+      }
+
+      for (const [key, item] of Object.entries(value)) {
+        assertJsonTransportable(item, propertyPath(path, key), stack);
       }
       stack.delete(value);
+    }
+
+    function isPlainJsonObject(value) {
+      const prototype = Object.getPrototypeOf(value);
+      return prototype === Object.prototype || prototype === null;
+    }
+
+    function propertyPath(path, key) {
+      return /^[A-Za-z_$][\w$]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
     }
 
     function isUnsupportedJsonTransportObject(value, tag = Object.prototype.toString.call(value)) {

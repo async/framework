@@ -834,6 +834,14 @@ const server = createServerProxy({
 await server.cart.add("sku-1", 2);
 ```
 
+Proxy requests validate their `args`, default `input`, and selected signal
+values before transport runs. Supported values are `null`, booleans, strings,
+finite numbers, dense arrays, and plain objects composed from those values.
+Values that JSON would silently change or drop, such as `undefined`, functions,
+symbols, `Map`, `Set`, `Date`, sparse arrays, class instances, non-finite
+numbers, circular objects, file-like values, streams, buffers, and typed arrays
+are rejected with a path to the invalid value.
+
 Server responses can include `value`, `signals`, `boundary`, `html`, `redirect`,
 or `error`. Signal patches are applied before boundary swaps and redirects.
 Namespace calls such as `server.cart.add(...)` return the unwrapped `value`.
