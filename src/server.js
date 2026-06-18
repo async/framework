@@ -4,7 +4,7 @@ const appliedServerValues = new WeakSet();
 
 export function createServerProxy({
   endpoint = "/__async/server",
-  fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
+  transport,
   signals,
   loader,
   router,
@@ -12,8 +12,8 @@ export function createServerProxy({
   scheduler,
   headers = {}
 } = {}) {
-  if (typeof fetchImpl !== "function") {
-    throw new TypeError("createServerProxy(...) requires fetch to be available.");
+  if (typeof transport !== "function") {
+    throw new TypeError("createServerProxy(...) requires a transport function.");
   }
 
   const defaults = { signals, loader, router, cache, scheduler };
@@ -28,7 +28,7 @@ export function createServerProxy({
     };
     assertJsonTransportable(body);
 
-    const response = await fetchImpl(joinEndpoint(endpoint, id), {
+    const response = await transport(joinEndpoint(endpoint, id), {
       method: "POST",
       headers: {
         "content-type": "application/json",

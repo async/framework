@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0 - 2026-06-17
+
+- Removed the networked `ssr-spa` router mode and route-fragment fetching so
+  `ssr` activates server-rendered HTML and snapshots without client route
+  fetches.
+- Changed browser navigation to render registered SPA partials locally in
+  `spa` and `csr` modes while leaving same-origin document navigation alone in
+  `ssr` and `mpa` modes.
+- Replaced the server proxy's implicit `globalThis.fetch` default with an
+  explicit `transport` callback supplied by application code.
+- Published only generated runtime artifacts and declarations:
+  `browser.*`, `server.js`, `framework.ts`, and `framework.d.ts`; source,
+  tests, and examples are no longer included in the package tarball.
+- Added regression coverage for SSR snapshot activation without fetch, SPA
+  stale/error navigation behavior, explicit server proxy transports, and static
+  generated-bundle scans for implicit global fetch access.
+- Bundle size from bundled TypeScript source: `browser.ts` 171,908 B raw /
+  32,421 B gzip -> `browser.min.js` 72,827 B raw / 21,845 B gzip
+  (-99,081 B raw, -10,576 B gzip).
+
 ## 0.10.2 - 2026-06-17
 
 - Fixed intercepted router link, form, and popstate navigation failures so they

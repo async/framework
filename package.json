@@ -1,9 +1,9 @@
 {
   "name": "@async/framework",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
-  "main": "./src/index.js",
+  "main": "./server.js",
   "module": "./browser.min.js",
   "browser": "./browser.min.js",
   "sideEffects": false,
@@ -32,29 +32,29 @@
     "web-framework"
   ],
   "license": "MIT",
-  "types": "./server.d.ts",
+  "types": "./framework.d.ts",
   "unpkg": "./browser.umd.min.js",
   "jsdelivr": "./browser.umd.min.js",
   "exports": {
     ".": {
-      "types": "./server.d.ts",
+      "types": "./framework.d.ts",
       "browser": "./browser.min.js",
-      "node": "./src/index.js",
-      "import": "./src/index.js",
-      "default": "./src/index.js"
+      "node": "./server.js",
+      "import": "./server.js",
+      "default": "./server.js"
     },
     "./browser": {
       "types": "./browser.d.ts",
       "unpkg": "./browser.umd.min.js",
       "browser": "./browser.js",
-      "import": "./src/browser.js",
-      "default": "./src/browser.js"
+      "import": "./browser.js",
+      "default": "./browser.js"
     },
     "./server": {
-      "types": "./server.d.ts",
-      "node": "./src/index.js",
-      "import": "./src/index.js",
-      "default": "./src/index.js"
+      "types": "./framework.d.ts",
+      "node": "./server.js",
+      "import": "./server.js",
+      "default": "./server.js"
     },
     "./browser.js": {
       "types": "./browser.d.ts",
@@ -77,7 +77,15 @@
       "default": "./browser.ts"
     },
     "./browser.d.ts": "./browser.d.ts",
-    "./server.d.ts": "./server.d.ts",
+    "./server.js": {
+      "types": "./framework.d.ts",
+      "default": "./server.js"
+    },
+    "./framework.ts": {
+      "types": "./framework.d.ts",
+      "default": "./framework.ts"
+    },
+    "./framework.d.ts": "./framework.d.ts",
     "./package.json": "./package.json"
   },
   "files": [
@@ -89,9 +97,9 @@
     "browser.umd.js",
     "browser.umd.min.js",
     "browser.ts",
-    "server.d.ts",
-    "src",
-    "examples",
+    "framework.d.ts",
+    "framework.ts",
+    "server.js",
     "LICENSE",
     "package.json"
   ],

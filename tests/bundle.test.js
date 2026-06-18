@@ -60,13 +60,39 @@ test("browser minified bundles do not contain newlines", () => {
 });
 
 test("browser bundles do not include server-only registry code", () => {
-  for (const file of ["browser.js", "browser.min.js", "browser.umd.js", "browser.umd.min.js"]) {
+  for (const file of [
+    "browser.js",
+    "browser.min.js",
+    "browser.umd.js",
+    "browser.umd.min.js"
+  ]) {
     const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
     assert.doesNotMatch(contents, /createServerRegistry/);
     assert.doesNotMatch(contents, /createRequestContextStore/);
     assert.doesNotMatch(contents, /node:async_hooks/);
     assert.doesNotMatch(contents, /Server function "\\$\\{id\\}" must be a function/);
+  }
+});
+
+test("published runtime sources and browser bundles do not use implicit global fetch", () => {
+  const files = [
+    "src/server.js",
+    "src/router.js",
+    "src/app.js",
+    "browser.js",
+    "browser.min.js",
+    "browser.umd.js",
+    "browser.umd.min.js",
+    "server.js",
+    "framework.ts"
+  ];
+
+  for (const file of files) {
+    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+
+    assert.doesNotMatch(contents, /globalThis\.fetch/, `${file} should not access globalThis.fetch`);
+    assert.doesNotMatch(contents, /globalThis\[\s*["']fetch["']\s*\]/, `${file} should not access globalThis["fetch"]`);
   }
 });
 
@@ -183,12 +209,31 @@ test("temporary project can import installed package subpaths", async () => {
 });
 
 test("package metadata keeps legacy size analyzers on the browser entry", () => {
-  assert.equal(manifest.main, "./src/index.js");
+  assert.equal(manifest.main, "./server.js");
   assert.equal(manifest.module, "./browser.min.js");
   assert.equal(manifest.browser, "./browser.min.js");
+  assert.equal(manifest.types, "./framework.d.ts");
   assert.equal(manifest.exports["."].browser, "./browser.min.js");
+  assert.equal(manifest.exports["."].import, "./server.js");
+  assert.equal(manifest.exports["./browser"].import, "./browser.js");
+  assert.equal(manifest.exports["./server"].import, "./server.js");
   assert.equal(manifest.sideEffects, false);
   assert.equal(manifest.devDependencies.terser, "5.48.0");
+});
+
+test("package file list only publishes generated framework artifacts", () => {
+  assert.equal(manifest.files.includes("src"), false);
+  assert.equal(manifest.files.includes("tests"), false);
+  assert.equal(manifest.files.includes("examples"), false);
+  assert.ok(manifest.files.includes("browser.js"));
+  assert.ok(manifest.files.includes("browser.min.js"));
+  assert.ok(manifest.files.includes("browser.umd.js"));
+  assert.ok(manifest.files.includes("browser.umd.min.js"));
+  assert.ok(manifest.files.includes("browser.ts"));
+  assert.ok(manifest.files.includes("browser.d.ts"));
+  assert.ok(manifest.files.includes("server.js"));
+  assert.ok(manifest.files.includes("framework.ts"));
+  assert.ok(manifest.files.includes("framework.d.ts"));
 });
 
 test("root browser.ts is a bundled TypeScript entrypoint", async () => {
@@ -204,7 +249,7 @@ test("root browser.ts is a bundled TypeScript entrypoint", async () => {
 
 test("browser and server declarations expose the right public APIs", () => {
   const browserDeclarations = readFileSync(new URL("../browser.d.ts", import.meta.url), "utf8");
-  const serverDeclarations = readFileSync(new URL("../server.d.ts", import.meta.url), "utf8");
+  const serverDeclarations = readFileSync(new URL("../framework.d.ts", import.meta.url), "utf8");
 
   for (const key of Object.keys(source)) {
     assert.match(browserDeclarations, new RegExp(`\\b${key}\\b`));

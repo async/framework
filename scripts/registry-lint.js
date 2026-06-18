@@ -84,7 +84,9 @@ export async function lintRegistry(options = {}) {
       "browser.umd.min.js",
       "browser.ts",
       "browser.d.ts",
-      "server.d.ts"
+      "server.js",
+      "framework.ts",
+      "framework.d.ts"
     ],
     cache: {
       path: relative(root, cachePath),
@@ -323,7 +325,9 @@ function shouldSkip(relativePath) {
     relativePath.startsWith(".async/") ||
     relativePath.startsWith("node_modules/") ||
     /^browser(?:\.min|\.umd|\.umd\.min)?\.(?:js|ts|d\.ts)$/.test(relativePath) ||
-    relativePath === "server.d.ts"
+    relativePath === "server.js" ||
+    relativePath === "framework.ts" ||
+    relativePath === "framework.d.ts"
   );
 }
 

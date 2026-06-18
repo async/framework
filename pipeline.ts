@@ -46,7 +46,9 @@ export default definePipeline({
       "browser.umd.js",
       "browser.umd.min.js",
       "browser.ts",
-      "server.d.ts",
+      "server.js",
+      "framework.ts",
+      "framework.d.ts",
       "package.json",
       "pipeline.ts",
       "scripts/**/*.js"

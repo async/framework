@@ -102,8 +102,11 @@ production:
 | `browser.min.js` | ESM | Compact browser module bundle |
 | `browser.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
 | `browser.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
-| `browser.ts` | Bundled TypeScript source | TS-aware runtimes and higher-layer tooling |
+| `browser.ts` | Bundled browser TypeScript source | TS-aware runtimes and higher-layer tooling |
 | `browser.d.ts` | Type declarations | TypeScript declarations for the browser API |
+| `server.js` | ESM | Server-capable Node.js bundle |
+| `framework.ts` | Bundled server-capable TypeScript source | TS-aware runtimes and higher-layer tooling |
+| `framework.d.ts` | Type declarations | TypeScript declarations for the server-capable API |
 
 ```html
 <main async:container>
@@ -789,8 +792,9 @@ handlers.register("addToCart", async function () {
 
 ### Server Calls
 
-Server registries run locally on the server and proxies call an HTTP endpoint
-from the browser. Both expose the same dotted call shape.
+Server registries run locally on the server. Browser proxies use an explicit
+transport supplied by the app, so network access is opt-in. Both expose the same
+dotted call shape.
 
 ```js
 import {
@@ -818,6 +822,7 @@ import {
 
 const server = createServerProxy({
   endpoint: "/__async/server",
+  transport: httpTransport,
   signals,
   loader,
   router
@@ -884,8 +889,7 @@ Router modes:
 | --- | --- |
 | `csr` | Client renders local partial into boundary | Client renders local partial and swaps |
 | `spa` | Existing HTML may already contain route | Client renders local partial and swaps |
-| `ssr` | Server rendered document | Browser navigates normally |
-| `ssr-spa` | Server rendered document/route boundary | Fetch route partial, apply effects, swap |
+| `ssr` | Server-rendered document plus snapshot activation | Browser navigates normally |
 | `mpa` | Any document source | Browser navigates normally |
 
 CSR startup can use an empty route boundary:
@@ -1001,12 +1005,24 @@ The returned HTML includes a route boundary plus a JSON snapshot:
 ```
 
 Browser activation scans the existing HTML and attaches events. It does not
-hydrate, diff, patch, or rerender:
+hydrate, diff, patch, rerender, or fetch route fragments:
+
+```js
+createApp(browserApp, {
+  root: document
+}).start();
+```
+
+If browser handlers or async signals need server commands, pass a server proxy
+with an explicit transport:
 
 ```js
 createApp(browserApp, {
   root: document,
-  server: createServerProxy({ endpoint: "/__async/server" })
+  server: createServerProxy({
+    endpoint: "/__async/server",
+    transport: httpTransport
+  })
 }).start();
 ```
 

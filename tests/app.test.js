@@ -323,6 +323,86 @@ test("SSR render uses configured async attributes for boundary and snapshot", as
   runtime.destroy();
 });
 
+test("browser runtime activates SSR HTML and snapshot without implicit fetch", async () => {
+  const app = defineApp({
+    signal: {
+      productId: createSignal(null),
+      selected: createSignal(false)
+    },
+    cache: {
+      browser: {
+        product: defineCache({ ttl: 1000 })
+      }
+    },
+    handler: {
+      select() {
+        this.signals.set("selected", true);
+      }
+    },
+    partial: {
+      "product.page"({ id }) {
+        return {
+          html: html`
+            <article>
+              <a id="next" href="/products/sku-2">Next</a>
+              <button id="select" on:click="select" signal:class:selected="selected">${id}</button>
+              <output id="product-id" signal:text="productId"></output>
+            </article>
+          `,
+          signals: {
+            productId: id
+          },
+          cache: {
+            browser: {
+              [`product:${id}`]: { id, title: "Keyboard" }
+            }
+          }
+        };
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const serverRuntime = createApp(app, { target: "server" });
+  const response = await serverRuntime.render("/products/sku-1");
+  serverRuntime.destroy();
+
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = response.html;
+
+  const hadFetch = Object.hasOwn(globalThis, "fetch");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("global fetch should not run during SSR activation.");
+  };
+
+  try {
+    const runtime = createApp(app, { root: document.body }).start();
+
+    assert.equal(runtime.router.mode, "ssr");
+    assert.equal(document.querySelector("#product-id").textContent, "sku-1");
+    assert.deepEqual(runtime.browser.cache.get("product:sku-1"), { id: "sku-1", title: "Keyboard" });
+
+    document.querySelector("#select").click();
+    await delay(0);
+    assert.equal(document.querySelector("#select").classList.contains("selected"), true);
+
+    const next = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    document.querySelector("#next").dispatchEvent(next);
+    assert.equal(next.defaultPrevented, false);
+
+    runtime.destroy();
+  } finally {
+    if (hadFetch) {
+      globalThis.fetch = originalFetch;
+    } else {
+      delete globalThis.fetch;
+    }
+  }
+});
+
 test("browser runtime restores SSR signal and browser cache snapshots", () => {
   const window = new Window();
   const { document } = window;

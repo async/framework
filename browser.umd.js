@@ -2176,7 +2176,7 @@
 
     function createServerProxy({
       endpoint = "/__async/server",
-      fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
+      transport,
       signals,
       loader,
       router,
@@ -2184,8 +2184,8 @@
       scheduler,
       headers = {}
     } = {}) {
-      if (typeof fetchImpl !== "function") {
-        throw new TypeError("createServerProxy(...) requires fetch to be available.");
+      if (typeof transport !== "function") {
+        throw new TypeError("createServerProxy(...) requires a transport function.");
       }
 
       const defaults = { signals, loader, router, cache, scheduler };
@@ -2200,7 +2200,7 @@
         };
         assertJsonTransportable(body);
 
-        const response = await fetchImpl(joinEndpoint(endpoint, id), {
+        const response = await transport(joinEndpoint(endpoint, id), {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -3984,6 +3984,8 @@
 
     const route = defineRoute;
 
+    const routerModes = new Set(["csr", "spa", "ssr", "mpa"]);
+
     function createRouteRegistry(initialMap = {}, options = {}) {
       const registryStore = options.registry ?? createRegistryStore();
       const type = options.type ?? "route";
@@ -4079,7 +4081,7 @@
     }
 
     function createRouter({
-      mode = "ssr-spa",
+      mode = "ssr",
       root,
       boundary = "route",
       routes = createRouteRegistry(),
@@ -4089,11 +4091,10 @@
       server,
       cache,
       partials,
-      fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
-      routeEndpoint = "/__async/route",
       attributes,
       scheduler
     } = {}) {
+      assertRouterMode(mode);
       const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
       const rootNode = root ?? documentRef;
       const signalRegistry = signals ?? loader?.signals ?? createSignalRegistry();
@@ -4162,15 +4163,12 @@
 
         prefetch(url) {
           assertActive();
-          if (mode === "ssr-spa" && typeof fetchImpl === "function") {
-            return fetchRoute(url, { prefetch: true });
+          if (mode === "mpa" || mode === "ssr") {
+            return Promise.resolve(null);
           }
           const matched = api.match(url);
           if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
             return partials.render(matched.route.partial, matched.params, contextFor(matched));
-          }
-          if (typeof fetchImpl === "function") {
-            return fetchRoute(url, { prefetch: true });
           }
           return Promise.resolve(null);
         },
@@ -4183,9 +4181,6 @@
           }
 
           const target = resolveUrl(url);
-          if (mode === "ssr-spa") {
-            return fetchRoutePartial(target, options);
-          }
           return renderLocalRoutePartial(target, options);
         },
 
@@ -4273,31 +4268,6 @@
         }
       }
 
-      async function fetchRoutePartial(target, options = {}) {
-        const matched = api.match(target);
-        const navigation = beginNavigation(target, matched);
-        setMatchedRouterState(target, matched, { pending: true, error: null });
-
-        try {
-          const result = await fetchRoute(target.href, { signal: navigation.abort });
-          if (!isActiveNavigation(navigation)) {
-            return null;
-          }
-          await applyNavigationResult(result, target, options, navigation);
-          if (!isActiveNavigation(navigation)) {
-            return null;
-          }
-          setRouterState({ pending: false, error: null });
-          return result;
-        } catch (error) {
-          if (!isActiveNavigation(navigation)) {
-            return null;
-          }
-          setRouterState({ pending: false, error });
-          throw error;
-        }
-      }
-
       async function applyNavigationResult(result, target, options, navigation) {
         if (!isActiveNavigation(navigation)) {
           return;
@@ -4326,29 +4296,6 @@
           return;
         }
         documentRef.defaultView?.history?.pushState?.({}, "", target.href);
-      }
-
-      async function fetchRoute(url, { prefetch = false, signal } = {}) {
-        if (typeof fetchImpl !== "function") {
-          throw new Error("Router navigation requires a partial registry or fetch.");
-        }
-        const response = await fetchImpl(`${routeEndpoint}?to=${encodeURIComponent(String(url))}`, {
-          headers: {
-            accept: "application/json, text/html"
-          },
-          signal
-        });
-        if (!response.ok) {
-          throw new Error(`Route "${url}" failed with ${response.status}.`);
-        }
-        if (prefetch) {
-          return response;
-        }
-        const type = response.headers.get("content-type") ?? "";
-        if (type.includes("application/json")) {
-          return response.json();
-        }
-        return { boundary, html: await response.text() };
       }
 
       function contextFor(matched, navigation) {
@@ -4538,6 +4485,12 @@
         return false;
       }
       return target.hash !== current.hash || anchor.getAttribute?.("href")?.startsWith("#") === true;
+    }
+
+    function assertRouterMode(mode) {
+      if (!routerModes.has(mode)) {
+        throw new TypeError(`Unknown router mode "${mode}".`);
+      }
     }
 
     function dispatchAsyncError(element, error) {
@@ -4938,7 +4891,7 @@
           return;
         }
         router = router ?? createRouter({
-          mode: options.mode ?? "ssr-spa",
+          mode: options.mode ?? "ssr",
           root,
           boundary: options.boundary ?? "route",
           routes,
@@ -4949,8 +4902,6 @@
           cache: browserCache,
           partials,
           scheduler,
-          fetch: options.fetch,
-          routeEndpoint: options.routeEndpoint,
           attributes
         });
         runtime.router = router;

@@ -56,7 +56,7 @@ test("server proxy posts args, input, signals, and applies returned signal patch
   const server = createServerProxy({
     endpoint: "/__async/server",
     signals,
-    fetch: async (url, init) => {
+    transport: async (url, init) => {
       requestUrl = url;
       requestBody = JSON.parse(init.body);
       return new Response(
@@ -96,7 +96,7 @@ test("server proxy posts args, input, signals, and applies returned signal patch
 test("server proxy envelopes are applied once through namespace and handler callers", async () => {
   let swaps = 0;
   const server = createServerProxy({
-    fetch: async () => new Response(
+    transport: async () => new Response(
       JSON.stringify({
         boundary: "cart",
         html: "<aside>Cart</aside>"
@@ -133,7 +133,7 @@ test("server proxy does not apply unwrapped envelope-shaped values as effects", 
   });
   const server = createServerProxy({
     signals,
-    fetch: async () => new Response(
+    transport: async () => new Response(
       JSON.stringify({
         value: {
           ok: true,
@@ -168,12 +168,12 @@ test("server proxy does not apply unwrapped envelope-shaped values as effects", 
   assert.equal(signals.get("status"), "right");
 });
 
-test("server proxy forwards abort signals to fetch", async () => {
+test("server proxy forwards abort signals to transport", async () => {
   const controller = new AbortController();
-  let fetchSignal;
+  let transportSignal;
   const server = createServerProxy({
-    fetch: async (_url, init) => {
-      fetchSignal = init.signal;
+    transport: async (_url, init) => {
+      transportSignal = init.signal;
       return new Response(JSON.stringify({ value: "ok" }), {
         headers: {
           "content-type": "application/json"
@@ -183,7 +183,7 @@ test("server proxy forwards abort signals to fetch", async () => {
   });
 
   assert.equal(await server.run("products.get", [], { abort: controller.signal }), "ok");
-  assert.equal(fetchSignal, controller.signal);
+  assert.equal(transportSignal, controller.signal);
 });
 
 test("server proxy rejects file-like values instead of silently JSON stringifying them", async () => {
@@ -192,8 +192,8 @@ test("server proxy rejects file-like values instead of silently JSON stringifyin
     name: "avatar.png"
   };
   const server = createServerProxy({
-    fetch() {
-      throw new Error("fetch should not run for unsupported JSON values.");
+    transport() {
+      throw new Error("transport should not run for unsupported JSON values.");
     }
   });
 
@@ -203,12 +203,12 @@ test("server proxy rejects file-like values instead of silently JSON stringifyin
   );
 });
 
-test("server proxy rejects circular args before fetch runs", async () => {
+test("server proxy rejects circular args before transport runs", async () => {
   const circular = {};
   circular.self = circular;
   const server = createServerProxy({
-    fetch() {
-      throw new Error("fetch should not run for circular JSON values.");
+    transport() {
+      throw new Error("transport should not run for circular JSON values.");
     }
   });
 
@@ -218,12 +218,12 @@ test("server proxy rejects circular args before fetch runs", async () => {
   );
 });
 
-test("server proxy rejects circular input before fetch runs", async () => {
+test("server proxy rejects circular input before transport runs", async () => {
   const input = {};
   input.self = input;
   const server = createServerProxy({
-    fetch() {
-      throw new Error("fetch should not run for circular JSON input.");
+    transport() {
+      throw new Error("transport should not run for circular JSON input.");
     }
   });
 
@@ -237,7 +237,7 @@ test("server proxy allows repeated non-circular references", async () => {
   const shared = { id: "sku-1" };
   let requestBody;
   const server = createServerProxy({
-    fetch: async (_url, init) => {
+    transport: async (_url, init) => {
       requestBody = JSON.parse(init.body);
       return new Response(JSON.stringify({ value: "ok" }), {
         headers: {
@@ -251,7 +251,7 @@ test("server proxy allows repeated non-circular references", async () => {
   assert.deepEqual(requestBody.args, [{ id: "sku-1" }, { id: "sku-1" }]);
 });
 
-test("server proxy rejects nested file-like values before fetch runs", async () => {
+test("server proxy rejects nested file-like values before transport runs", async () => {
   const blobLike = {
     [Symbol.toStringTag]: "Blob"
   };
@@ -259,8 +259,8 @@ test("server proxy rejects nested file-like values before fetch runs", async () 
     [Symbol.toStringTag]: "FormData"
   };
   const server = createServerProxy({
-    fetch() {
-      throw new Error("fetch should not run for nested unsupported JSON values.");
+    transport() {
+      throw new Error("transport should not run for nested unsupported JSON values.");
     }
   });
 
@@ -272,8 +272,8 @@ test("server proxy rejects nested file-like values before fetch runs", async () 
 
 test("server proxy rejects BigInt values with an Async-specific error", async () => {
   const server = createServerProxy({
-    fetch() {
-      throw new Error("fetch should not run for BigInt JSON values.");
+    transport() {
+      throw new Error("transport should not run for BigInt JSON values.");
     }
   });
 
@@ -286,7 +286,7 @@ test("server proxy rejects BigInt values with an Async-specific error", async ()
 test("server proxy preserves current JSON undefined handling", async () => {
   let requestBody;
   const server = createServerProxy({
-    fetch: async (_url, init) => {
+    transport: async (_url, init) => {
       requestBody = JSON.parse(init.body);
       return new Response(JSON.stringify({ value: "ok" }), {
         headers: {

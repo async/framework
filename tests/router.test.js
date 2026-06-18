@@ -186,6 +186,7 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
   document.body.innerHTML = `<section async:boundary="route"></section>`;
 
   const pending = new Map();
+  const cache = createCacheRegistry();
   const partials = createPartialRegistry({
     "product.page": async function ({ id }) {
       const record = {
@@ -197,10 +198,22 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
       await new Promise((resolve) => {
         record.resolve = resolve;
       });
-      return `<h1 id="route-title">${id}</h1>`;
+      return {
+        html: `<h1 id="route-title">${id}</h1>`,
+        signals: {
+          "routerTest.loaded": id
+        },
+        cache: {
+          browser: {
+            [`route:${id}`]: { id }
+          }
+        }
+      };
     }
   });
-  const signals = createSignalRegistry();
+  const signals = createSignalRegistry({
+    routerTest: signal({})
+  });
   const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
     mode: "spa",
@@ -211,6 +224,7 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
     }),
     loader,
     signals,
+    cache,
     partials
   }).start();
 
@@ -228,11 +242,15 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
   fastRecord.resolve();
   await fast;
   assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("routerTest.loaded"), "fast");
+  assert.deepEqual(cache.get("route:fast"), { id: "fast" });
   assert.equal(signals.get("router.pending"), false);
 
   slowRecord.resolve();
   await slow;
   assert.equal(document.querySelector("#route-title").textContent, "fast");
+  assert.equal(signals.get("routerTest.loaded"), "fast");
+  assert.equal(cache.get("route:slow"), undefined);
   assert.equal(signals.get("router.path"), "/products/fast");
 
   router.destroy();
@@ -346,191 +364,50 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
   loader.destroy();
 });
 
-test("SSR-SPA router aborts stale fetch navigations and ignores late route responses", async () => {
-  const window = new Window({ url: "http://app.test/" });
-  const { document } = window;
-  document.body.innerHTML = `<section async:boundary="route"></section>`;
-
-  const pending = new Map();
-  const signals = createSignalRegistry({
-    routerTest: signal({})
-  });
-  const loader = Loader({ root: document.body, signals }).start();
-  const router = createRouter({
-    mode: "ssr-spa",
-    root: document.body,
-    boundary: "route",
-    routes: createRouteRegistry({
-      "/products/:id": route("product.page")
-    }),
-    loader,
-    signals,
-    fetch: async (url, init = {}) => {
-      const to = new URL(new URL(url, "http://app.test").searchParams.get("to"));
-      const id = to.pathname.split("/").at(-1);
-      const record = {
-        id,
-        signal: init.signal
-      };
-      pending.set(id, record);
-      return new Promise((resolve) => {
-        record.resolve = () => resolve(new Response(JSON.stringify({
-          html: `<h1 id="route-title">${id}</h1>`,
-          signals: {
-            "routerTest.loaded": id
-          }
-        }), {
-          headers: {
-            "content-type": "application/json"
-          }
-        }));
-      });
-    }
-  }).start();
-
-  const slow = router.navigate("/products/slow");
-  await delay(0);
-  const slowRecord = pending.get("slow");
-
-  const fast = router.navigate("/products/fast");
-  await delay(0);
-  const fastRecord = pending.get("fast");
-
-  assert.equal(slowRecord.signal.aborted, true);
-  assert.equal(fastRecord.signal.aborted, false);
-
-  fastRecord.resolve();
-  await fast;
-  assert.equal(document.querySelector("#route-title").textContent, "fast");
-  assert.equal(signals.get("routerTest.loaded"), "fast");
-  assert.equal(signals.get("router.pending"), false);
-
-  slowRecord.resolve();
-  assert.equal(await slow, null);
-  assert.equal(document.querySelector("#route-title").textContent, "fast");
-  assert.equal(signals.get("routerTest.loaded"), "fast");
-  assert.equal(signals.get("router.path"), "/products/fast");
-
-  router.destroy();
-  loader.destroy();
-});
-
-test("SSR-SPA router ignores stale fetch rejections after a newer navigation completes", async () => {
-  const window = new Window({ url: "http://app.test/" });
-  const { document } = window;
-  document.body.innerHTML = `<section async:boundary="route"></section>`;
-
-  const pending = new Map();
-  const signals = createSignalRegistry();
-  const loader = Loader({ root: document.body, signals }).start();
-  const router = createRouter({
-    mode: "ssr-spa",
-    root: document.body,
-    boundary: "route",
-    routes: createRouteRegistry({
-      "/products/:id": route("product.page")
-    }),
-    loader,
-    signals,
-    fetch: async (url) => {
-      const to = new URL(new URL(url, "http://app.test").searchParams.get("to"));
-      const id = to.pathname.split("/").at(-1);
-      const record = {};
-      pending.set(id, record);
-      return new Promise((resolve, reject) => {
-        record.resolve = () => resolve(new Response(JSON.stringify({
-          html: `<h1 id="route-title">${id}</h1>`
-        }), {
-          headers: {
-            "content-type": "application/json"
-          }
-        }));
-        record.reject = reject;
-      });
-    }
-  }).start();
-
-  const slow = router.navigate("/products/slow");
-  await delay(0);
-  const fast = router.navigate("/products/fast");
-  await delay(0);
-
-  pending.get("fast").resolve();
-  await fast;
-
-  pending.get("slow").reject(new Error("slow fetch failed late"));
-  assert.equal(await slow, null);
-  assert.equal(document.querySelector("#route-title").textContent, "fast");
-  assert.equal(signals.get("router.error"), null);
-
-  router.destroy();
-  loader.destroy();
-});
-
-test("SSR-SPA router starts from existing HTML and intercepts later same-origin links", async () => {
+test("default SSR router starts from existing HTML without intercepting same-origin links", () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
   document.body.innerHTML = `
     <main>
-      <section async:boundary="route"><h1>Home</h1></section>
+      <section async:boundary="route"><h1 id="route-title">Home</h1></section>
       <a id="next" href="/next">Next</a>
     </main>
   `;
 
-  const signals = createSignalRegistry();
-  let requestedUrl;
-  const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
-    mode: "ssr-spa",
     root: document.body,
     boundary: "route",
     routes: createRouteRegistry({
       "/": route("home"),
       "/next": route("next")
-    }),
-    loader,
-    signals,
-    partials: createPartialRegistry({
-      next() {
-        throw new Error("ssr-spa should fetch route HTML instead of rendering local partials.");
-      }
-    }),
-    fetch: async (url) => {
-      requestedUrl = url;
-      return new Response(JSON.stringify({ html: `<h1 id="next-page">Next</h1>` }), {
-        headers: {
-          "content-type": "application/json"
-        }
-      });
-    }
+    })
   }).start();
 
-  assert.equal(document.querySelector("h1").textContent, "Home");
+  const event = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#next").dispatchEvent(event);
 
-  document.querySelector("#next").click();
-  await delay(0);
-
-  assert.equal(document.querySelector("#next-page").textContent, "Next");
-  assert.equal(signals.get("router.path"), "/next");
-  assert.equal(signals.get("router.route").partial, "next");
-  assert.match(requestedUrl, /\/__async\/route\?to=/);
+  assert.equal(router.mode, "ssr");
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(document.querySelector("#route-title").textContent, "Home");
+  assert.equal(router.signals.get("router.path"), "/");
 
   router.destroy();
-  loader.destroy();
 });
 
-test("SSR-SPA router catches intercepted link navigation failures", async () => {
+test("SPA router catches intercepted link navigation failures without corrupting the active boundary", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
   document.body.innerHTML = `
-    <a id="broken" href="/broken">Broken</a>
-    <section async:boundary="route"></section>
+    <main>
+      <a id="broken" href="/broken">Broken</a>
+      <section async:boundary="route"><h1 id="route-title">Home</h1></section>
+    </main>
   `;
 
   const signals = createSignalRegistry();
   const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
-    mode: "ssr-spa",
+    mode: "spa",
     root: document.body,
     boundary: "route",
     routes: createRouteRegistry({
@@ -538,23 +415,32 @@ test("SSR-SPA router catches intercepted link navigation failures", async () => 
     }),
     loader,
     signals,
-    fetch: async () => new Response("nope", { status: 500 })
+    partials: createPartialRegistry({
+      broken() {
+        throw new Error("broken route failed");
+      }
+    })
   }).start();
 
+  let event;
   const unhandled = await collectUnhandledRejections(async () => {
-    document.querySelector("#broken").click();
+    event = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    document.querySelector("#broken").dispatchEvent(event);
     await delay(0);
   });
 
+  assert.equal(event.defaultPrevented, true);
   assert.deepEqual(unhandled, []);
+  assert.equal(signals.get("router.path"), "/broken");
   assert.equal(signals.get("router.pending"), false);
-  assert.match(signals.get("router.error").message, /failed with 500/);
+  assert.match(signals.get("router.error").message, /broken route failed/);
+  assert.equal(document.querySelector("#route-title").textContent, "Home");
 
   router.destroy();
   loader.destroy();
 });
 
-test("SSR-SPA router catches intercepted submit navigation failures", async () => {
+test("SPA router catches intercepted submit navigation failures", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
   document.body.innerHTML = `
@@ -567,7 +453,7 @@ test("SSR-SPA router catches intercepted submit navigation failures", async () =
   const signals = createSignalRegistry();
   const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
-    mode: "ssr-spa",
+    mode: "spa",
     root: document.body,
     boundary: "route",
     routes: createRouteRegistry({
@@ -575,7 +461,11 @@ test("SSR-SPA router catches intercepted submit navigation failures", async () =
     }),
     loader,
     signals,
-    fetch: async () => new Response("nope", { status: 503 })
+    partials: createPartialRegistry({
+      search() {
+        throw new Error("search route failed");
+      }
+    })
   }).start();
 
   const submit = new window.Event("submit", { bubbles: true, cancelable: true });
@@ -587,13 +477,13 @@ test("SSR-SPA router catches intercepted submit navigation failures", async () =
   assert.equal(submit.defaultPrevented, true);
   assert.deepEqual(unhandled, []);
   assert.equal(signals.get("router.pending"), false);
-  assert.match(signals.get("router.error").message, /failed with 503/);
+  assert.match(signals.get("router.error").message, /search route failed/);
 
   router.destroy();
   loader.destroy();
 });
 
-test("SSR-SPA router catches popstate navigation failures", async () => {
+test("SPA router catches popstate navigation failures", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"></section>`;
@@ -601,7 +491,7 @@ test("SSR-SPA router catches popstate navigation failures", async () => {
   const signals = createSignalRegistry();
   const loader = Loader({ root: document.body, signals }).start();
   const router = createRouter({
-    mode: "ssr-spa",
+    mode: "spa",
     root: document.body,
     boundary: "route",
     routes: createRouteRegistry({
@@ -609,7 +499,11 @@ test("SSR-SPA router catches popstate navigation failures", async () => {
     }),
     loader,
     signals,
-    fetch: async () => new Response("nope", { status: 502 })
+    partials: createPartialRegistry({
+      broken() {
+        throw new Error("popstate route failed");
+      }
+    })
   }).start();
 
   window.history.pushState({}, "", "/broken");
@@ -621,13 +515,13 @@ test("SSR-SPA router catches popstate navigation failures", async () => {
   assert.deepEqual(unhandled, []);
   assert.equal(signals.get("router.path"), "/broken");
   assert.equal(signals.get("router.pending"), false);
-  assert.match(signals.get("router.error").message, /failed with 502/);
+  assert.match(signals.get("router.error").message, /popstate route failed/);
 
   router.destroy();
   loader.destroy();
 });
 
-test("SSR-SPA router ignores same-document hash links", async () => {
+test("SPA router ignores same-document hash links", async () => {
   const window = new Window({ url: "http://app.test/products?tab=info" });
   const { document } = window;
   document.body.innerHTML = `
@@ -637,22 +531,20 @@ test("SSR-SPA router ignores same-document hash links", async () => {
     <section async:boundary="route"><h1>Product</h1></section>
   `;
 
-  let requests = 0;
+  let renders = 0;
   const router = createRouter({
-    mode: "ssr-spa",
+    mode: "spa",
     root: document.body,
     boundary: "route",
     routes: createRouteRegistry({
       "/products": route("product")
     }),
-    fetch: async () => {
-      requests += 1;
-      return new Response(JSON.stringify({ html: "<h1>Updated</h1>" }), {
-        headers: {
-          "content-type": "application/json"
-        }
-      });
-    }
+    partials: createPartialRegistry({
+      product() {
+        renders += 1;
+        return "<h1>Updated</h1>";
+      }
+    })
   }).start();
 
   const hashOnly = new window.MouseEvent("click", { bubbles: true, cancelable: true });
@@ -663,16 +555,23 @@ test("SSR-SPA router ignores same-document hash links", async () => {
 
   assert.equal(hashOnly.defaultPrevented, false);
   assert.equal(samePathHash.defaultPrevented, false);
-  assert.equal(requests, 0);
+  assert.equal(renders, 0);
 
   const next = new window.MouseEvent("click", { bubbles: true, cancelable: true });
   document.querySelector("#next").dispatchEvent(next);
   await delay(0);
 
   assert.equal(next.defaultPrevented, true);
-  assert.equal(requests, 1);
+  assert.equal(renders, 1);
 
   router.destroy();
+});
+
+test("removed SSR-SPA router mode is rejected", () => {
+  assert.throws(
+    () => createRouter({ mode: "ssr-spa" }),
+    /Unknown router mode "ssr-spa"/
+  );
 });
 
 test("SSR router mode does not intercept link clicks", () => {

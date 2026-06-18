@@ -117,7 +117,7 @@ test("async signal server proxy calls unwrap values and apply returned effects",
   const server = createServerProxy({
     endpoint: "/__async/server",
     signals,
-    fetch: async () => new Response(
+    transport: async () => new Response(
       JSON.stringify({
         value: {
           id: "sku-1",
@@ -158,7 +158,7 @@ test("async signal server proxy calls receive the active abort signal", async ()
   const server = createServerProxy({
     endpoint: "/__async/server",
     signals,
-    fetch: async (_url, init) => {
+    transport: async (_url, init) => {
       aborts.push(init.signal);
       await delay(aborts.length === 1 ? 30 : 0, init.signal);
       return new Response(
@@ -200,7 +200,7 @@ test("async signal stores normalized server errors with stable messages", async 
   const signals = createSignalRegistry();
   const server = createServerProxy({
     endpoint: "/__async/server",
-    fetch: async () => new Response(
+    transport: async () => new Response(
       JSON.stringify({
         error: {
           message: "No product",

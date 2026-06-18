@@ -2,7 +2,7 @@
 // Server-capable type declarations for @async/framework.
 
 export type RuntimeTarget = "browser" | "server";
-export type RouterMode = "csr" | "spa" | "ssr" | "ssr-spa" | "mpa";
+export type RouterMode = "csr" | "spa" | "ssr" | "mpa";
 export type AsyncSignalStatus = "idle" | "loading" | "ready" | "error";
 export type MaybePromise<T> = T | Promise<T>;
 export type Cleanup = () => void;
@@ -261,6 +261,7 @@ export interface ServerContext {
 }
 
 export type ServerFunction<T = unknown> = (this: ServerContext, ...args: unknown[]) => MaybePromise<ServerResult<T>>;
+export type ServerProxyTransport = (url: string, init: RequestInit) => MaybePromise<Response>;
 
 export interface ServerNamespace {
   run<T = unknown>(id: string, args?: unknown[], context?: Partial<ServerContext>): Promise<T>;
@@ -275,7 +276,7 @@ export interface ServerNamespace {
 
 export interface ServerProxyOptions {
   endpoint?: string;
-  fetch?: typeof fetch;
+  transport: ServerProxyTransport;
   signals?: SignalRegistry;
   loader?: LoaderInstance;
   router?: Router;
@@ -378,8 +379,6 @@ export interface RouterOptions {
   server?: ServerNamespace;
   cache?: CacheRegistry;
   partials?: PartialRegistry;
-  fetch?: typeof fetch;
-  routeEndpoint?: string;
   attributes?: AttributeConfig;
   scheduler?: Scheduler;
 }
@@ -607,8 +606,6 @@ export interface CreateAppOptions extends LoaderOptions {
   routes?: RouteRegistry;
   partials?: PartialRegistry;
   components?: ComponentRegistry;
-  fetch?: typeof fetch;
-  routeEndpoint?: string;
   request?: Request;
   locals?: unknown;
   requestContext?: RequestContextStore;
@@ -724,7 +721,7 @@ export declare function createScheduler(options?: SchedulerOptions): Scheduler;
 export declare function defineRoute(partial: string, options?: Omit<RouteDefinition, "partial">): RouteDefinition;
 export declare const route: typeof defineRoute;
 export declare function applyServerResult(result: unknown, context?: Record<string, unknown>): Promise<unknown>;
-export declare function createServerProxy(options?: ServerProxyOptions): ServerNamespace;
+export declare function createServerProxy(options: ServerProxyOptions): ServerNamespace;
 export declare function createServerRegistry(initialMap?: Record<string, ServerFunction>, options?: { registry?: RegistryStore; type?: "server" }): ServerNamespace;
 export declare function createRequestContextStore(): RequestContextStore;
 export declare function resolveServerCommandArguments(args: Array<{ type: "local"; name: string } | { type: "signal"; path: string }>, context?: Record<string, unknown>): { args: unknown[]; signalValues: Record<string, unknown>; signalPaths: string[] };

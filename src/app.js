@@ -349,7 +349,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       return;
     }
     router = router ?? createRouter({
-      mode: options.mode ?? "ssr-spa",
+      mode: options.mode ?? "ssr",
       root,
       boundary: options.boundary ?? "route",
       routes,
@@ -360,8 +360,6 @@ export function createApp(appOrDefinition = Async, options = {}) {
       cache: browserCache,
       partials,
       scheduler,
-      fetch: options.fetch,
-      routeEndpoint: options.routeEndpoint,
       attributes
     });
     runtime.router = router;
