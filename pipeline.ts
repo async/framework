@@ -98,10 +98,19 @@ export default definePipeline({
 
     "release-ensure": task({
       description: "Create or verify the release tag and GitHub Release before package publishing.",
-      dependsOn: ["pack"],
+      dependsOn: ["release-evidence"],
       inputs: ["source"],
       cache: false,
       run: sh`pnpm async-pipeline release ensure --package ${packagePath}`
+    }),
+
+    "release-evidence": task({
+      description: "Verify package-owned bundle and scenario release evidence before release notes are synced.",
+      dependsOn: ["pack"],
+      inputs: ["source"],
+      outputs: [".async/release/evidence.json"],
+      cache: false,
+      run: sh`pnpm run release:evidence:check`
     }),
 
     "publish-github": task({

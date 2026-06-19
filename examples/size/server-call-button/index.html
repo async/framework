@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Async scenario: server call button</title>
+  </head>
+  <body>
+    <main>
+      <button type="button" on:click="server.products.save(productId)">Save</button>
+      <strong signal:text="savedTitle"></strong>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

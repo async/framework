@@ -215,6 +215,9 @@ test("temporary project can import generated dist package subpaths", async () =>
       import * as rootPackage from "@async/framework";
       import * as browserPackage from "@async/framework/browser";
       import * as serverPackage from "@async/framework/server";
+      import * as runtimePackage from "@async/framework/runtime";
+      import * as runtimeSignalsPackage from "@async/framework/runtime/signals";
+      import * as runtimeEventsPackage from "@async/framework/runtime/events";
       import manifest from "@async/framework/package.json" with { type: "json" };
 
       console.log(JSON.stringify({
@@ -224,6 +227,9 @@ test("temporary project can import generated dist package subpaths", async () =>
         browserServerRegistry: typeof browserPackage.createServerRegistry,
         serverCreateApp: typeof serverPackage.createApp,
         serverRequestContextStore: typeof serverPackage.createRequestContextStore,
+        runtimeStart: typeof runtimePackage.start,
+        runtimeSignalsStart: typeof runtimeSignalsPackage.startSignals,
+        runtimeEventsStart: typeof runtimeEventsPackage.startEvents,
         version: manifest.version
       }));
     `, "utf8");
@@ -249,6 +255,9 @@ test("temporary project can import generated dist package subpaths", async () =>
       browserServerRegistry: "undefined",
       serverCreateApp: "function",
       serverRequestContextStore: "function",
+      runtimeStart: "function",
+      runtimeSignalsStart: "function",
+      runtimeEventsStart: "function",
       version: manifest.version
     });
     assert.deepEqual(browserCondition, {
@@ -289,6 +298,9 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       import * as rootPackage from "@async/framework";
       import * as browserPackage from "@async/framework/browser";
       import * as serverPackage from "@async/framework/server";
+      import * as runtimePackage from "@async/framework/runtime";
+      import * as runtimeSignalsPackage from "@async/framework/runtime/signals";
+      import * as runtimeEventsPackage from "@async/framework/runtime/events";
       import manifest from "@async/framework/package.json" with { type: "json" };
 
       console.log(JSON.stringify({
@@ -298,6 +310,9 @@ test("packed package can be installed and resolves browser/server entrypoints", 
         browserRequestContextStore: typeof browserPackage.createRequestContextStore,
         browserServerProxy: typeof browserPackage.createServerProxy,
         serverRequestContextStore: typeof serverPackage.createRequestContextStore,
+        runtimeStart: typeof runtimePackage.start,
+        runtimeSignalsStart: typeof runtimeSignalsPackage.startSignals,
+        runtimeEventsStart: typeof runtimeEventsPackage.startEvents,
         version: manifest.version
       }));
     `, "utf8");
@@ -331,6 +346,9 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       browserRequestContextStore: "undefined",
       browserServerProxy: "function",
       serverRequestContextStore: "function",
+      runtimeStart: "function",
+      runtimeSignalsStart: "function",
+      runtimeEventsStart: "function",
       version: manifest.version
     });
     assert.deepEqual(browserCondition, {
@@ -364,19 +382,43 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       ["browser", "import", "default"],
       ["types", "browser", "import", "default"]
     );
+    const runtime = await assertPackedExportParity(
+      packageRoot,
+      "./runtime",
+      ["import", "default"],
+      ["types", "import", "default"]
+    );
+    const runtimeSignals = await assertPackedExportParity(
+      packageRoot,
+      "./runtime/signals",
+      ["import", "default"],
+      ["types", "import", "default"]
+    );
+    const runtimeEvents = await assertPackedExportParity(
+      packageRoot,
+      "./runtime/events",
+      ["import", "default"],
+      ["types", "import", "default"]
+    );
 
     assert.deepEqual(
       {
         rootNode: [rootNode.declarationTarget, rootNode.runtimeTarget],
         rootBrowser: [rootBrowser.declarationTarget, rootBrowser.runtimeTarget],
         explicitServer: [explicitServer.declarationTarget, explicitServer.runtimeTarget],
-        explicitBrowser: [explicitBrowser.declarationTarget, explicitBrowser.runtimeTarget]
+        explicitBrowser: [explicitBrowser.declarationTarget, explicitBrowser.runtimeTarget],
+        runtime: [runtime.declarationTarget, runtime.runtimeTarget],
+        runtimeSignals: [runtimeSignals.declarationTarget, runtimeSignals.runtimeTarget],
+        runtimeEvents: [runtimeEvents.declarationTarget, runtimeEvents.runtimeTarget]
       },
       {
         rootNode: ["./framework.d.ts", "./server.js"],
         rootBrowser: ["./browser.d.ts", "./browser.min.js"],
         explicitServer: ["./framework.d.ts", "./server.js"],
-        explicitBrowser: ["./browser.d.ts", "./browser.js"]
+        explicitBrowser: ["./browser.d.ts", "./browser.js"],
+        runtime: ["./runtime.d.ts", "./runtime.js"],
+        runtimeSignals: ["./runtime/signals.d.ts", "./runtime/signals.js"],
+        runtimeEvents: ["./runtime/events.d.ts", "./runtime/events.js"]
       }
     );
 
@@ -396,11 +438,18 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       import { ${explicitBrowser.valueExports.join(", ")} } from "@async/framework/browser";
       console.log("ok");
     `, "utf8");
+    await writeFile(join(project, "check-runtime-static.mjs"), `
+      import { ${runtime.valueExports.join(", ")} } from "@async/framework/runtime";
+      import { ${runtimeSignals.valueExports.join(", ")} } from "@async/framework/runtime/signals";
+      import { ${runtimeEvents.valueExports.join(", ")} } from "@async/framework/runtime/events";
+      console.log("ok");
+    `, "utf8");
 
     await execFileAsync(process.execPath, ["check-root-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["--conditions=browser", "check-root-browser-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["check-server-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["check-browser-static.mjs"], { cwd: project });
+    await execFileAsync(process.execPath, ["check-runtime-static.mjs"], { cwd: project });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -424,6 +473,9 @@ test("source package metadata owns the minimal public export spec", () => {
     ".",
     "./browser",
     "./server",
+    "./runtime",
+    "./runtime/signals",
+    "./runtime/events",
     "./package.json"
   ]);
   assert.equal(manifest.devDependencies.terser, "5.48.0");
@@ -434,6 +486,9 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
     ".",
     "./browser",
     "./server",
+    "./runtime",
+    "./runtime/signals",
+    "./runtime/events",
     "./package.json"
   ]);
   assert.equal("main" in publishManifest, false);
@@ -448,6 +503,9 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
   assert.equal(resolvePackageTarget(publishManifest.exports["."], ["node", "types", "import", "default"]), "./framework.d.ts");
   assert.equal(publishManifest.exports["./browser"].import, "./browser.js");
   assert.equal(publishManifest.exports["./server"].import, "./server.js");
+  assert.equal(publishManifest.exports["./runtime"].import, "./runtime.js");
+  assert.equal(publishManifest.exports["./runtime/signals"].import, "./runtime/signals.js");
+  assert.equal(publishManifest.exports["./runtime/events"].import, "./runtime/events.js");
   assert.equal(publishManifest.exports["./browser.min.js"], undefined);
   assert.equal(publishManifest.exports["./browser.umd.js"], undefined);
   assert.equal(publishManifest.exports["./browser.umd.min.js"], undefined);
@@ -473,6 +531,13 @@ test("package file list only publishes generated framework artifacts", () => {
   assert.ok(publishManifest.files.includes("server.js"));
   assert.ok(publishManifest.files.includes("framework.ts"));
   assert.ok(publishManifest.files.includes("framework.d.ts"));
+  assert.ok(publishManifest.files.includes("runtime.js"));
+  assert.ok(publishManifest.files.includes("runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("runtime/signals.js"));
+  assert.ok(publishManifest.files.includes("runtime/signals.d.ts"));
+  assert.ok(publishManifest.files.includes("runtime/events.js"));
+  assert.ok(publishManifest.files.includes("runtime/events.d.ts"));
+  assert.ok(publishManifest.files.includes("runtime/shared.js"));
 });
 
 test("dist browser.ts is a bundled TypeScript entrypoint", async () => {

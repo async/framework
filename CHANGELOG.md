@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.16 - 2026-06-19
+
+- Added runtime slice entrypoints for `@async/framework/runtime`,
+  `@async/framework/runtime/signals`, and `@async/framework/runtime/events`.
+- Added generated package artifacts and installed-package coverage for runtime
+  slice subpaths.
+- Added deterministic scenario-size fixtures and checks for runtime, router,
+  server-call, and boundary receiver examples.
+- Added package-owned release evidence checks before release ensure so generated
+  release workflows verify bundle and scenario evidence before publishing.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 197,173 B (197.2 KB / 0.197 MB), gzip 37,198 B (37.2 KB / 0.037 MB), br 30,914 B (30.9 KB / 0.031 MB) -> `browser.min.js` raw 84,013 B (84.0 KB / 0.084 MB), gzip 24,894 B (24.9 KB / 0.025 MB), br 22,079 B (22.1 KB / 0.022 MB); delta raw -113,160 B (-113.2 KB / -0.113 MB), gzip -12,304 B (-12.3 KB / -0.012 MB), br -8,835 B (-8.8 KB / -0.009 MB).
+
 ## 0.11.15 - 2026-06-19
 
 - Made the source package private and kept its public surface to the minimal

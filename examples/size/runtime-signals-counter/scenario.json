@@ -1,0 +1,13 @@
+{
+  "id": "runtime-signals-counter",
+  "entry": "main.js",
+  "scripts": [
+    "../../../dist/runtime/signals.js",
+    "../../../dist/runtime/shared.js",
+    "main.js"
+  ],
+  "budget": {
+    "mode": "baseline",
+    "maxGzipBytes": 4000
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "server-call-button",
+  "entry": "main.js",
+  "scripts": [
+    "../../../dist/browser.min.js",
+    "main.js"
+  ],
+  "budget": {
+    "mode": "baseline",
+    "maxGzipBytes": 26750
+  }
+}

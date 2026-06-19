@@ -1,0 +1,12 @@
+{
+  "id": "events-counter",
+  "entry": "main.js",
+  "scripts": [
+    "../../../dist/browser.min.js",
+    "main.js"
+  ],
+  "budget": {
+    "mode": "baseline",
+    "maxGzipBytes": 26050
+  }
+}

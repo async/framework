@@ -1,0 +1,16 @@
+{
+  "id": "runtime-lazy-handler",
+  "entry": "main.js",
+  "scripts": [
+    "../../../dist/runtime.js",
+    "../../../dist/runtime/signals.js",
+    "../../../dist/runtime/events.js",
+    "../../../dist/runtime/shared.js",
+    "main.js",
+    "handler.js"
+  ],
+  "budget": {
+    "mode": "baseline",
+    "maxGzipBytes": 7500
+  }
+}

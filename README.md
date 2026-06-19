@@ -43,10 +43,10 @@ Async.start({ root: document });
 
 ## What It Is
 
-`@async/framework` is the Layer 1 runtime plus the first Layer 2 app/server
-primitives. It keeps the runtime small and explicit:
+`@async/framework` is the L1 runtime plus the first L1.5 app/server and
+streaming primitives. It keeps the runtime small and explicit:
 
-- No build step for Layer 1 consumers.
+- No build step for L1 consumers.
 - No virtual DOM, diff path, hydration runtime, or component rerender loop.
 - Signals are the state boundary.
 - `Async.use(...)` registers app declarations before or after startup.
@@ -68,18 +68,14 @@ to the same runtime registries and HTML protocol.
 Async is designed as layers, so each level can stay useful without forcing the
 next level on every app.
 
-| Layer | Name | Requirement | Purpose |
+| Shorthand | Name | Requirement | Purpose |
 | --- | --- | --- | --- |
-| 1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, scheduler, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
-| 2 | App/server layer | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial registry, SSR output, browser activation, and split browser/server cache. |
-| 3 | Authoring build | Build step required. | JSX, ESM, and TypeScript authoring that lowers into Layer 1 HTML attributes and Layer 2 registries. |
-| 4 | Chunk and resumability metadata | Build metadata required. | Lazy module manifests, visibility/prefetch hints, resource graphs, and resumability records that the bootloader can consume. |
-| 5 | Framework compiler | Compiler required. | Server/client partitioning, code motion, optimized registry generation, serialized closures, and deeper resumability transforms. |
-| 6 | TSRX and intent layer | Higher-level compiler required. | More declarative author intent, AI/compiler-friendly metadata, and source forms that generate lower-layer Async apps. |
+| L1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, scheduler, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
+| L1.5 | App/server and streaming bridge | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial registry, SSR output, browser activation, split browser/server cache, and streamed boundary patches. |
+| L2 | Build-required authoring and compiler profile | Build step required. | JSX, ESM, and TypeScript authoring, optimizer reports, generated plans, generated registries, chunks, manifests, and future resumability records that lower onto L1 and L1.5 protocols. |
 
-The package in this repository intentionally focuses on Layers 1 and 2. Layers
-3 through 6 are higher authoring surfaces, not extra runtime requirements for
-plain HTML apps.
+The package in this repository intentionally focuses on L1 and L1.5. L2 is a
+higher authoring surface, not an extra runtime requirement for plain HTML apps.
 
 ## Install
 

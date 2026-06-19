@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "package": "@async/framework",
+  "scenarios": [
+    {
+      "id": "boundary-receiver",
+      "entry": "examples/size/boundary-receiver/main.js",
+      "scripts": [
+        {
+          "file": "dist/browser.min.js",
+          "rawBytes": 84013,
+          "gzipBytes": 24894
+        },
+        {
+          "file": "examples/size/boundary-receiver/main.js",
+          "rawBytes": 355,
+          "gzipBytes": 217
+        }
+      ],
+      "closure": {
+        "rawBytes": 84368,
+        "gzipBytes": 25039
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 26500
+      }
+    },
+    {
+      "id": "events-counter",
+      "entry": "examples/size/events-counter/main.js",
+      "scripts": [
+        {
+          "file": "dist/browser.min.js",
+          "rawBytes": 84013,
+          "gzipBytes": 24894
+        },
+        {
+          "file": "examples/size/events-counter/main.js",
+          "rawBytes": 253,
+          "gzipBytes": 186
+        }
+      ],
+      "closure": {
+        "rawBytes": 84266,
+        "gzipBytes": 25026
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 26050
+      }
+    },
+    {
+      "id": "router-basic",
+      "entry": "examples/size/router-basic/main.js",
+      "scripts": [
+        {
+          "file": "dist/browser.min.js",
+          "rawBytes": 84013,
+          "gzipBytes": 24894
+        },
+        {
+          "file": "examples/size/router-basic/main.js",
+          "rawBytes": 316,
+          "gzipBytes": 217
+        }
+      ],
+      "closure": {
+        "rawBytes": 84329,
+        "gzipBytes": 25066
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 26500
+      }
+    },
+    {
+      "id": "runtime-events-counter",
+      "entry": "examples/size/runtime-events-counter/main.js",
+      "scripts": [
+        {
+          "file": "dist/runtime.js",
+          "rawBytes": 1605,
+          "gzipBytes": 580
+        },
+        {
+          "file": "dist/runtime/signals.js",
+          "rawBytes": 5447,
+          "gzipBytes": 1599
+        },
+        {
+          "file": "dist/runtime/events.js",
+          "rawBytes": 7047,
+          "gzipBytes": 1933
+        },
+        {
+          "file": "dist/runtime/shared.js",
+          "rawBytes": 2435,
+          "gzipBytes": 841
+        },
+        {
+          "file": "examples/size/runtime-events-counter/main.js",
+          "rawBytes": 424,
+          "gzipBytes": 257
+        }
+      ],
+      "closure": {
+        "rawBytes": 16958,
+        "gzipBytes": 3846
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 7000
+      }
+    },
+    {
+      "id": "runtime-input-writer",
+      "entry": "examples/size/runtime-input-writer/main.js",
+      "scripts": [
+        {
+          "file": "dist/runtime.js",
+          "rawBytes": 1605,
+          "gzipBytes": 580
+        },
+        {
+          "file": "dist/runtime/signals.js",
+          "rawBytes": 5447,
+          "gzipBytes": 1599
+        },
+        {
+          "file": "dist/runtime/events.js",
+          "rawBytes": 7047,
+          "gzipBytes": 1933
+        },
+        {
+          "file": "dist/runtime/shared.js",
+          "rawBytes": 2435,
+          "gzipBytes": 841
+        },
+        {
+          "file": "examples/size/runtime-input-writer/main.js",
+          "rawBytes": 370,
+          "gzipBytes": 238
+        }
+      ],
+      "closure": {
+        "rawBytes": 16904,
+        "gzipBytes": 3824
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 7000
+      }
+    },
+    {
+      "id": "runtime-lazy-handler",
+      "entry": "examples/size/runtime-lazy-handler/main.js",
+      "scripts": [
+        {
+          "file": "dist/runtime.js",
+          "rawBytes": 1605,
+          "gzipBytes": 580
+        },
+        {
+          "file": "dist/runtime/signals.js",
+          "rawBytes": 5447,
+          "gzipBytes": 1599
+        },
+        {
+          "file": "dist/runtime/events.js",
+          "rawBytes": 7047,
+          "gzipBytes": 1933
+        },
+        {
+          "file": "dist/runtime/shared.js",
+          "rawBytes": 2435,
+          "gzipBytes": 841
+        },
+        {
+          "file": "examples/size/runtime-lazy-handler/main.js",
+          "rawBytes": 546,
+          "gzipBytes": 299
+        },
+        {
+          "file": "examples/size/runtime-lazy-handler/handler.js",
+          "rawBytes": 92,
+          "gzipBytes": 101
+        }
+      ],
+      "closure": {
+        "rawBytes": 17172,
+        "gzipBytes": 3905
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 7500
+      }
+    },
+    {
+      "id": "runtime-signals-counter",
+      "entry": "examples/size/runtime-signals-counter/main.js",
+      "scripts": [
+        {
+          "file": "dist/runtime/signals.js",
+          "rawBytes": 5447,
+          "gzipBytes": 1599
+        },
+        {
+          "file": "dist/runtime/shared.js",
+          "rawBytes": 2435,
+          "gzipBytes": 841
+        },
+        {
+          "file": "examples/size/runtime-signals-counter/main.js",
+          "rawBytes": 201,
+          "gzipBytes": 166
+        }
+      ],
+      "closure": {
+        "rawBytes": 8083,
+        "gzipBytes": 2277
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 4000
+      }
+    },
+    {
+      "id": "server-call-button",
+      "entry": "examples/size/server-call-button/main.js",
+      "scripts": [
+        {
+          "file": "dist/browser.min.js",
+          "rawBytes": 84013,
+          "gzipBytes": 24894
+        },
+        {
+          "file": "examples/size/server-call-button/main.js",
+          "rawBytes": 569,
+          "gzipBytes": 322
+        }
+      ],
+      "closure": {
+        "rawBytes": 84582,
+        "gzipBytes": 25135
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 26750
+      }
+    },
+    {
+      "id": "signals-counter",
+      "entry": "examples/size/signals-counter/main.js",
+      "scripts": [
+        {
+          "file": "dist/browser.min.js",
+          "rawBytes": 84013,
+          "gzipBytes": 24894
+        },
+        {
+          "file": "examples/size/signals-counter/main.js",
+          "rawBytes": 159,
+          "gzipBytes": 141
+        }
+      ],
+      "closure": {
+        "rawBytes": 84172,
+        "gzipBytes": 24982
+      },
+      "budget": {
+        "mode": "baseline",
+        "maxGzipBytes": 26000
+      }
+    }
+  ]
+}

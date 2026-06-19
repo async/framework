@@ -65,12 +65,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run pipeline task pack
+      - name: Run pipeline task release-evidence
         uses: async/actions/run@v0
         with:
-          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task pack"
+          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task release-evidence"
           check-generated: false
-          artifact-name: async-pipeline-${{ github.job }}-pack-runs
+          artifact-name: async-pipeline-${{ github.job }}-release-evidence-runs
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -26,7 +26,7 @@ root workspace `AGENTS.md` still applies.
   path, no implicit fetches during startup, and no server-only state or cache
   contents leaking into browser snapshots.
 - Keep Layer 1 and Layer 1.5 understandable without future compiler layers.
-  System 2 or compiler-required work must compile down to the same HTML,
+  L2 or compiler-required work must compile down to the same HTML,
   registry, snapshot, server-envelope, route-partial, cache, and boundary
   protocol.
 
@@ -37,19 +37,20 @@ Use these abbreviations in ADRs, issues, review notes, and Codex prompts:
 - `L1`: Layer 1, the no-build browser runtime core. It owns DOM scanning,
   attribute prefixes, event binding, signals, command handlers, startup, and the
   smallest usable runtime.
-- `L1.5`: Layer 1.5, the ordering layer above the runtime core. It owns the
-  scheduler, async signal settling, boundary ordering, route partial activation,
-  stream sequencing, and reveal/OOS coordination that still works without a
-  compiler.
-- `L2`: Layer 2, the app/server integration layer. It owns server functions,
-  routes, SSR output, build adapters, cache partitions, and higher-level
-  conventions layered onto L1 and L1.5 protocols.
+- `L1.5`: Layer 1.5, the no-build/low-build server and streaming bridge above
+  the runtime core. It owns scheduler ordering, async signal settling, SSR
+  activation, route partials, browser/server cache split, boundary patches,
+  stream sequencing, and reveal/OOS coordination without requiring a compiler.
+- `L2`: Layer 2, the build-required authoring/compiler profile. It owns JSX/TSX
+  authoring, build adapters, optimizer reports, generated plans, generated
+  registries, and chunk/manifest decisions that lower onto L1 and L1.5
+  protocols.
 - `NB`: no-build profile. Author HTML and JavaScript run directly with
   `Async.start(...)`, default shorthand attributes, and no compiler.
 - `BR`: build-required profile. Author JSX/TSX uses imports such as
-  `@async/framework/jsx`; the compiler/optimizer emits L1/L1.5/L2-compatible
+  `@async/framework/jsx`; the compiler/optimizer emits L1/L1.5-compatible
   output.
-- `OOOS`: out-of-order streaming/rendering. Chunks may become ready in a
+- `OOS`: out-of-order streaming/rendering. Chunks may become ready in a
   different order than source order.
 - `Suspense`: async boundary ownership for fallback and final content.
 - `Reveal`: OOS commit policy for sibling boundaries, such as `as-ready`,
