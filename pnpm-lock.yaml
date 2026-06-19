@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@async/pipeline':
-        specifier: 0.9.24
-        version: 0.9.24
+        specifier: 0.9.25
+        version: 0.9.25
       happy-dom:
         specifier: 20.10.5
         version: 20.10.5
@@ -20,8 +20,8 @@ importers:
 
 packages:
 
-  '@async/pipeline@0.9.24':
-    resolution: {integrity: sha512-y/D8o+2gCVSmlQtXOcBXMKBddy2fZ8Px3B0fYKdf3uS9DkZppVMVpXzcQvbPKSVJm1xE8F+AWmeUalFgUM8bOQ==}
+  '@async/pipeline@0.9.25':
+    resolution: {integrity: sha512-pss+rn7lPz01XKJ6IvMrUZn4PUiDDAvLJR3DODAMvpwlf/O2jCzLVMOWP3THb7uG2d//shdDrXu1e8zbywyYcg==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -106,7 +106,7 @@ packages:
 
 snapshots:
 
-  '@async/pipeline@0.9.24': {}
+  '@async/pipeline@0.9.25': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

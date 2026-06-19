@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.22 - 2026-06-19
+
+- Updated framework release automation to consume `@async/pipeline@0.9.25`,
+  whose generated release workflow runs package-owned release evidence before
+  release plan/inspect/changelog/notes steps so `dist/` exists before package
+  inspection.
+- Kept release-description sync checks on the released pipeline path after the
+  existing `v0.11.20` and `v0.11.21` GitHub Release description repairs.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 221,403 B (221.4 KB / 0.221 MB), gzip 42,093 B (42.1 KB / 0.042 MB), br 34,797 B (34.8 KB / 0.035 MB) -> `browser.min.js` raw 95,027 B (95.0 KB / 0.095 MB), gzip 28,145 B (28.1 KB / 0.028 MB), br 24,793 B (24.8 KB / 0.025 MB); delta raw -126,376 B (-126.4 KB / -0.126 MB), gzip -13,948 B (-13.9 KB / -0.014 MB), br -10,004 B (-10.0 KB / -0.010 MB).
+
 ## 0.11.21 - 2026-06-19
 
 - Updated framework release automation to consume `@async/pipeline@0.9.24`,

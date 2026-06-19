@@ -68,6 +68,15 @@ jobs:
           manifest: .async/actions/cache/publish-cache-manifest.json
           trust: read-only
 
+      - name: Run pipeline task release-evidence
+        uses: async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task release-evidence"
+          check-generated: false
+          artifact-name: async-pipeline-${{ github.job }}-release-evidence-runs
+        env:
+          CI: true
+
       - name: Plan release package
         uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
@@ -105,15 +114,6 @@ jobs:
           package-path: "./dist"
           evidence-dir: .async/release
           release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
-        env:
-          CI: true
-
-      - name: Run pipeline task release-evidence
-        uses: async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
-        with:
-          command: "pnpm async-pipeline github check && pnpm async-pipeline run-task release-evidence"
-          check-generated: false
-          artifact-name: async-pipeline-${{ github.job }}-release-evidence-runs
         env:
           CI: true
 
