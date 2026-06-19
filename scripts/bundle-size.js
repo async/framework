@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const distRoot = join(root, "dist");
 const check = process.argv.includes("--check");
 
 const source = await size("browser.ts");
@@ -32,7 +33,7 @@ if (check) {
 }
 
 async function size(file) {
-  const buffer = await readFile(join(root, file));
+  const buffer = await readFile(join(distRoot, file));
   return {
     raw: buffer.byteLength,
     gzip: gzipSync(buffer, { level: 9 }).byteLength

@@ -1,6 +1,6 @@
 import { definePipeline, env, job, sh, task, trigger } from "@async/pipeline";
 
-const packagePath = ".";
+const packagePath = "./dist";
 
 export default definePipeline({
   name: "async-framework",
@@ -34,10 +34,10 @@ export default definePipeline({
         "github:check": "github check",
         "github:generate": "github generate",
         "pages": "run-task docs.site",
-        "publish:github:release": "publish github release --package . --registry https://npm.pkg.github.com",
-        "publish:npm": "publish npm --package .",
-        "release:doctor": "release doctor --package .",
-        "release:ensure": "release ensure --package .",
+        "publish:github:release": "publish github release --package ./dist --registry https://npm.pkg.github.com",
+        "publish:npm": "publish npm --package ./dist",
+        "release:doctor": "release doctor --package ./dist",
+        "release:ensure": "release ensure --package ./dist",
         "sync:check": "sync check",
         "sync:generate": "sync generate"
       }

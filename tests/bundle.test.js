@@ -8,14 +8,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import vm from "node:vm";
-import * as bundle from "../browser.js";
-import * as minBundle from "../browser.min.js";
+import * as bundle from "../dist/browser.js";
+import * as minBundle from "../dist/browser.min.js";
 import * as source from "../src/browser.js";
 import * as serverSource from "../src/index.js";
 import manifest from "../package.json" with { type: "json" };
+import publishManifest from "../dist/package.json" with { type: "json" };
 
 const execFileAsync = promisify(execFile);
 const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+const distRoot = join(repoRoot, "dist");
+
+function distFileUrl(file) {
+  return new URL(`../dist/${file}`, import.meta.url);
+}
 
 function resolvePackageTarget(target, conditions) {
   if (typeof target === "string") {
@@ -91,7 +97,7 @@ test("UMD helper exports do not conflict with app hub fields", () => {
 
 test("browser ESM bundles are standalone without relative imports", () => {
   for (const file of ["browser.js", "browser.min.js"]) {
-    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const contents = readFileSync(distFileUrl(file), "utf8");
 
     assert.doesNotMatch(contents, /^\s*import\s/m);
     assert.doesNotMatch(contents, /from\s+["']\.\//);
@@ -101,7 +107,7 @@ test("browser ESM bundles are standalone without relative imports", () => {
 
 test("browser minified bundles do not contain newlines", () => {
   for (const file of ["browser.min.js", "browser.umd.min.js"]) {
-    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const contents = readFileSync(distFileUrl(file), "utf8");
 
     assert.equal(contents.includes("\n"), false);
   }
@@ -114,7 +120,7 @@ test("browser bundles do not include server-only registry code", () => {
     "browser.umd.js",
     "browser.umd.min.js"
   ]) {
-    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const contents = readFileSync(distFileUrl(file), "utf8");
 
     assert.doesNotMatch(contents, /createServerRegistry/);
     assert.doesNotMatch(contents, /createRequestContextStore/);
@@ -137,7 +143,8 @@ test("published runtime sources and browser bundles do not use implicit global f
   ];
 
   for (const file of files) {
-    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const url = file.startsWith("src/") ? new URL(`../${file}`, import.meta.url) : distFileUrl(file);
+    const contents = readFileSync(url, "utf8");
 
     assert.doesNotMatch(contents, /globalThis\.fetch/, `${file} should not access globalThis.fetch`);
     assert.doesNotMatch(contents, /globalThis\[\s*["']fetch["']\s*\]/, `${file} should not access globalThis["fetch"]`);
@@ -146,7 +153,7 @@ test("published runtime sources and browser bundles do not use implicit global f
 
 test("browser UMD bundles expose the public browser runtime API", () => {
   for (const file of ["browser.umd.js", "browser.umd.min.js"]) {
-    const contents = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const contents = readFileSync(distFileUrl(file), "utf8");
     const browserContext = {};
     vm.runInNewContext(contents, browserContext, { filename: file });
 
@@ -179,7 +186,7 @@ test("browser UMD bundles expose the public browser runtime API", () => {
 });
 
 test("root UMD bundle rejects namespace conflicts before assignment", () => {
-  const contents = readFileSync(new URL("../browser.umd.js", import.meta.url), "utf8");
+  const contents = readFileSync(distFileUrl("browser.umd.js"), "utf8");
   const conflicting = contents.replace("const api = { ", "const api = { use: asyncSignal, ");
 
   assert.throws(
@@ -188,25 +195,22 @@ test("root UMD bundle rejects namespace conflicts before assignment", () => {
   );
 });
 
-test("root package and explicit subpath exports resolve correctly", async () => {
-  const rootPackage = await import("@async/framework");
-  const browserPackage = await import("@async/framework/browser");
-  const serverPackage = await import("@async/framework/server");
+test("dist server and browser entrypoints expose split runtime APIs", async () => {
+  const rootPackage = await import("../dist/server.js");
+  const browserPackage = await import("../dist/browser.js");
 
   assert.equal(typeof rootPackage.createServerRegistry, "function");
   assert.equal(typeof rootPackage.createRequestContextStore, "function");
   assert.equal(browserPackage.createServerRegistry, undefined);
   assert.equal(browserPackage.createRequestContextStore, undefined);
   assert.equal(typeof browserPackage.createServerProxy, "function");
-  assert.equal(typeof serverPackage.createServerRegistry, "function");
-  assert.equal(typeof serverPackage.createRequestContextStore, "function");
 });
 
-test("temporary project can import installed package subpaths", async () => {
+test("temporary project can import generated dist package subpaths", async () => {
   const root = await mkdtemp(join(tmpdir(), "async-framework-install-"));
   try {
     await mkdir(join(root, "node_modules", "@async"), { recursive: true });
-    await symlink(repoRoot, join(root, "node_modules", "@async", "framework"), "dir");
+    await symlink(distRoot, join(root, "node_modules", "@async", "framework"), "dir");
     await writeFile(join(root, "check.mjs"), `
       import * as rootPackage from "@async/framework";
       import * as browserPackage from "@async/framework/browser";
@@ -261,10 +265,14 @@ test("packed package can be installed and resolves browser/server entrypoints", 
   try {
     const packOutput = JSON.parse((await execFileAsync("npm", [
       "pack",
-      repoRoot,
+      distRoot,
       "--json",
       "--ignore-scripts"
     ], { cwd: root })).stdout);
+    const packedFiles = packOutput[0].files.map((file) => file.path);
+    assert.ok(packedFiles.includes("browser.js"));
+    assert.ok(packedFiles.includes("package.json"));
+    assert.equal(packedFiles.some((file) => file.startsWith("dist/")), false);
     const tarball = join(root, packOutput[0].filename);
     const project = join(root, "project");
     await mkdir(project);
@@ -300,12 +308,21 @@ test("packed package can be installed and resolves browser/server entrypoints", 
         requestContextStore: typeof rootPackage.createRequestContextStore
       }));
     `, "utf8");
+    await writeFile(join(project, "check-unexported-artifact.mjs"), `
+      try {
+        await import("@async/framework/browser.min.js");
+        console.log("resolved");
+      } catch (error) {
+        console.log(error.code);
+      }
+    `, "utf8");
 
     const installed = JSON.parse((await execFileAsync(process.execPath, ["check.mjs"], { cwd: project })).stdout);
     const browserCondition = JSON.parse((await execFileAsync(process.execPath, [
       "--conditions=browser",
       "check-browser-condition.mjs"
     ], { cwd: project })).stdout);
+    const unexportedArtifact = (await execFileAsync(process.execPath, ["check-unexported-artifact.mjs"], { cwd: project })).stdout.trim();
 
     assert.deepEqual(installed, {
       rootServerRegistry: "function",
@@ -320,6 +337,7 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       serverRegistry: "undefined",
       requestContextStore: "undefined"
     });
+    assert.equal(unexportedArtifact, "ERR_PACKAGE_PATH_NOT_EXPORTED");
 
     const packageRoot = join(project, "node_modules", "@async", "framework");
     const rootNode = await assertPackedExportParity(
@@ -388,51 +406,78 @@ test("packed package can be installed and resolves browser/server entrypoints", 
   }
 });
 
-test("package metadata keeps legacy size analyzers on the browser entry", () => {
-  assert.equal(manifest.main, "./server.js");
-  assert.equal(manifest.module, "./browser.min.js");
-  assert.equal(manifest.browser, "./browser.min.js");
-  assert.equal(manifest.types, "./framework.d.ts");
-  assert.deepEqual(manifest.exports["."].browser, {
-    types: "./browser.d.ts",
-    default: "./browser.min.js"
-  });
-  assert.deepEqual(manifest.exports["."].node, {
-    types: "./framework.d.ts",
-    default: "./server.js"
-  });
-  assert.deepEqual(manifest.exports["."].import, {
-    types: "./framework.d.ts",
-    default: "./server.js"
-  });
-  assert.equal(resolvePackageTarget(manifest.exports["."], ["browser", "import", "default"]), "./browser.min.js");
-  assert.equal(resolvePackageTarget(manifest.exports["."], ["browser", "types", "import", "default"]), "./browser.d.ts");
-  assert.equal(resolvePackageTarget(manifest.exports["."], ["node", "import", "default"]), "./server.js");
-  assert.equal(resolvePackageTarget(manifest.exports["."], ["node", "types", "import", "default"]), "./framework.d.ts");
-  assert.equal(manifest.exports["./browser"].import, "./browser.js");
-  assert.equal(manifest.exports["./server"].import, "./server.js");
+test("source package metadata owns the minimal public export spec", () => {
+  for (const field of [
+    "main",
+    "module",
+    "browser",
+    "types",
+    "files"
+  ]) {
+    assert.equal(field in manifest, false, `source package.json should not define ${field}`);
+  }
+  assert.equal(manifest.private, true);
   assert.equal(manifest.sideEffects, false);
+  assert.equal(manifest.unpkg, "./browser.umd.min.js");
+  assert.equal(manifest.jsdelivr, "./browser.umd.min.js");
+  assert.deepEqual(Object.keys(manifest.exports), [
+    ".",
+    "./browser",
+    "./server",
+    "./package.json"
+  ]);
   assert.equal(manifest.devDependencies.terser, "5.48.0");
 });
 
-test("package file list only publishes generated framework artifacts", () => {
-  assert.equal(manifest.files.includes("src"), false);
-  assert.equal(manifest.files.includes("tests"), false);
-  assert.equal(manifest.files.includes("examples"), false);
-  assert.ok(manifest.files.includes("browser.js"));
-  assert.ok(manifest.files.includes("browser.min.js"));
-  assert.ok(manifest.files.includes("browser.umd.js"));
-  assert.ok(manifest.files.includes("browser.umd.min.js"));
-  assert.ok(manifest.files.includes("browser.ts"));
-  assert.ok(manifest.files.includes("browser.d.ts"));
-  assert.ok(manifest.files.includes("server.js"));
-  assert.ok(manifest.files.includes("framework.ts"));
-  assert.ok(manifest.files.includes("framework.d.ts"));
+test("publish staging metadata keeps package artifacts at the tarball root", () => {
+  assert.deepEqual(Object.keys(publishManifest.exports), [
+    ".",
+    "./browser",
+    "./server",
+    "./package.json"
+  ]);
+  assert.equal("main" in publishManifest, false);
+  assert.equal("module" in publishManifest, false);
+  assert.equal("browser" in publishManifest, false);
+  assert.equal("types" in publishManifest, false);
+  assert.equal(publishManifest.unpkg, "./browser.umd.min.js");
+  assert.equal(publishManifest.jsdelivr, "./browser.umd.min.js");
+  assert.equal(resolvePackageTarget(publishManifest.exports["."], ["browser", "import", "default"]), "./browser.min.js");
+  assert.equal(resolvePackageTarget(publishManifest.exports["."], ["browser", "types", "import", "default"]), "./browser.d.ts");
+  assert.equal(resolvePackageTarget(publishManifest.exports["."], ["node", "import", "default"]), "./server.js");
+  assert.equal(resolvePackageTarget(publishManifest.exports["."], ["node", "types", "import", "default"]), "./framework.d.ts");
+  assert.equal(publishManifest.exports["./browser"].import, "./browser.js");
+  assert.equal(publishManifest.exports["./server"].import, "./server.js");
+  assert.equal(publishManifest.exports["./browser.min.js"], undefined);
+  assert.equal(publishManifest.exports["./browser.umd.js"], undefined);
+  assert.equal(publishManifest.exports["./browser.umd.min.js"], undefined);
+  assert.equal(publishManifest.files.includes("dist"), false);
+  assert.equal(JSON.stringify(publishManifest).includes("./dist"), false);
+  assert.equal(publishManifest.sideEffects, false);
+  assert.equal("private" in publishManifest, false);
+  assert.equal("packageManager" in publishManifest, false);
+  assert.equal("scripts" in publishManifest, false);
+  assert.equal("devDependencies" in publishManifest, false);
 });
 
-test("root browser.ts is a bundled TypeScript entrypoint", async () => {
-  const contents = readFileSync(new URL("../browser.ts", import.meta.url), "utf8");
-  const tsBundle = await import("../browser.ts");
+test("package file list only publishes generated framework artifacts", () => {
+  assert.equal(publishManifest.files.includes("src"), false);
+  assert.equal(publishManifest.files.includes("tests"), false);
+  assert.equal(publishManifest.files.includes("examples"), false);
+  assert.ok(publishManifest.files.includes("browser.js"));
+  assert.ok(publishManifest.files.includes("browser.min.js"));
+  assert.ok(publishManifest.files.includes("browser.umd.js"));
+  assert.ok(publishManifest.files.includes("browser.umd.min.js"));
+  assert.ok(publishManifest.files.includes("browser.ts"));
+  assert.ok(publishManifest.files.includes("browser.d.ts"));
+  assert.ok(publishManifest.files.includes("server.js"));
+  assert.ok(publishManifest.files.includes("framework.ts"));
+  assert.ok(publishManifest.files.includes("framework.d.ts"));
+});
+
+test("dist browser.ts is a bundled TypeScript entrypoint", async () => {
+  const contents = readFileSync(distFileUrl("browser.ts"), "utf8");
+  const tsBundle = await import("../dist/browser.ts");
 
   assert.deepEqual(Object.keys(tsBundle).sort(), Object.keys(source).sort());
   assert.doesNotMatch(contents, /^\s*import\s/m);
@@ -442,8 +487,8 @@ test("root browser.ts is a bundled TypeScript entrypoint", async () => {
 });
 
 test("browser and server declarations expose the right public APIs", () => {
-  const browserDeclarations = readFileSync(new URL("../browser.d.ts", import.meta.url), "utf8");
-  const serverDeclarations = readFileSync(new URL("../framework.d.ts", import.meta.url), "utf8");
+  const browserDeclarations = readFileSync(distFileUrl("browser.d.ts"), "utf8");
+  const serverDeclarations = readFileSync(distFileUrl("framework.d.ts"), "utf8");
 
   assertDeclarationRuntimeParity("browser", browserDeclarations, source);
   assertDeclarationRuntimeParity("server", serverDeclarations, serverSource);

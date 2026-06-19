@@ -1348,13 +1348,19 @@ pnpm run pipeline:release:doctor
 pnpm run release:check
 ```
 
-Root release artifacts such as `browser.js`, `browser.min.js`,
+Release artifacts such as `browser.js`, `browser.min.js`,
 `browser.umd.min.js`, `browser.ts`, `browser.d.ts`, `framework.ts`,
-`framework.d.ts`, and `server.js` are generated outputs. They remain part of the
-published package and CDN surface, but feature branches should edit source files
-and let `pnpm run bundle`, `pnpm test`, `pnpm run pack:check`, or the generated
-release workflow materialize them before packing. Use `pnpm run bundle:clean`
-to remove local generated artifacts after inspection.
+`framework.d.ts`, and `server.js` are generated into `dist/`. The generated
+`dist/` directory is the package root for `npm pack` and release publishing, so
+the published package and CDN surface still expose those files at package root
+rather than under `dist/`. The source `package.json` stays private and owns the
+minimal public export spec, while omitting legacy `main`/`module`/`browser`
+entry fields and generated package file lists. `scripts/build-framework-bundle.js`
+derives the generated `dist/package.json` and staged artifact names from that
+spec. Feature branches should edit source files and let `pnpm run bundle`,
+`pnpm test`, `pnpm run pack:check`, or the generated release workflow
+materialize the publish tree. Use `pnpm run bundle:clean` to remove local
+generated artifacts after inspection.
 
 `registry:lint` scans package source and examples for declared registry ids
 such as signals, handlers, server functions, partials, routes, and components.

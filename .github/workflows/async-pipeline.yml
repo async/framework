@@ -79,7 +79,7 @@ jobs:
       - name: Create or update GitHub Release
         uses: async/actions/publish@v0
         with:
-          package-path: "."
+          package-path: "./dist"
           mode: github-release
           registry: "https://registry.npmjs.org"
           dist-tag: "latest"
@@ -91,7 +91,7 @@ jobs:
       - name: Publish GitHub Packages mirror
         uses: async/actions/publish@v0
         with:
-          package-path: "."
+          package-path: "./dist"
           mode: github-packages
           registry: "https://npm.pkg.github.com"
           dist-tag: "latest"
@@ -103,7 +103,7 @@ jobs:
       - name: Publish npm package
         uses: async/actions/publish@v0
         with:
-          package-path: "."
+          package-path: "./dist"
           mode: npm
           registry: "https://registry.npmjs.org"
           dist-tag: "latest"
@@ -116,7 +116,7 @@ jobs:
       - name: Run release doctor
         uses: async/actions/publish@v0
         with:
-          package-path: "."
+          package-path: "./dist"
           mode: doctor
           registry: "https://registry.npmjs.org"
           dist-tag: "latest"
@@ -169,7 +169,7 @@ jobs:
       - name: Run release doctor
         uses: async/actions/publish@v0
         with:
-          package-path: "."
+          package-path: "./dist"
           mode: doctor
           registry: "https://registry.npmjs.org"
           dist-tag: "latest"

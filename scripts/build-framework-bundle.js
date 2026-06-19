@@ -1,29 +1,71 @@
 #!/usr/bin/env node
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { minify } from "terser";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const srcRoot = join(root, "src");
+const distRoot = join(root, "dist");
 const browserEntry = "src/browser.js";
 const serverEntry = "src/index.js";
-const outFiles = {
-  browserEsm: join(root, "browser.js"),
-  browserEsmMin: join(root, "browser.min.js"),
-  browserUmd: join(root, "browser.umd.js"),
-  browserUmdMin: join(root, "browser.umd.min.js"),
-  browserTs: join(root, "browser.ts"),
-  browserDts: join(root, "browser.d.ts"),
-  serverEsm: join(root, "server.js"),
-  frameworkTs: join(root, "framework.ts"),
-  frameworkDts: join(root, "framework.d.ts")
+const packageManifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+const packageExportSpec = packageManifest.exports;
+const browserExport = getPackageExport(packageExportSpec, "./browser");
+const serverExport = getPackageExport(packageExportSpec, "./server");
+const rootExport = getPackageExport(packageExportSpec, ".");
+const browserDts = packagePathToFile(resolveConditionalTarget(browserExport, ["types"]));
+const browserEsm = packagePathToFile(resolveConditionalTarget(browserExport, ["import", "default"]));
+const browserEsmMin = packagePathToFile(resolveConditionalTarget(rootExport, ["browser", "default"]));
+const browserUmdMin = packagePathToFile(resolveConditionalTarget(browserExport, ["unpkg"]) ?? packageManifest.unpkg);
+const browserUmd = unminifiedArtifact(browserUmdMin);
+const browserTs = typedSourceArtifact(browserEsm);
+const frameworkDts = packagePathToFile(resolveConditionalTarget(serverExport, ["types"]));
+const frameworkTs = typedSourceArtifact(frameworkDts);
+const packageJsonArtifact = packagePathToFile(resolveConditionalTarget(packageExportSpec, ["./package.json"]));
+const serverEsm = packagePathToFile(resolveConditionalTarget(serverExport, ["import", "node", "default"]));
+const generatedArtifacts = {
+  browserDts,
+  browserEsm,
+  browserEsmMin,
+  browserUmd,
+  browserUmdMin,
+  browserTs,
+  frameworkDts,
+  frameworkTs,
+  packageJson: packageJsonArtifact,
+  serverEsm
 };
+const copiedArtifacts = {
+  changelog: { source: "CHANGELOG.md", file: "CHANGELOG.md" },
+  readme: { source: "README.md", file: "README.md" },
+  license: { source: "LICENSE", file: "LICENSE" }
+};
+const publishArtifactFiles = {
+  ...Object.fromEntries(
+    Object.entries(copiedArtifacts).map(([id, { file }]) => [id, file])
+  ),
+  ...generatedArtifacts
+};
+const outFiles = Object.fromEntries(
+  Object.entries(generatedArtifacts).map(([id, file]) => [id, join(distRoot, file)])
+);
+const legacyRootOutFiles = Object.entries(generatedArtifacts)
+  .filter(([id]) => id !== "packageJson")
+  .map(([, file]) => join(root, file));
+const publishFiles = unique(Object.values(publishArtifactFiles));
+const copiedPublishFiles = Object.fromEntries(
+  Object.entries(copiedArtifacts).map(([id, { source, file }]) => [
+    id,
+    [join(root, source), join(distRoot, file)]
+  ])
+);
 const check = process.argv.includes("--check");
 const clean = process.argv.includes("--clean");
 
 if (clean) {
-  for (const file of Object.values(outFiles)) {
+  await rm(distRoot, { recursive: true, force: true });
+  for (const file of legacyRootOutFiles) {
     await rm(file, { force: true });
   }
   process.exit(0);
@@ -903,6 +945,8 @@ const frameworkDtsOutput = browserDtsOutput
     "Browser type declarations for @async/framework/browser.",
     "Server-capable type declarations for @async/framework."
   );
+const publishManifest = createPublishManifest(packageManifest);
+const publishPackageJsonOutput = `${JSON.stringify(publishManifest, null, 2)}\n`;
 
 const outputs = new Map([
   [outFiles.browserEsm, browserEsmOutput],
@@ -913,8 +957,10 @@ const outputs = new Map([
   [outFiles.browserDts, browserDtsOutput],
   [outFiles.serverEsm, serverEsmOutput],
   [outFiles.frameworkTs, frameworkTsOutput],
-  [outFiles.frameworkDts, frameworkDtsOutput]
+  [outFiles.frameworkDts, frameworkDtsOutput],
+  [outFiles.packageJson, publishPackageJsonOutput]
 ]);
+const copies = Object.values(copiedPublishFiles);
 
 if (check) {
   for (const [file, output] of outputs) {
@@ -924,10 +970,84 @@ if (check) {
       process.exitCode = 1;
     }
   }
+  for (const [source, destination] of copies) {
+    const current = await readFile(destination, "utf8").catch(() => "");
+    const expected = await readFile(source, "utf8");
+    if (current !== expected) {
+      console.error(`${relative(root, destination)} is stale. Run \`pnpm run bundle\`.`);
+      process.exitCode = 1;
+    }
+  }
 } else {
+  await mkdir(distRoot, { recursive: true });
   for (const [file, output] of outputs) {
     await writeFile(file, output, "utf8");
   }
+  for (const [source, destination] of copies) {
+    await copyFile(source, destination);
+  }
+}
+
+function createPublishManifest(manifest) {
+  const publishManifest = JSON.parse(JSON.stringify(manifest));
+  publishManifest.files = publishFiles;
+  delete publishManifest.private;
+  delete publishManifest.packageManager;
+  delete publishManifest.scripts;
+  delete publishManifest.devDependencies;
+  return publishManifest;
+}
+
+function unique(values) {
+  return [...new Set(values)];
+}
+
+function getPackageExport(exports, subpath) {
+  const entry = exports?.[subpath];
+  if (!entry) {
+    throw new Error(`package.json exports must define ${subpath}.`);
+  }
+  return entry;
+}
+
+function resolveConditionalTarget(target, conditions) {
+  if (typeof target === "string") {
+    return target;
+  }
+  for (const condition of conditions) {
+    const value = target?.[condition];
+    if (value !== undefined) {
+      return resolveConditionalTarget(value, conditions);
+    }
+  }
+  return undefined;
+}
+
+function packagePathToFile(value) {
+  if (typeof value !== "string") {
+    throw new Error("Expected package export target to resolve to a string file path.");
+  }
+  if (!value.startsWith("./")) {
+    throw new Error(`Package export target must be relative: ${value}`);
+  }
+  return value.slice(2);
+}
+
+function unminifiedArtifact(file) {
+  if (file.endsWith(".min.js")) {
+    return `${file.slice(0, -".min.js".length)}.js`;
+  }
+  return file;
+}
+
+function typedSourceArtifact(file) {
+  if (file.endsWith(".d.ts")) {
+    return `${file.slice(0, -".d.ts".length)}.ts`;
+  }
+  if (file.endsWith(".js")) {
+    return `${file.slice(0, -".js".length)}.ts`;
+  }
+  return file;
 }
 
 async function buildBundle(entry) {

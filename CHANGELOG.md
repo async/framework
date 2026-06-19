@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.15 - 2026-06-19
+
+- Made the source package private and kept its public surface to the minimal
+  export spec for root, `/browser`, `/server`, and `/package.json` only.
+- Moved publish staging to generated `dist/package.json` so npm and release
+  automation publish from `dist/` while package consumers still receive
+  root-level artifacts without `dist/` paths.
+- Removed legacy direct artifact subpath exports plus top-level
+  `main`/`module`/`browser`/`types` and generated file lists from the source
+  manifest.
+- Updated pack, size, pipeline, and installed-package coverage to verify the
+  browser and server entrypoints remain split after packing.
+- Bundle size from bundled TypeScript source: `browser.ts` 197,173 B raw /
+  37,198 B gzip -> `browser.min.js` 84,013 B raw / 24,894 B gzip
+  (-113,160 B raw, -12,304 B gzip).
+
 ## 0.11.14 - 2026-06-18
 
 - Added condition-specific root declaration targets so browser-conditioned root

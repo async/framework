@@ -1,11 +1,9 @@
 {
   "name": "@async/framework",
-  "version": "0.11.14",
+  "version": "0.11.15",
   "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
-  "main": "./server.js",
-  "module": "./browser.min.js",
-  "browser": "./browser.min.js",
+  "private": true,
   "sideEffects": false,
   "packageManager": "pnpm@11.1.0",
   "engines": {
@@ -32,7 +30,6 @@
     "web-framework"
   ],
   "license": "MIT",
-  "types": "./framework.d.ts",
   "unpkg": "./browser.umd.min.js",
   "jsdelivr": "./browser.umd.min.js",
   "exports": {
@@ -65,53 +62,8 @@
       "import": "./server.js",
       "default": "./server.js"
     },
-    "./browser.js": {
-      "types": "./browser.d.ts",
-      "default": "./browser.js"
-    },
-    "./browser.min.js": {
-      "types": "./browser.d.ts",
-      "default": "./browser.min.js"
-    },
-    "./browser.umd.js": {
-      "types": "./browser.d.ts",
-      "default": "./browser.umd.js"
-    },
-    "./browser.umd.min.js": {
-      "types": "./browser.d.ts",
-      "default": "./browser.umd.min.js"
-    },
-    "./browser.ts": {
-      "types": "./browser.d.ts",
-      "default": "./browser.ts"
-    },
-    "./browser.d.ts": "./browser.d.ts",
-    "./server.js": {
-      "types": "./framework.d.ts",
-      "default": "./server.js"
-    },
-    "./framework.ts": {
-      "types": "./framework.d.ts",
-      "default": "./framework.ts"
-    },
-    "./framework.d.ts": "./framework.d.ts",
     "./package.json": "./package.json"
   },
-  "files": [
-    "CHANGELOG.md",
-    "README.md",
-    "browser.d.ts",
-    "browser.js",
-    "browser.min.js",
-    "browser.umd.js",
-    "browser.umd.min.js",
-    "browser.ts",
-    "framework.d.ts",
-    "framework.ts",
-    "server.js",
-    "LICENSE",
-    "package.json"
-  ],
   "scripts": {
     "async-pipeline": "async-pipeline",
     "bundle": "node scripts/build-framework-bundle.js",
@@ -122,16 +74,16 @@
     "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",
-    "pack:check": "pnpm run bundle:check && npm pack --dry-run --json --ignore-scripts",
+    "pack:check": "pnpm run bundle:check && npm pack ./dist --dry-run --json --ignore-scripts",
     "pipeline:github:check": "async-pipeline github check",
     "pipeline:github:generate": "async-pipeline github generate",
     "pipeline:pages": "async-pipeline run-task docs.site",
     "pipeline:publish": "async-pipeline run publish",
-    "pipeline:publish:github:release": "async-pipeline publish github release --package . --registry https://npm.pkg.github.com",
-    "pipeline:publish:npm": "async-pipeline publish npm --package .",
+    "pipeline:publish:github:release": "async-pipeline publish github release --package ./dist --registry https://npm.pkg.github.com",
+    "pipeline:publish:npm": "async-pipeline publish npm --package ./dist",
     "pipeline:release-doctor": "async-pipeline run release-doctor",
-    "pipeline:release:doctor": "async-pipeline release doctor --package .",
-    "pipeline:release:ensure": "async-pipeline release ensure --package .",
+    "pipeline:release:doctor": "async-pipeline release doctor --package ./dist",
+    "pipeline:release:ensure": "async-pipeline release ensure --package ./dist",
     "pipeline:sync:check": "async-pipeline sync check",
     "pipeline:sync:generate": "async-pipeline sync generate",
     "pipeline:task:docs.site": "async-pipeline run-task docs.site",

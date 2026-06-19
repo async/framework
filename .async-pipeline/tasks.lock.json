@@ -47,19 +47,19 @@
         },
         {
           "name": "pipeline:publish:github:release",
-          "value": "async-pipeline publish github release --package . --registry https://npm.pkg.github.com"
+          "value": "async-pipeline publish github release --package ./dist --registry https://npm.pkg.github.com"
         },
         {
           "name": "pipeline:publish:npm",
-          "value": "async-pipeline publish npm --package ."
+          "value": "async-pipeline publish npm --package ./dist"
         },
         {
           "name": "pipeline:release:doctor",
-          "value": "async-pipeline release doctor --package ."
+          "value": "async-pipeline release doctor --package ./dist"
         },
         {
           "name": "pipeline:release:ensure",
-          "value": "async-pipeline release ensure --package ."
+          "value": "async-pipeline release ensure --package ./dist"
         },
         {
           "name": "pipeline:sync:check",
@@ -103,19 +103,19 @@
     },
     {
       "name": "pipeline:publish:github:release",
-      "value": "async-pipeline publish github release --package . --registry https://npm.pkg.github.com"
+      "value": "async-pipeline publish github release --package ./dist --registry https://npm.pkg.github.com"
     },
     {
       "name": "pipeline:publish:npm",
-      "value": "async-pipeline publish npm --package ."
+      "value": "async-pipeline publish npm --package ./dist"
     },
     {
       "name": "pipeline:release:doctor",
-      "value": "async-pipeline release doctor --package ."
+      "value": "async-pipeline release doctor --package ./dist"
     },
     {
       "name": "pipeline:release:ensure",
-      "value": "async-pipeline release ensure --package ."
+      "value": "async-pipeline release ensure --package ./dist"
     },
     {
       "name": "pipeline:sync:check",
@@ -126,6 +126,6 @@
       "value": "async-pipeline sync generate"
     }
   ],
-  "hash": "sha256:0f188d23dca0b5526dce051a36d2dabed86a23b1823d6b0d42f157e19148c68a",
-  "generatedAt": "2026-06-19T04:42:19.433Z"
+  "hash": "sha256:a1c7ccd8157fb3d57d743d34dabc6ef0707128933927ad88bbf5115d54cb5fce",
+  "generatedAt": "2026-06-19T06:33:36.393Z"
 }
