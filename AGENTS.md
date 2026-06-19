@@ -30,6 +30,48 @@ root workspace `AGENTS.md` still applies.
   registry, snapshot, server-envelope, route-partial, cache, and boundary
   protocol.
 
+## Framework Shorthand
+
+Use these abbreviations in ADRs, issues, review notes, and Codex prompts:
+
+- `L1`: Layer 1, the no-build browser runtime core. It owns DOM scanning,
+  attribute prefixes, event binding, signals, command handlers, startup, and the
+  smallest usable runtime.
+- `L1.5`: Layer 1.5, the ordering layer above the runtime core. It owns the
+  scheduler, async signal settling, boundary ordering, route partial activation,
+  stream sequencing, and reveal/OOS coordination that still works without a
+  compiler.
+- `L2`: Layer 2, the app/server integration layer. It owns server functions,
+  routes, SSR output, build adapters, cache partitions, and higher-level
+  conventions layered onto L1 and L1.5 protocols.
+- `NB`: no-build profile. Author HTML and JavaScript run directly with
+  `Async.start(...)`, default shorthand attributes, and no compiler.
+- `BR`: build-required profile. Author JSX/TSX uses imports such as
+  `@async/framework/jsx`; the compiler/optimizer emits L1/L1.5/L2-compatible
+  output.
+- `OOOS`: out-of-order streaming/rendering. Chunks may become ready in a
+  different order than source order.
+- `Suspense`: async boundary ownership for fallback and final content.
+- `Reveal`: OOS commit policy for sibling boundaries, such as `as-ready`,
+  `forwards`, `backwards`, `together`, plus tail visibility.
+- `Plan`: generated or virtual framework plan. In BR it is private compiler
+  plumbing, not a hand-written author API.
+- `Optimizer`: the BR compiler pipeline that classifies source, signals,
+  ownership, events, Suspense/Reveal, runtime slices, chunks, and plan output.
+
+## Attribute Example Style
+
+- In NB docs and examples, prefer the default shorthand prefixes:
+  `async:`, `signal:`, `on:`, `class:`, and `intersect:`.
+- Treat `data-async-*`, `data-signal-*`, `data-on-*`, and related data
+  attributes as configured compatibility forms. Use them in examples only when
+  documenting custom attribute configuration or raw compatibility behavior.
+- For reveal examples, prefer `async:reveal`, `async:reveal-order`, and
+  `async:reveal-tail`. The configured compatibility form
+  `data-async-reveal`, `data-async-reveal-order`, and
+  `data-async-reveal-tail` must continue to work when the `async` prefix maps
+  to `data-async-`.
+
 ## Generated Artifacts And Pipeline
 
 - Edit source, tests, examples, scripts, specs, `package.json`, and
