@@ -74,7 +74,7 @@ jobs:
           mode: plan
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
         env:
           CI: true
 
@@ -84,7 +84,7 @@ jobs:
           mode: inspect
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
         env:
           CI: true
 
@@ -94,7 +94,7 @@ jobs:
           mode: changelog
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
         env:
           CI: true
 
@@ -104,7 +104,7 @@ jobs:
           mode: notes
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
         env:
           CI: true
 
@@ -160,7 +160,7 @@ jobs:
           mode: doctor
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
           network: live
         env:
           CI: true
@@ -223,7 +223,7 @@ jobs:
           mode: doctor
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          release-command: "pnpm dlx github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
           network: live
         env:
           CI: true
