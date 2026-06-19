@@ -137,3 +137,14 @@ dist
 
 lib
 /docs/goals
+
+# Generated release artifacts
+/browser.d.ts
+/browser.js
+/browser.min.js
+/browser.ts
+/browser.umd.js
+/browser.umd.min.js
+/framework.d.ts
+/framework.ts
+/server.js

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { minify } from "terser";
@@ -20,6 +20,14 @@ const outFiles = {
   frameworkDts: join(root, "framework.d.ts")
 };
 const check = process.argv.includes("--check");
+const clean = process.argv.includes("--clean");
+
+if (clean) {
+  for (const file of Object.values(outFiles)) {
+    await rm(file, { force: true });
+  }
+  process.exit(0);
+}
 
 const browserBundle = await buildBundle(browserEntry);
 if (browserBundle.externalImports.length > 0) {

@@ -115,13 +115,14 @@
   "scripts": {
     "async-pipeline": "async-pipeline",
     "bundle": "node scripts/build-framework-bundle.js",
-    "bundle:check": "node scripts/build-framework-bundle.js --check",
-    "bundle:size": "node scripts/bundle-size.js",
-    "bundle:size:check": "node scripts/bundle-size.js --check",
+    "bundle:check": "pnpm run bundle && node scripts/build-framework-bundle.js --check",
+    "bundle:clean": "node scripts/build-framework-bundle.js --clean",
+    "bundle:size": "pnpm run bundle && node scripts/bundle-size.js",
+    "bundle:size:check": "pnpm run bundle && node scripts/bundle-size.js --check",
     "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",
-    "pack:check": "pnpm run bundle:check && npm pack --dry-run --ignore-scripts",
+    "pack:check": "pnpm run bundle:check && npm pack --dry-run --json --ignore-scripts",
     "pipeline:github:check": "async-pipeline github check",
     "pipeline:github:generate": "async-pipeline github generate",
     "pipeline:pages": "async-pipeline run-task docs.site",
@@ -137,7 +138,7 @@
     "pipeline:verify": "async-pipeline run verify",
     "registry:lint": "node scripts/registry-lint.js",
     "release:check": "pnpm run pipeline:verify -- --force && pnpm run bundle:size:check && pnpm run pipeline:pages -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
-    "test": "node --test tests/*.test.js"
+    "test": "pnpm run bundle && node --test tests/*.test.js"
   },
   "devDependencies": {
     "@async/pipeline": "0.9.1",

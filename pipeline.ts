@@ -51,15 +51,6 @@ export default definePipeline({
       "examples/**/*",
       "README.md",
       "CHANGELOG.md",
-      "browser.d.ts",
-      "browser.js",
-      "browser.min.js",
-      "browser.umd.js",
-      "browser.umd.min.js",
-      "browser.ts",
-      "server.js",
-      "framework.ts",
-      "framework.d.ts",
       "package.json",
       "pipeline.ts",
       "scripts/**/*.js"
@@ -78,7 +69,7 @@ export default definePipeline({
     test: task({
       inputs: ["source"],
       cache: "file:local",
-      run: sh`node --test tests/*.test.js`
+      run: sh`pnpm test`
     }),
 
     examples: task({
@@ -102,7 +93,7 @@ export default definePipeline({
       dependsOn: ["examples", "docs.site", "registry-lint"],
       inputs: ["source"],
       cache: false,
-      run: sh`pnpm run bundle:check && npm pack --dry-run --ignore-scripts`
+      run: sh`pnpm run pack:check`
     }),
 
     "release-ensure": task({
