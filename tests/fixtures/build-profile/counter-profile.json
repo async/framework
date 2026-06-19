@@ -1,0 +1,116 @@
+{
+  "mode": "development",
+  "sourceInventory": {
+    "entries": [
+      {
+        "id": "src/Counter.jsx",
+        "target": "browser",
+        "imports": ["@async/framework/jsx"]
+      }
+    ],
+    "frameworkImports": [
+      {
+        "sourceId": "src/Counter.jsx",
+        "module": "@async/framework/jsx",
+        "names": ["component", "signal", "Suspense", "Reveal"],
+        "supported": true
+      }
+    ],
+    "jsxModules": [
+      {
+        "id": "src/Counter.jsx"
+      }
+    ],
+    "serverModules": [
+      {
+        "id": "src/server/load-user.js"
+      }
+    ],
+    "config": {
+      "host": {
+        "name": "vite",
+        "version": "8.0.0",
+        "engine": "rolldown"
+      }
+    }
+  },
+  "semanticGraph": {
+    "components": [
+      {
+        "id": "Counter",
+        "locators": ["main:counter", "button:add"]
+      }
+    ],
+    "signals": [
+      {
+        "sourceId": "count",
+        "sourceShape": "value",
+        "initialValue": 0,
+        "owner": "app"
+      },
+      {
+        "sourceId": "doubleCount",
+        "sourceShape": "sync-function",
+        "reads": ["count"],
+        "owner": "component"
+      },
+      {
+        "sourceId": "user",
+        "sourceShape": "async-function",
+        "reads": ["userId"],
+        "owner": "shared-module",
+        "stream": "default"
+      }
+    ],
+    "eventProps": [
+      {
+        "eventId": "click:add",
+        "elementId": "button:add",
+        "propName": "onClick",
+        "handler": "increment",
+        "emissionMode": "inline"
+      }
+    ],
+    "suspense": [
+      {
+        "boundaryId": "profile",
+        "sourceOrder": 0,
+        "fallbackId": "profile:fallback",
+        "finalId": "profile:content",
+        "asyncSourceIds": ["user"]
+      },
+      {
+        "boundaryId": "timeline",
+        "sourceOrder": 1,
+        "fallbackId": "timeline:fallback",
+        "finalId": "timeline:content"
+      }
+    ],
+    "revealPolicies": [
+      {
+        "groupId": "profile:reveal",
+        "order": "forwards",
+        "tail": "collapsed",
+        "boundaryIds": ["profile", "timeline"],
+        "arrivalOrder": ["timeline", "profile"]
+      }
+    ],
+    "serverCalls": [],
+    "routes": [],
+    "locators": ["strong:count", "section:profile", "section:timeline"]
+  },
+  "runtimePlan": {
+    "version": 1,
+    "elements": ["main:counter", "button:add", "strong:count", "section:profile", "section:timeline"],
+    "signals": {
+      "version": 1,
+      "values": [["count", 0]],
+      "bindings": [[2, "text", "count"]]
+    },
+    "events": {
+      "version": 1,
+      "events": [[1, "click", [["handler", "increment"]]]],
+      "handlers": {}
+    }
+  }
+}

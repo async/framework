@@ -62,6 +62,16 @@
       "import": "./server.js",
       "default": "./server.js"
     },
+    "./jsx": {
+      "types": "./jsx.d.ts",
+      "import": "./jsx.js",
+      "default": "./jsx.js"
+    },
+    "./vite": {
+      "types": "./vite.d.ts",
+      "import": "./vite.js",
+      "default": "./vite.js"
+    },
     "./runtime": {
       "types": "./runtime.d.ts",
       "import": "./runtime.js",
