@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.17 - 2026-06-19
+
+- Added the stream backpatch protocol to `createBoundaryReceiver(...)` with
+  strict `attrs` validation for built numeric triples and no-build named
+  tuples.
+- Added pending-slot replacement and reveal coordination for `as-ready`,
+  `forwards`, `backwards`, and `together` stream groups, including collapsed
+  and hidden tail visibility handling.
+- Added the `AsyncStream` browser helper for no-build JSON stream patches,
+  template replacement, configured `data-async-*` attributes, and direct-child
+  reveal metadata synthesis.
+- Added stream backpatch scenario-size coverage and updated browser scenario
+  budgets for the expanded public stream surface.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 221,403 B (221.4 KB / 0.221 MB), gzip 42,093 B (42.1 KB / 0.042 MB), br 34,797 B (34.8 KB / 0.035 MB) -> `browser.min.js` raw 95,027 B (95.0 KB / 0.095 MB), gzip 28,145 B (28.1 KB / 0.028 MB), br 24,793 B (24.8 KB / 0.025 MB); delta raw -126,376 B (-126.4 KB / -0.126 MB), gzip -13,948 B (-13.9 KB / -0.014 MB), br -10,004 B (-10.0 KB / -0.010 MB).
+
 ## 0.11.16 - 2026-06-19
 
 - Added runtime slice entrypoints for `@async/framework/runtime`,
