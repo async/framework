@@ -10,9 +10,20 @@
 - Added packed-artifact export-map, declaration/runtime parity, and static
   import checks for root browser, root Node, explicit `/browser`, and explicit
   `/server` entrypoints.
-- Bundle size from bundled TypeScript source: `browser.ts` 187,564 B raw /
-  35,332 B gzip -> `browser.min.js` 80,009 B raw / 23,677 B gzip
-  (-107,555 B raw, -11,655 B gzip).
+- Added component-scoped continuous intersection helpers with
+  `this.intersect(...)` and `this.on("intersect", options?, fn)`, preserving
+  `on:visible` as a one-shot visibility lifecycle hook.
+- Added declarative `on:intersect` with `intersect:threshold`,
+  `intersect:root-margin`, and `intersect:once` pseudo-event options, including
+  custom `intersect` attribute prefix support.
+- Added observer cleanup coverage for component teardown, boundary swaps,
+  fallback scheduling, repeated entries, and existing visible compatibility.
+- Moved root release artifacts to an ignored generated-output workflow:
+  tests, bundle checks, pack checks, and generated CI tasks materialize the
+  current package surface before verification or publish.
+- Bundle size from bundled TypeScript source: `browser.ts` 197,173 B raw /
+  37,198 B gzip -> `browser.min.js` 84,013 B raw / 24,894 B gzip
+  (-113,160 B raw, -12,304 B gzip).
 
 ## 0.11.13 - 2026-06-18
 

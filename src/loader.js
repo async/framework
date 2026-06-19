@@ -19,6 +19,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
   const signalBindings = new WeakMap();
   const mountedElements = new WeakSet();
   const visibleElements = new WeakSet();
+  const intersectionBindings = new WeakMap();
   const boundaryState = new WeakMap();
   const renderingBoundaries = new WeakSet();
   const inlineBindings = new Map();
@@ -82,6 +83,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
       api.scan(target);
       rendered.mount(target);
       rendered.visible(target, api._observeVisible);
+      rendered.intersection(target, api._observeIntersection);
       addCleanup(rendered.cleanup, target, "children");
       return rendered;
     },
@@ -103,6 +105,10 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
 
     _observeVisible(target, fn) {
       return observeVisible(target, fn);
+    },
+
+    _observeIntersection(target, fn, options = {}) {
+      return observeIntersection(target, fn, options);
     },
 
     _registerBinding(value) {
@@ -136,7 +142,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         if (!eventName) {
           continue;
         }
-        if (eventName === "attach" || eventName === "mount" || eventName === "visible") {
+        if (eventName === "attach" || eventName === "mount" || eventName === "visible" || eventName === "intersect") {
           continue;
         }
         bindEvent(element, eventName, element.getAttribute(name));
@@ -409,6 +415,25 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
       visibleElements.add(element);
       addCleanup(observeVisible(element, () => scheduleLifecycle(element, () => runPseudo(element, ref), `visible:${ref}`)), element);
     }
+
+    for (const element of elementsIn(scope)) {
+      const ref = readAttribute(element, attributeConfig, "on", "intersect");
+      if (ref == null) {
+        continue;
+      }
+      const options = readIntersectionOptions(element);
+      const key = `intersect:${ref}:${serializeIntersectionOptions(options)}`;
+      const bound = intersectionBindings.get(element) ?? new Set();
+      if (bound.has(key)) {
+        continue;
+      }
+      bound.add(key);
+      intersectionBindings.set(element, bound);
+      addCleanup(observeIntersection(element, (event) => runPseudo(element, ref, event), {
+        ...options,
+        key
+      }), element);
+    }
   }
 
   function readPseudoRefs(element, names) {
@@ -422,7 +447,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     return refs;
   }
 
-  async function runPseudo(element, ref) {
+  async function runPseudo(element, ref, context = {}) {
     try {
       const results = await handlerRegistry.run(ref, {
         signals: signalRegistry,
@@ -434,7 +459,8 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         scheduler: schedulerInstance,
         element,
         el: element,
-        root: rootNode
+        root: rootNode,
+        ...context
       });
       for (const result of results) {
         if (typeof result === "function") {
@@ -447,28 +473,230 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
   }
 
   function observeVisible(target, fn) {
+    return observeIntersection(target, (event) => {
+      if (event.isIntersecting) {
+        fn(target);
+      }
+    }, {
+      once: true,
+      threshold: 0
+    });
+  }
+
+  function observeIntersection(target, fn, options = {}) {
+    if (typeof fn !== "function") {
+      throw new TypeError("observeIntersection(target, fn) requires a callback.");
+    }
+    const normalized = normalizeIntersectionOptions(target, options);
     const ownerWindow = target.ownerDocument?.defaultView ?? globalThis;
     const Observer = ownerWindow.IntersectionObserver ?? globalThis.IntersectionObserver;
     if (!Observer) {
-      schedulerInstance.enqueue("lifecycle", () => {
-        if (!destroyed) {
-          fn(target);
+      let cleaned = false;
+      const event = createIntersectionEvent({
+        target,
+        root: normalized.root,
+        entry: createFallbackIntersectionEntry(target),
+        observer: null,
+        unsupported: true
+      });
+      const cancel = schedulerInstance.enqueue("lifecycle", () => {
+        if (!cleaned && !destroyed) {
+          fn(event);
         }
       }, {
-        scope: target,
-        key: "visible:fallback"
+        scope: normalized.scope,
+        key: normalized.key ?? "intersect:fallback"
       });
-      return () => {};
+      return () => {
+        cleaned = true;
+        cancel?.();
+      };
     }
 
+    let cleaned = false;
+    let stopped = false;
     const observer = new Observer((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        observer.disconnect();
-        fn(target);
+      if (cleaned || stopped || destroyed) {
+        return;
       }
+      const observedEntries = entries.filter((entry) => entry.target === target);
+      const targetEntries = observedEntries.length > 0 ? observedEntries : entries;
+      const entry = targetEntries[0];
+      if (!entry) {
+        return;
+      }
+      const event = createIntersectionEvent({
+        target,
+        root: normalized.root,
+        entry,
+        entries: targetEntries,
+        observer,
+        unsupported: false
+      });
+      if (normalized.once && event.isIntersecting) {
+        stopped = true;
+        observer.disconnect();
+      }
+      runIntersectionCallback(fn, event, normalized, () => !cleaned);
+    }, {
+      root: normalized.root,
+      rootMargin: normalized.rootMargin,
+      threshold: normalized.threshold
     });
     observer.observe(target);
-    return () => observer.disconnect();
+    return () => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      stopped = true;
+      observer.disconnect();
+    };
+  }
+
+  function readIntersectionOptions(element) {
+    const options = {};
+    const threshold = readAttribute(element, attributeConfig, "intersect", "threshold");
+    if (threshold != null) {
+      options.threshold = parseIntersectionThreshold(threshold);
+    }
+    const rootMargin = readAttribute(element, attributeConfig, "intersect", "root-margin")
+      ?? readAttribute(element, attributeConfig, "intersect", "rootMargin");
+    if (rootMargin != null) {
+      options.rootMargin = rootMargin;
+    }
+    const once = readAttribute(element, attributeConfig, "intersect", "once");
+    if (once != null) {
+      options.once = parseBooleanAttribute(once);
+    }
+    return options;
+  }
+
+  function parseIntersectionThreshold(value) {
+    const parts = String(value).split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length === 0) {
+      throw new TypeError("intersect:threshold must include a number from 0 to 1.");
+    }
+    const thresholds = parts.map((part) => {
+      const number = Number(part);
+      return validateIntersectionThreshold(number);
+    });
+    return thresholds.length === 1 ? thresholds[0] : thresholds;
+  }
+
+  function parseBooleanAttribute(value) {
+    const normalized = String(value).trim().toLowerCase();
+    return normalized === "" || normalized === "true" || normalized === "1";
+  }
+
+  function serializeIntersectionOptions(options) {
+    return JSON.stringify({
+      rootMargin: options.rootMargin ?? "0px",
+      threshold: options.threshold ?? 0,
+      once: Boolean(options.once)
+    });
+  }
+
+  function normalizeIntersectionOptions(target, options) {
+    const ownerWindow = target?.ownerDocument?.defaultView ?? globalThis;
+    if (!isElement(target, ownerWindow)) {
+      throw new TypeError("Intersection target must be an Element.");
+    }
+    const root = options.root ?? null;
+    if (root !== null && !isElement(root, ownerWindow) && !isDocument(root, ownerWindow)) {
+      throw new TypeError("Intersection root must be an Element, Document, or null.");
+    }
+    const rootMargin = options.rootMargin ?? "0px";
+    if (typeof rootMargin !== "string") {
+      throw new TypeError("Intersection rootMargin must be a string.");
+    }
+    const threshold = normalizeIntersectionThreshold(options.threshold ?? 0);
+    const schedule = options.schedule ?? "lifecycle";
+    if (schedule !== "lifecycle" && schedule !== "sync") {
+      throw new TypeError('Intersection schedule must be "lifecycle" or "sync".');
+    }
+    return {
+      root,
+      rootMargin,
+      threshold,
+      once: Boolean(options.once),
+      schedule,
+      scope: options.scope ?? target,
+      key: options.key
+    };
+  }
+
+  function normalizeIntersectionThreshold(threshold) {
+    if (Array.isArray(threshold)) {
+      return threshold.map(validateIntersectionThreshold);
+    }
+    return validateIntersectionThreshold(threshold);
+  }
+
+  function validateIntersectionThreshold(value) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+      throw new TypeError("Intersection threshold must be a number from 0 to 1.");
+    }
+    return value;
+  }
+
+  function runIntersectionCallback(fn, event, options, isActive = () => true) {
+    if (options.schedule === "sync") {
+      if (isActive()) {
+        fn(event);
+      }
+      return;
+    }
+    schedulerInstance.enqueue("lifecycle", () => {
+      if (!destroyed && isActive()) {
+        fn(event);
+      }
+    }, {
+      scope: options.scope,
+      key: options.key
+    });
+  }
+
+  function createIntersectionEvent({ target, root, entry, entries = [entry], observer, unsupported }) {
+    const isIntersecting = Boolean(entry?.isIntersecting);
+    const intersectionRatio = typeof entry?.intersectionRatio === "number"
+      ? entry.intersectionRatio
+      : (isIntersecting ? 1 : 0);
+    return {
+      target,
+      element: target,
+      el: target,
+      root: root ?? rootNode,
+      entry,
+      entries,
+      observer,
+      isIntersecting,
+      intersectionRatio,
+      unsupported: Boolean(unsupported)
+    };
+  }
+
+  function createFallbackIntersectionEntry(target) {
+    const rect = target.getBoundingClientRect?.() ?? null;
+    return {
+      target,
+      isIntersecting: true,
+      intersectionRatio: 1,
+      time: 0,
+      rootBounds: null,
+      boundingClientRect: rect,
+      intersectionRect: rect
+    };
+  }
+
+  function isElement(value, ownerWindow = globalThis) {
+    const ElementRef = ownerWindow.Element ?? globalThis.Element;
+    return Boolean(ElementRef && value instanceof ElementRef);
+  }
+
+  function isDocument(value, ownerWindow = globalThis) {
+    const DocumentRef = ownerWindow.Document ?? globalThis.Document;
+    return Boolean(DocumentRef && value instanceof DocumentRef);
   }
 
   function assertActive() {

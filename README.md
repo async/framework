@@ -610,6 +610,10 @@ Loader scans regular HTML attributes:
 | `on:click="server.cart.add(productId)"` | Server command with signal args |
 | `on:attach="setup"` | Component root attach lifecycle pseudo-event |
 | `on:visible="trackView"` | Component root visible lifecycle pseudo-event |
+| `on:intersect="trackSection"` | Continuous intersection lifecycle pseudo-event |
+| `intersect:threshold="0,0.5,1"` | Intersection threshold option for `on:intersect` |
+| `intersect:root-margin="-20% 0px -55% 0px"` | Intersection root margin option for `on:intersect` |
+| `intersect:once="true"` | Disconnect `on:intersect` after the first intersecting entry |
 | `signal:text="product.title"` | Text binding |
 | `signal:value="productId"` | Form value binding with writeback |
 | `signal:attr:disabled="product.$loading"` | Attribute binding |
@@ -644,6 +648,7 @@ Async.start({
   attributes: {
     async: "data-async-",
     class: "data-class-",
+    intersect: "data-intersect-",
     signal: "data-signal-",
     on: "data-on-"
   }
@@ -651,7 +656,8 @@ Async.start({
 ```
 
 That maps to `data-async-container`, `data-on-click="save"`,
-`data-signal-text="product.title"`, and `data-class-selected="selected"`.
+`data-signal-text="product.title"`, `data-class-selected="selected"`, and
+`data-intersect-threshold="0.5"`.
 
 Inside `html` templates, signal refs can be passed directly to binding
 attributes:
@@ -1102,6 +1108,8 @@ Component helpers:
 | `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
 | `this.onMount(fn)` | Compatibility alias for `this.on("attach", fn)` |
 | `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
+| `this.on("intersect", options?, fn)` | Continuous intersection lifecycle for the mounted component scope |
+| `this.intersect(element, options?, fn)` | Component-owned continuous intersection observer for a direct element |
 
 `this.suspense(...)` is sugar for Loader boundaries:
 `asyncSignal + async:boundary + async:* templates`. It emits only templates. The
@@ -1175,6 +1183,73 @@ this.on("destroy", () => {
 `on:visible` is defined as a component lifecycle pseudo-event. It runs once when
 the component root first becomes visible. Lifecycle events do not drive
 component rerenders.
+
+Use `on:intersect` when markup should receive continuous intersection updates
+through a registered handler:
+
+```html
+<section
+  on:intersect="trackSection"
+  intersect:threshold="0,0.25,0.5,0.75,1"
+  intersect:root-margin="-20% 0px -55% 0px"
+>
+  ...
+</section>
+```
+
+The handler receives `element`, `entry`, `entries`, `observer`,
+`isIntersecting`, `intersectionRatio`, and `unsupported`. Custom roots are not
+selector-based; use `this.intersect(...)` with a direct root element when a
+custom observer root is needed.
+
+Use `this.on("intersect", ...)` when a component needs continuous visibility
+state:
+
+```js
+const Card = defineComponent(function Card() {
+  const visible = this.signal(false);
+
+  this.on("intersect", { threshold: 0.5 }, ({ isIntersecting }) => {
+    visible.set(isIntersecting);
+  });
+
+  return html`<article class:visible="${visible}">...</article>`;
+});
+```
+
+Use `this.intersect(...)` with a direct element when a parent owns scroll-spy or
+active-section state:
+
+```js
+const Section = defineComponent(function Section({ id, observeSection }) {
+  const attach = this.handler("attach", function ({ element }) {
+    return observeSection(id, element);
+  });
+
+  return html`<section on:attach="${attach}"><h2>${id}</h2></section>`;
+});
+
+const Page = defineComponent(function Page() {
+  const active = this.signal("intro");
+  const ratios = new Map();
+  const options = {
+    rootMargin: "-20% 0px -55% 0px",
+    threshold: [0, 0.25, 0.5, 0.75, 1]
+  };
+
+  const observeSection = (id, element) => this.intersect(element, options, ({ entry }) => {
+    ratios.set(id, entry.isIntersecting ? entry.intersectionRatio : 0);
+    const best = [...ratios.entries()].sort((a, b) => b[1] - a[1])[0];
+    active.set(best?.[0] ?? id);
+  });
+
+  return html`
+    <nav signal:text="${active}"></nav>
+    ${this.render(Section, { id: "intro", observeSection })}
+    ${this.render(Section, { id: "runtime", observeSection })}
+  `;
+});
+```
 
 ## Streaming
 
@@ -1264,12 +1339,22 @@ pnpm run pipeline:github:check
 Useful commands:
 
 ```bash
+pnpm run bundle
+pnpm run bundle:clean
 pnpm run pipeline:verify
 pnpm run pipeline:pages
 pnpm run registry:lint
 pnpm run pipeline:release:doctor
 pnpm run release:check
 ```
+
+Root release artifacts such as `browser.js`, `browser.min.js`,
+`browser.umd.min.js`, `browser.ts`, `browser.d.ts`, `framework.ts`,
+`framework.d.ts`, and `server.js` are generated outputs. They remain part of the
+published package and CDN surface, but feature branches should edit source files
+and let `pnpm run bundle`, `pnpm test`, `pnpm run pack:check`, or the generated
+release workflow materialize them before packing. Use `pnpm run bundle:clean`
+to remove local generated artifacts after inspection.
 
 `registry:lint` scans package source and examples for declared registry ids
 such as signals, handlers, server functions, partials, routes, and components.

@@ -103,6 +103,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
   const cleanups = [];
   const attachHooks = [];
   const visibleHooks = [];
+  const intersectionHooks = [];
   const destroyHooks = [];
   const bindingIds = [];
   const templateOptions = {
@@ -124,6 +125,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
     cleanups,
     attachHooks,
     visibleHooks,
+    intersectionHooks,
     destroyHooks,
     renderScopedTemplate
   });
@@ -175,6 +177,15 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
         cleanups.push(cleanup);
       }
     },
+    intersection(target, observeIntersection) {
+      if (intersectionHooks.length === 0) {
+        return;
+      }
+      for (let index = 0; index < intersectionHooks.length; index += 1) {
+        const hook = intersectionHooks[index];
+        hook(target, observeIntersection);
+      }
+    },
     cleanup() {
       while (destroyHooks.length > 0) {
         destroyHooks.pop()?.();
@@ -204,7 +215,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
   }
 }
 
-function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, destroyHooks, renderScopedTemplate }) {
+function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, intersectionHooks, destroyHooks, renderScopedTemplate }) {
   const { signals, handlers, loader, server, router, cache, scheduler } = runtime;
   const generatedHandlers = new WeakMap();
   let generatedHandlerCounter = 0;
@@ -292,6 +303,7 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
       cleanups.push(child.cleanup);
       attachHooks.push((target) => child.attach(target));
       visibleHooks.push((target) => child.visible(target, loader._observeVisible));
+      intersectionHooks.push((target) => child.intersection(target, loader._observeIntersection));
       return rawHtml(child.html);
     },
 
@@ -315,14 +327,22 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
       return rawHtml(chunks.join(""));
     },
 
-    on(eventName, fn) {
+    on(eventName, optionsOrFn, maybeFn) {
       if (typeof eventName !== "string" || eventName.length === 0) {
         throw new TypeError("Component lifecycle event must be a non-empty string.");
       }
-      if (typeof fn !== "function") {
+      const event = eventName === "mount" ? "attach" : eventName;
+      if (event === "intersect") {
+        const { options, fn } = normalizeOptionsCallback(`Component lifecycle "${eventName}"`, optionsOrFn, maybeFn);
+        intersectionHooks.push((target) => {
+          context.intersect(target, options, fn);
+        });
+        return;
+      }
+      if (maybeFn !== undefined || typeof optionsOrFn !== "function") {
         throw new TypeError(`Component lifecycle "${eventName}" requires a function.`);
       }
-      const event = eventName === "mount" ? "attach" : eventName;
+      const fn = optionsOrFn;
       if (event === "attach") {
         attachHooks.push((target) => fn.call(context, target));
         return;
@@ -344,6 +364,18 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
 
     onVisible(fn) {
       context.on("visible", fn);
+    },
+
+    intersect(target, optionsOrFn, maybeFn) {
+      const { options, fn } = normalizeOptionsCallback("this.intersect(target, ...)", optionsOrFn, maybeFn);
+      const cleanup = loader._observeIntersection(target, (event) => fn.call(context, event), {
+        ...options,
+        scope
+      });
+      if (typeof cleanup === "function") {
+        cleanups.push(cleanup);
+      }
+      return cleanup;
     }
   };
 
@@ -357,6 +389,16 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     cleanups.push(() => handlers.unregister?.(id));
     return id;
   }
+}
+
+function normalizeOptionsCallback(label, optionsOrFn, maybeFn) {
+  if (typeof optionsOrFn === "function" && maybeFn === undefined) {
+    return { options: {}, fn: optionsOrFn };
+  }
+  if ((optionsOrFn == null || (typeof optionsOrFn === "object" && !Array.isArray(optionsOrFn))) && typeof maybeFn === "function") {
+    return { options: optionsOrFn ?? {}, fn: maybeFn };
+  }
+  throw new TypeError(`${label} requires (fn) or (options, fn).`);
 }
 
 function scoped(scope, name) {

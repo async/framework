@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { Loader, component, createComponentRegistry, createScheduler, createServerRegistry, delay, html } from "../src/index.js";
+import { Loader, component, createComponentRegistry, createHandlerRegistry, createScheduler, createServerRegistry, defineAttributeConfig, delay, html } from "../src/index.js";
 
 test("component helpers create scoped signals, handlers, effects, children, and lifecycle cleanup", async () => {
   const window = new Window();
@@ -84,6 +84,46 @@ function serverEnvelope(fields = {}) {
     __async_server_result__: 1,
     ...fields
   };
+}
+
+function installMockIntersectionObserver(window) {
+  const observers = [];
+  class MockIntersectionObserver {
+    constructor(callback, options = {}) {
+      this.callback = callback;
+      this.options = options;
+      this.observed = [];
+      this.disconnected = false;
+      this.disconnects = 0;
+      observers.push(this);
+    }
+
+    observe(target) {
+      this.observed.push(target);
+    }
+
+    disconnect() {
+      if (!this.disconnected) {
+        this.disconnects += 1;
+      }
+      this.disconnected = true;
+    }
+
+    trigger(entry) {
+      if (this.disconnected) {
+        return;
+      }
+      const target = entry.target ?? this.observed[0];
+      this.callback([{
+        target,
+        isIntersecting: false,
+        intersectionRatio: 0,
+        ...entry
+      }], this);
+    }
+  }
+  window.IntersectionObserver = MockIntersectionObserver;
+  return observers;
 }
 
 test("component this.on supports rootless fragment lifecycle fallback", async () => {
@@ -180,6 +220,312 @@ test("component identical visible callbacks both run", async () => {
   assert.deepEqual(events, ["visible", "visible"]);
   loader.destroy();
   assert.equal(cleanups, 2);
+});
+
+test("component this.intersect observes repeated entries with normalized options", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `<main id="app"></main>`;
+  const events = [];
+
+  const Tracker = component(function Tracker() {
+    const attach = this.handler("attach", function ({ element }) {
+      return this.intersect(element, {
+        rootMargin: "-20% 0px -55% 0px",
+        threshold: [0, 0.25, 0.5, 0.75, 1]
+      }, (event) => {
+        events.push({
+          element: event.element.id,
+          isIntersecting: event.isIntersecting,
+          intersectionRatio: event.intersectionRatio,
+          unsupported: event.unsupported
+        });
+      });
+    });
+    return html`<section id="tracked" on:attach="${attach}">Tracked</section>`;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("#app"), Tracker);
+  await delay(0);
+
+  const section = document.querySelector("#tracked");
+  assert.equal(observers.length, 1);
+  assert.equal(observers[0].observed[0], section);
+  assert.equal(observers[0].options.root, null);
+  assert.equal(observers[0].options.rootMargin, "-20% 0px -55% 0px");
+  assert.deepEqual(observers[0].options.threshold, [0, 0.25, 0.5, 0.75, 1]);
+
+  observers[0].trigger({ target: section, isIntersecting: true, intersectionRatio: 0.5 });
+  await delay(0);
+  observers[0].trigger({ target: section, isIntersecting: false, intersectionRatio: 0 });
+  await delay(0);
+
+  assert.deepEqual(events, [
+    { element: "tracked", isIntersecting: true, intersectionRatio: 0.5, unsupported: false },
+    { element: "tracked", isIntersecting: false, intersectionRatio: 0, unsupported: false }
+  ]);
+
+  loader.destroy();
+  assert.equal(observers[0].disconnects, 1);
+});
+
+test("component this.intersect cancels queued callbacks on destroy", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+
+  const Tracker = component(function Tracker() {
+    const attach = this.handler("attach", function ({ element }) {
+      this.intersect(element, (event) => {
+        events.push(event.intersectionRatio);
+      });
+    });
+    return html`<section id="tracked" on:attach="${attach}">Tracked</section>`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  loader.mount(document.querySelector("#app"), Tracker);
+  await scheduler.flush();
+
+  observers[0].trigger({ target: document.querySelector("#tracked"), isIntersecting: true, intersectionRatio: 1 });
+  loader.destroy();
+  await scheduler.flush();
+
+  assert.deepEqual(events, []);
+  assert.equal(observers[0].disconnects, 1);
+});
+
+test("component this.intersect fallback reports unsupported once", async () => {
+  const window = new Window();
+  const { document } = window;
+  window.IntersectionObserver = undefined;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+
+  const Tracker = component(function Tracker() {
+    const attach = this.handler("attach", function ({ element }) {
+      this.intersect(element, (event) => {
+        events.push({
+          isIntersecting: event.isIntersecting,
+          intersectionRatio: event.intersectionRatio,
+          unsupported: event.unsupported,
+          observer: event.observer
+        });
+      });
+    });
+    return html`<section on:attach="${attach}">Tracked</section>`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  loader.mount(document.querySelector("#app"), Tracker);
+  await scheduler.flush();
+
+  assert.deepEqual(events, [{
+    isIntersecting: true,
+    intersectionRatio: 1,
+    unsupported: true,
+    observer: null
+  }]);
+
+  loader.destroy();
+});
+
+test("component this.on(\"intersect\") observes the mounted component scope", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `<main id="app"></main>`;
+  const events = [];
+
+  const Card = component(function Card() {
+    this.on("intersect", { threshold: 0.5 }, (event) => {
+      events.push(event.isIntersecting);
+    });
+    return html`<article id="card">Card</article>`;
+  });
+
+  const loader = Loader({ root: document });
+  const app = document.querySelector("#app");
+  loader.mount(app, Card);
+  await delay(0);
+
+  assert.equal(observers.length, 1);
+  assert.equal(observers[0].observed[0], app);
+  assert.equal(observers[0].options.threshold, 0.5);
+
+  observers[0].trigger({ target: app, isIntersecting: true, intersectionRatio: 0.75 });
+  await delay(0);
+
+  assert.deepEqual(events, [true]);
+  loader.destroy();
+});
+
+test("component returned intersection cleanup disconnects when boundary children swap", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const Tracker = component(function Tracker() {
+    const attach = this.handler("attach", function ({ element }) {
+      return this.intersect(element, () => {});
+    });
+    return html`<article id="tracked" on:attach="${attach}">Tracked</article>`;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("[async\\:boundary='route']"), Tracker);
+  await delay(0);
+
+  assert.equal(observers.length, 1);
+  assert.equal(observers[0].disconnects, 0);
+
+  loader.swap("route", `<p id="next-route">Next</p>`);
+
+  assert.equal(observers[0].disconnects, 1);
+  assert.equal(document.querySelector("#next-route").textContent, "Next");
+  loader.destroy();
+});
+
+test("component visible hook remains one-shot with IntersectionObserver", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `<main id="app"></main>`;
+  const events = [];
+
+  const Visible = component(function Visible() {
+    this.onVisible(() => {
+      events.push("visible");
+    });
+    return html`<span>visible</span>`;
+  });
+
+  const loader = Loader({ root: document });
+  const app = document.querySelector("#app");
+  loader.mount(app, Visible);
+  await delay(0);
+
+  observers[0].trigger({ target: app, isIntersecting: false, intersectionRatio: 0 });
+  await delay(0);
+  observers[0].trigger({ target: app, isIntersecting: true, intersectionRatio: 1 });
+  await delay(0);
+  observers[0].trigger({ target: app, isIntersecting: true, intersectionRatio: 1 });
+  await delay(0);
+
+  assert.deepEqual(events, ["visible"]);
+  assert.equal(observers[0].disconnects, 1);
+  loader.destroy();
+});
+
+test("declarative on:intersect runs continuously with options and visible compatibility", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `
+    <main>
+      <section
+        id="tracked"
+        on:visible="visible"
+        on:intersect="track"
+        intersect:threshold="0,0.5,1"
+        intersect:root-margin="-20% 0px -55% 0px"
+      >Tracked</section>
+    </main>
+  `;
+  const visibleEvents = [];
+  const intersectionEvents = [];
+  const handlers = createHandlerRegistry({
+    visible({ element }) {
+      visibleEvents.push(element.id);
+    },
+    track(event) {
+      intersectionEvents.push({
+        element: event.element.id,
+        ratio: event.intersectionRatio,
+        intersecting: event.isIntersecting,
+        unsupported: event.unsupported,
+        entries: event.entries.length
+      });
+    }
+  });
+
+  const loader = Loader({ root: document, handlers }).start();
+  await delay(0);
+
+  const section = document.querySelector("#tracked");
+  assert.equal(observers.length, 2);
+  assert.equal(observers[0].observed[0], section);
+  assert.equal(observers[1].observed[0], section);
+  assert.deepEqual(observers[1].options.threshold, [0, 0.5, 1]);
+  assert.equal(observers[1].options.rootMargin, "-20% 0px -55% 0px");
+
+  observers[0].trigger({ target: section, isIntersecting: true, intersectionRatio: 1 });
+  await delay(0);
+  observers[0].trigger({ target: section, isIntersecting: true, intersectionRatio: 1 });
+  await delay(0);
+  observers[1].trigger({ target: section, isIntersecting: true, intersectionRatio: 0.5 });
+  await delay(0);
+  observers[1].trigger({ target: section, isIntersecting: false, intersectionRatio: 0 });
+  await delay(0);
+  loader.scan(document.body);
+  await delay(0);
+
+  assert.deepEqual(visibleEvents, ["tracked"]);
+  assert.deepEqual(intersectionEvents, [
+    { element: "tracked", ratio: 0.5, intersecting: true, unsupported: false, entries: 1 },
+    { element: "tracked", ratio: 0, intersecting: false, unsupported: false, entries: 1 }
+  ]);
+  assert.equal(observers.length, 2);
+  loader.destroy();
+});
+
+test("declarative on:intersect supports custom intersect attribute prefixes", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `
+    <main>
+      <section
+        id="tracked"
+        data-on-intersect="track"
+        data-intersect-threshold="0.25"
+        data-intersect-once="true"
+      >Tracked</section>
+    </main>
+  `;
+  const events = [];
+  const attributes = defineAttributeConfig({
+    on: "data-on-",
+    intersect: "data-intersect-"
+  });
+  const handlers = createHandlerRegistry({
+    track(event) {
+      events.push(event.intersectionRatio);
+    }
+  });
+
+  const loader = Loader({ root: document, attributes, handlers }).start();
+  await delay(0);
+
+  const section = document.querySelector("#tracked");
+  assert.equal(observers.length, 1);
+  assert.equal(observers[0].options.threshold, 0.25);
+
+  observers[0].trigger({ target: section, isIntersecting: true, intersectionRatio: 0.25 });
+  await delay(0);
+  observers[0].trigger({ target: section, isIntersecting: true, intersectionRatio: 1 });
+  await delay(0);
+
+  assert.deepEqual(events, [0.25]);
+  assert.equal(observers[0].disconnects, 1);
+  loader.destroy();
 });
 
 test("component child render attach hooks do not dedupe each other", async () => {

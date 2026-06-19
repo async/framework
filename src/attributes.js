@@ -2,6 +2,7 @@ const defaultPrefixes = Object.freeze({
   async: ["async:"],
   class: ["class:"],
   signal: ["signal:"],
+  intersect: ["intersect:"],
   on: ["on:"]
 });
 
@@ -14,6 +15,7 @@ export function normalizeAttributeConfig(config = {}) {
     async: normalizePrefixes(config.async, defaultPrefixes.async),
     class: normalizePrefixes(config.class, defaultPrefixes.class),
     signal: normalizePrefixes(config.signal, defaultPrefixes.signal),
+    intersect: normalizePrefixes(config.intersect, defaultPrefixes.intersect),
     on: normalizePrefixes(config.on, defaultPrefixes.on)
   };
 }
