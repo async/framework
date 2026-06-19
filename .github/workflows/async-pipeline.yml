@@ -42,14 +42,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Restore task cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .async/cache
-          key: async-pipeline-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            async-pipeline-${{ runner.os }}-
-
       - name: Setup pnpm runtime
         uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
@@ -65,65 +57,122 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Write task cache manifest
+        run: pnpm async-pipeline cache manifest --job publish --output .async/actions/cache/publish-cache-manifest.json --trust read-only
+
+      - name: Restore Async task cache
+        id: async-cache-restore
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: restore
+          manifest: .async/actions/cache/publish-cache-manifest.json
+          trust: read-only
+
+      - name: Plan release package
+        uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: plan
+          package-path: "./dist"
+          evidence-dir: .async/release
+          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+        env:
+          CI: true
+
+      - name: Inspect release package
+        uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: inspect
+          package-path: "./dist"
+          evidence-dir: .async/release
+          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+        env:
+          CI: true
+
+      - name: Check release changelog
+        uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: changelog
+          package-path: "./dist"
+          evidence-dir: .async/release
+          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+        env:
+          CI: true
+
+      - name: Render release notes
+        uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: notes
+          package-path: "./dist"
+          evidence-dir: .async/release
+          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+        env:
+          CI: true
+
       - name: Run pipeline task release-evidence
-        uses: async/actions/run@v0
+        uses: async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run-task release-evidence"
           check-generated: false
           artifact-name: async-pipeline-${{ github.job }}-release-evidence-runs
         env:
           CI: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
       - name: Create or update GitHub Release
-        uses: async/actions/publish@v0
+        uses: async/actions/publish@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           package-path: "./dist"
           mode: github-release
           registry: "https://registry.npmjs.org"
           dist-tag: "latest"
+          notes-file: .async/release/release-notes.md
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
       - name: Publish GitHub Packages mirror
-        uses: async/actions/publish@v0
+        uses: async/actions/publish@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           package-path: "./dist"
           mode: github-packages
           registry: "https://npm.pkg.github.com"
           dist-tag: "latest"
+          token-env-name: GITHUB_TOKEN
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
       - name: Publish npm package
-        uses: async/actions/publish@v0
+        uses: async/actions/publish@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           package-path: "./dist"
           mode: npm
           registry: "https://registry.npmjs.org"
           dist-tag: "latest"
+          token-env-name: NODE_AUTH_TOKEN
           provenance: true
         env:
           CI: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
       - name: Run release doctor
-        uses: async/actions/publish@v0
+        uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
-          package-path: "./dist"
           mode: doctor
-          registry: "https://registry.npmjs.org"
-          dist-tag: "latest"
+          package-path: "./dist"
+          evidence-dir: .async/release
+          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          network: live
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
+
+      - name: Save Async task cache
+        if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: save
+          manifest: .async/actions/cache/publish-cache-manifest.json
+          trust: read-write
 
   release-doctor:
     name: release-doctor
@@ -136,14 +185,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Restore task cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .async/cache
-          key: async-pipeline-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            async-pipeline-${{ runner.os }}-
-
       - name: Setup pnpm runtime
         uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
@@ -156,26 +197,45 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Write task cache manifest
+        run: pnpm async-pipeline cache manifest --job release-doctor --output .async/actions/cache/release-doctor-cache-manifest.json --trust read-only
+
+      - name: Restore Async task cache
+        id: async-cache-restore
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: restore
+          manifest: .async/actions/cache/release-doctor-cache-manifest.json
+          trust: read-only
+
       - name: Run pipeline task pack
-        uses: async/actions/run@v0
+        uses: async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run-task pack"
           check-generated: false
           artifact-name: async-pipeline-${{ github.job }}-pack-runs
         env:
           CI: true
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run release doctor
-        uses: async/actions/publish@v0
+        uses: async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
-          package-path: "./dist"
           mode: doctor
-          registry: "https://registry.npmjs.org"
-          dist-tag: "latest"
+          package-path: "./dist"
+          evidence-dir: .async/release
+          release-command: "npx --yes github:async/release#e8c938ae44f11558fbbac1c805e0ce81ad765080"
+          network: live
         env:
           CI: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save Async task cache
+        if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: save
+          manifest: .async/actions/cache/release-doctor-cache-manifest.json
+          trust: read-write
 
   verify:
     name: verify
@@ -185,14 +245,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Restore task cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .async/cache
-          key: async-pipeline-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            async-pipeline-${{ runner.os }}-
-
       - name: Setup pnpm runtime
         uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
@@ -205,14 +257,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Write task cache manifest
+        run: pnpm async-pipeline cache manifest --job verify --output .async/actions/cache/verify-cache-manifest.json --trust read-only
+
+      - name: Restore Async task cache
+        id: async-cache-restore
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: restore
+          manifest: .async/actions/cache/verify-cache-manifest.json
+          trust: read-only
+
       - name: Run pipeline job
-        uses: async/actions/run@v0
+        uses: async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run verify"
           check-generated: false
           artifact-name: async-pipeline-${{ github.job }}-runs
         env:
           CI: true
+
+      - name: Save Async task cache
+        if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: save
+          manifest: .async/actions/cache/verify-cache-manifest.json
+          trust: read-write
 
   pages:
     name: pages
@@ -222,14 +293,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Restore task cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .async/cache
-          key: async-pipeline-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            async-pipeline-${{ runner.os }}-
-
       - name: Setup pnpm runtime
         uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
         with:
@@ -242,8 +305,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Write task cache manifest
+        run: pnpm async-pipeline cache manifest --task docs.site --output .async/actions/cache/docs.site-cache-manifest.json --trust read-only
+
+      - name: Restore Async task cache
+        id: async-cache-restore
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: restore
+          manifest: .async/actions/cache/docs.site-cache-manifest.json
+          trust: read-only
+
       - name: Run Pages target
-        uses: async/actions/run@v0
+        uses: async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run-task docs.site"
           check-generated: false
@@ -251,8 +325,16 @@ jobs:
         env:
           CI: true
 
+      - name: Save Async task cache
+        if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
+        uses: async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
+        with:
+          mode: save
+          manifest: .async/actions/cache/docs.site-cache-manifest.json
+          trust: read-write
+
       - name: Upload Pages artifact
-        uses: async/actions/pages@v0
+        uses: async/actions/pages@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           mode: static
           path: ".async/pages"
@@ -271,7 +353,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: async/actions/pages@v0
+        uses: async/actions/pages@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16
         with:
           upload: false
           deploy: true

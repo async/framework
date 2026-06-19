@@ -1,6 +1,6 @@
 {
   "name": "@async/framework",
-  "version": "0.11.19",
+  "version": "0.11.20",
   "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "private": true,
@@ -109,6 +109,8 @@
     "pipeline:release-doctor": "async-pipeline run release-doctor",
     "pipeline:release:doctor": "async-pipeline release doctor --package ./dist",
     "pipeline:release:ensure": "async-pipeline release ensure --package ./dist",
+    "pipeline:release:sync-descriptions": "async-pipeline release sync-descriptions --package ./dist",
+    "pipeline:release:sync-descriptions:check": "async-pipeline release sync-descriptions --package ./dist --check",
     "pipeline:sync:check": "async-pipeline sync check",
     "pipeline:sync:generate": "async-pipeline sync generate",
     "pipeline:task:docs.site": "async-pipeline run-task docs.site",
@@ -116,12 +118,14 @@
     "registry:lint": "node scripts/registry-lint.js",
     "release:check": "pnpm run pipeline:verify -- --force && pnpm run bundle:size:check && pnpm run scenario:size:check && pnpm run pipeline:pages -- --force && pnpm run pipeline:sync:check && pnpm run pipeline:github:check",
     "release:evidence:check": "pnpm run bundle:size:check && pnpm run scenario:size:check",
+    "release:sync-descriptions": "pnpm run bundle && async-pipeline release sync-descriptions --package ./dist",
+    "release:sync-descriptions:check": "pnpm run bundle && async-pipeline release sync-descriptions --package ./dist --check",
     "scenario:size": "pnpm run bundle && node scripts/scenario-size.js",
     "scenario:size:check": "pnpm run bundle && node scripts/scenario-size.js --check",
     "test": "pnpm run bundle && node --test tests/*.test.js"
   },
   "devDependencies": {
-    "@async/pipeline": "0.9.1",
+    "@async/pipeline": "0.9.22",
     "happy-dom": "20.10.5",
     "terser": "5.48.0"
   }

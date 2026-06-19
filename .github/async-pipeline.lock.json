@@ -1,10 +1,152 @@
 {
-  "version": 12,
+  "version": 22,
   "generator": "@async/pipeline",
   "config": "pipeline.ts",
   "workflow": ".github/workflows/async-pipeline.yml",
-  "hash": "sha256:ff505c9546fbc9043e54232d7642a1d6a2c6189b7263c0a4b1b8dd13ecf769b6",
-  "generatedAt": "2026-06-19T20:51:16.096Z",
+  "hash": "sha256:40f76eb50d0bc1c721a37d661008e2f27120897651141ee4d35a1557bd9cd778",
+  "generatedAt": "2026-06-19T21:46:38.702Z",
+  "actions": [
+    {
+      "id": "actions.checkout",
+      "uses": "actions/checkout",
+      "sha": "de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+      "label": "v6.0.2",
+      "ref": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2"
+    },
+    {
+      "id": "actions.setup-node",
+      "uses": "actions/setup-node",
+      "sha": "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+      "label": "v6",
+      "ref": "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6"
+    },
+    {
+      "id": "async.actions.agent-evidence",
+      "uses": "async/actions/agent-evidence",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/agent-evidence@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.attest",
+      "uses": "async/actions/attest",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/attest@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.cache",
+      "uses": "async/actions/cache",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/cache@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.comment",
+      "uses": "async/actions/comment",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/comment@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.contract",
+      "uses": "async/actions/contract",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/contract@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.dependabot-merge",
+      "uses": "async/actions/dependabot-merge",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/dependabot-merge@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.doctor",
+      "uses": "async/actions/doctor",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/doctor@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.evidence",
+      "uses": "async/actions/evidence",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/evidence@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.hygiene",
+      "uses": "async/actions/hygiene",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/hygiene@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.pages",
+      "uses": "async/actions/pages",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/pages@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.preview",
+      "uses": "async/actions/preview",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/preview@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.publish",
+      "uses": "async/actions/publish",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/publish@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.run",
+      "uses": "async/actions/run",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/run@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.setup",
+      "uses": "async/actions/setup",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/setup@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "async.actions.source-impact",
+      "uses": "async/actions/source-impact",
+      "sha": "f81b4ae15d6a8c512a94bc3a2e866f807ad398a4",
+      "label": "v0.1.16",
+      "ref": "async/actions/source-impact@f81b4ae15d6a8c512a94bc3a2e866f807ad398a4 # v0.1.16"
+    },
+    {
+      "id": "deno.setup",
+      "uses": "denoland/setup-deno",
+      "sha": "667a34cdef165d8d2b2e98dde39547c9daac7282",
+      "label": "v2.0.4",
+      "ref": "denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4"
+    },
+    {
+      "id": "dependabot.fetch-metadata",
+      "uses": "dependabot/fetch-metadata",
+      "sha": "25dd0e34f4fe68f24cc83900b1fe3fe149efef98",
+      "label": "v3.1.0",
+      "ref": "dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0"
+    },
+    {
+      "id": "pnpm.setup",
+      "uses": "pnpm/setup",
+      "sha": "cf03a9b516e09bc5a90f041fc26fc930c9dc631b",
+      "label": "v1.0.0",
+      "ref": "pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0"
+    }
+  ],
   "triggers": {
     "pull_request": {},
     "push": {
@@ -115,6 +257,81 @@
     "registry": "https://npm.pkg.github.com",
     "tokenEnv": "GITHUB_TOKEN",
     "comment": true
+  },
+  "evidence": {
+    "enabled": false,
+    "job": "evidence",
+    "paths": [
+      ".async/runs"
+    ],
+    "receiptPaths": [
+      ".async/actions/receipts/**/*.json"
+    ],
+    "artifactNamePrefix": "async-evidence",
+    "retentionDays": 14,
+    "ifNoFilesFound": "warn",
+    "includeSummary": true
+  },
+  "sourceImpact": {
+    "enabled": false,
+    "jobs": [],
+    "generatedJobs": []
+  },
+  "attest": {
+    "enabled": false,
+    "artifacts": [],
+    "subjectManifest": ".async/attest/subjects.json",
+    "sbomPath": ".async/attest/sbom.json",
+    "evidencePath": ".async/actions/receipts/attest.json",
+    "requireNpmProvenance": false,
+    "tarballScan": false,
+    "githubAttestation": false
+  },
+  "contract": {
+    "enabled": false,
+    "mode": "off",
+    "job": "contract",
+    "api": true,
+    "claims": true,
+    "schema": {
+      "enabled": false,
+      "sources": [],
+      "output": ".async/contract/schema.json"
+    },
+    "packagePath": ".",
+    "evidenceDir": ".async/contract",
+    "annotations": true
+  },
+  "hygiene": {
+    "enabled": false,
+    "mode": "off",
+    "job": "hygiene",
+    "profiles": [
+      "package",
+      "github",
+      "docs"
+    ],
+    "releaseGate": false,
+    "packagePath": ".",
+    "evidenceDir": ".async/hygiene",
+    "annotations": true
+  },
+  "bridge": {
+    "enabled": false,
+    "mode": "off",
+    "schedule": false,
+    "pullRequest": true,
+    "branchPrefix": "async/bridge/",
+    "allowedPaths": [],
+    "endpointVar": "ASYNC_PROJECT_URL",
+    "tokenEnv": "ASYNC_PROJECT_TOKEN",
+    "packageVersion": "latest",
+    "job": "async-bridge",
+    "actionsJob": {
+      "enabled": false,
+      "scheduled": false,
+      "manual": false
+    }
   },
   "pages": {
     "enabled": true,

@@ -38,6 +38,8 @@ export default definePipeline({
         "publish:npm": "publish npm --package ./dist",
         "release:doctor": "release doctor --package ./dist",
         "release:ensure": "release ensure --package ./dist",
+        "release:sync-descriptions": "release sync-descriptions --package ./dist",
+        "release:sync-descriptions:check": "release sync-descriptions --package ./dist --check",
         "sync:check": "sync check",
         "sync:generate": "sync generate"
       }
