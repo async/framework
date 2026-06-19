@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.18 - 2026-06-19
+
+- Added inert build optimizer artifact helpers for ADR 26 pass records,
+  diagnostics, runtime slice selection, handler emission, and development
+  report generation.
+- Added optimizer fixtures for signal source classification, signal ownership,
+  JSX event symbol extraction, Suspense/Reveal lowering, runtime selection, and
+  server-only browser import diagnostics.
+- Added build optimizer tests proving maybe-promise signals fail explicitly,
+  event handlers are not forced through dynamic imports, Reveal ordering is
+  deterministic, omitted runtime systems are visible, and helpers do not execute
+  app modules or import no-build runtime systems.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 221,403 B (221.4 KB / 0.221 MB), gzip 42,093 B (42.1 KB / 0.042 MB), br 34,797 B (34.8 KB / 0.035 MB) -> `browser.min.js` raw 95,027 B (95.0 KB / 0.095 MB), gzip 28,145 B (28.1 KB / 0.028 MB), br 24,793 B (24.8 KB / 0.025 MB); delta raw -126,376 B (-126.4 KB / -0.126 MB), gzip -13,948 B (-13.9 KB / -0.014 MB), br -10,004 B (-10.0 KB / -0.010 MB).
+
 ## 0.11.17 - 2026-06-19
 
 - Added the stream backpatch protocol to `createBoundaryReceiver(...)` with
