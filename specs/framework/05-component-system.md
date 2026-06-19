@@ -1,0 +1,110 @@
+# Component System
+
+Reference file for [Async Framework](../framework.md). This file owns scoped
+fragment components, helper APIs, lifecycle hooks, visibility/intersection
+behavior, child rendering, and cleanup.
+
+## Purpose
+
+Components provide reusable scoped fragments without introducing a virtual node
+model or a component rerender loop. They should produce HTML protocol output and
+scoped registry entries that the loader can scan and clean up.
+
+## Responsibilities
+
+- Define component functions through `defineComponent(...)`.
+- Render component output to HTML fragments or templates.
+- Provide scoped helpers for local signals, computed values, async signals,
+  handlers, effects, child rendering, suspense templates, and lifecycle hooks.
+- Schedule attach, visible, intersect, effect, and cleanup work through runtime
+  systems.
+- Release scoped handlers, signals, inline bindings, observers, and scheduler
+  scopes when a fragment is destroyed.
+
+## Public Contract
+
+Component helpers include:
+
+- `this.signal(name, initial)` and `this.signal(initial)`.
+- `this.computed(name, fn)`.
+- `this.asyncSignal(name, fn)`.
+- `this.effect(fn)`.
+- `this.handler(name, fn)` and `this.handler(fn)`.
+- `this.render(Component, props)`.
+- `this.suspense(signalRef, views)`.
+- `this.on(event, fn)` with `attach`, `visible`, `intersect`, and `destroy`
+  behavior.
+- `this.onMount(fn)` and `this.onVisible(fn)` compatibility aliases.
+- `this.intersect(element, options, fn)` for direct element observation.
+
+Components return HTML-compatible values. Promise-returning components are not
+part of the synchronous component contract.
+
+## Subsystem Boundaries
+
+- Components create scoped declarations; registries own their storage and
+  lookup.
+- Components render fragments; the loader inserts, scans, and swaps DOM.
+- Lifecycle scheduling belongs to the scheduler.
+- Visibility and intersection observation belongs to loader-owned DOM helpers.
+- Async data loading belongs to async signals or partial/server systems, not to
+  async component rendering.
+
+## Protocol Contract
+
+Components emit the same protocol as hand-authored HTML:
+
+- Event handlers become registered IDs referenced by `on:*`.
+- Local signals become scoped signal IDs referenced by `signal:*` or `class:*`.
+- Suspense helpers emit boundary templates and do not own wrapper elements.
+- Child rendering returns fragment output that remains scannable by the loader.
+
+## Resume Contract
+
+Components must not be required to rerun to activate server-rendered DOM:
+
+- Protocol attributes inside component output are the resume surface.
+- Scoped cleanup metadata must be associated with mounted fragments when the
+  component rendered in the browser.
+- Future compiler layers may precompute component protocol artifacts for
+  already-rendered DOM instead of calling component bodies on browser resume.
+- Boundary swaps must dispose component scopes beneath the replaced boundary.
+
+## Invariants
+
+- Components are scoped fragments, not virtual nodes.
+- Component output does not cause a component rerender loop.
+- Component-local state and handlers are unregistered on fragment cleanup.
+- `on:visible` is a one-shot visibility lifecycle hook.
+- `on:intersect` and `this.intersect(...)` are continuous observation paths
+  with explicit cleanup.
+
+## Failure Modes
+
+- Non-function component definitions fail.
+- Promise-returning components fail with a clear unsupported-component error.
+- Lazy component descriptors that resolve asynchronously are not valid for
+  synchronous render paths unless a future async component contract defines it.
+- Invalid suspense inputs fail before emitting ambiguous boundary markup.
+- Observer-less environments report unsupported intersection behavior through
+  the defined fallback path.
+
+## Acceptance Criteria
+
+- A component can create scoped local signals and handlers, render them into
+  protocol attributes, and update DOM after mounting.
+- Attach, visible, intersect, and destroy hooks run in deterministic scheduler
+  phases.
+- Component cleanup removes scoped handlers, scoped signals, inline bindings,
+  observers, and pending scoped scheduler work.
+- `this.suspense(...)` emits loading, ready, and error templates for an async
+  signal without creating a wrapper element.
+- Multiple child components with identical hook bodies do not dedupe each
+  other incorrectly.
+
+## Open Or Deferred Decisions
+
+- Whether async components should exist as a separate partial-like contract.
+- Compiler ownership of component-scope ID generation.
+- Public component devtools and scope inspection.
+- Whether component output should gain stricter template validation.
