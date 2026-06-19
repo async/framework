@@ -1,0 +1,48 @@
+{
+  "valid": [
+    {
+      "sourceId": "count",
+      "sourceShape": "value",
+      "initialValue": 0,
+      "owner": "app"
+    },
+    {
+      "sourceId": "doubleCount",
+      "sourceShape": "sync-function",
+      "reads": ["count"],
+      "owner": "component"
+    },
+    {
+      "sourceId": "user",
+      "sourceShape": "async-function",
+      "reads": ["userId"],
+      "owner": "shared-module",
+      "latest": true,
+      "pending": true,
+      "error": true,
+      "stream": "default"
+    }
+  ],
+  "maybePromise": [
+    {
+      "sourceId": "maybeUser",
+      "sourceShape": "maybe-promise-function",
+      "reads": ["userId"],
+      "owner": "component"
+    }
+  ],
+  "invalidOwnership": [
+    {
+      "sourceId": "eventLocal",
+      "sourceShape": "value",
+      "initialValue": false,
+      "createdIn": "event-handler"
+    },
+    {
+      "sourceId": "ambiguous",
+      "sourceShape": "sync-function",
+      "reads": ["count"],
+      "owner": "ambiguous"
+    }
+  ]
+}

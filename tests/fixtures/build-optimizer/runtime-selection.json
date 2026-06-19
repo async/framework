@@ -1,0 +1,114 @@
+{
+  "sourceInventory": {
+    "entries": [
+      {
+        "id": "src/main.jsx",
+        "target": "browser",
+        "imports": ["src/components/counter.jsx"]
+      }
+    ],
+    "frameworkImports": [
+      {
+        "sourceId": "src/main.jsx",
+        "module": "@async/framework/jsx",
+        "names": ["component", "signal", "Suspense", "Reveal"],
+        "supported": true
+      }
+    ],
+    "jsxModules": [
+      {
+        "id": "src/main.jsx"
+      }
+    ],
+    "serverModules": [
+      {
+        "id": "src/server/load-user.js"
+      },
+      {
+        "id": "src/server/mutate-user.js"
+      }
+    ],
+    "config": {
+      "host": {
+        "name": "vite",
+        "version": "8.0.0",
+        "engine": "rolldown"
+      }
+    }
+  },
+  "semanticGraph": {
+    "components": [
+      {
+        "id": "Home",
+        "locators": ["main:home", "button:add"]
+      }
+    ],
+    "signals": [
+      {
+        "sourceId": "count",
+        "sourceShape": "value",
+        "initialValue": 0,
+        "owner": "app"
+      },
+      {
+        "sourceId": "doubleCount",
+        "sourceShape": "sync-function",
+        "reads": ["count"],
+        "owner": "component"
+      },
+      {
+        "sourceId": "user",
+        "sourceShape": "async-function",
+        "reads": ["userId"],
+        "owner": "shared-module",
+        "latest": true,
+        "pending": true,
+        "error": true,
+        "stream": "default"
+      }
+    ],
+    "eventProps": [
+      {
+        "eventId": "click:add",
+        "elementId": "button:add",
+        "propName": "onClick",
+        "handler": "increment",
+        "module": "./counter.js",
+        "emissionMode": "direct-import"
+      }
+    ],
+    "suspense": [
+      {
+        "boundaryId": "profile",
+        "sourceOrder": 0,
+        "fallbackId": "profile:fallback",
+        "finalId": "profile:content",
+        "asyncSourceIds": ["user"]
+      },
+      {
+        "boundaryId": "timeline",
+        "sourceOrder": 1,
+        "fallbackId": "timeline:fallback",
+        "finalId": "timeline:content",
+        "asyncSourceIds": ["timeline"]
+      }
+    ],
+    "revealPolicies": [
+      {
+        "groupId": "home:reveal",
+        "order": "forwards",
+        "tail": "collapsed",
+        "boundaryIds": ["profile", "timeline"],
+        "arrivalOrder": ["timeline", "profile"]
+      }
+    ],
+    "serverCalls": [
+      {
+        "id": "loadUser",
+        "module": "src/server/load-user.js"
+      }
+    ],
+    "routes": [],
+    "locators": ["strong:count", "section:profile", "section:timeline"]
+  }
+}

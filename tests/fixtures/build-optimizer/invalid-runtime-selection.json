@@ -1,0 +1,38 @@
+{
+  "sourceInventory": {
+    "entries": [
+      {
+        "id": "src/main.jsx",
+        "target": "browser",
+        "imports": ["src/server/load-user.js"]
+      }
+    ],
+    "frameworkImports": [
+      {
+        "sourceId": "src/main.jsx",
+        "module": "@async/framework",
+        "names": ["Async"],
+        "supported": false
+      }
+    ],
+    "serverModules": [
+      {
+        "id": "src/server/load-user.js"
+      }
+    ],
+    "config": {
+      "host": {
+        "name": "vite",
+        "version": "7.2.0",
+        "engine": "rollup"
+      }
+    }
+  },
+  "semanticGraph": {
+    "signals": [],
+    "eventProps": [],
+    "suspense": [],
+    "revealPolicies": [],
+    "locators": []
+  }
+}

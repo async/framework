@@ -1,0 +1,57 @@
+{
+  "suspense": [
+    {
+      "boundaryId": "profile",
+      "sourceOrder": 0,
+      "fallbackId": "profile:fallback",
+      "finalId": "profile:content",
+      "asyncSourceIds": ["user"]
+    },
+    {
+      "boundaryId": "timeline",
+      "sourceOrder": 1,
+      "fallbackId": "timeline:fallback",
+      "finalId": "timeline:content",
+      "asyncSourceIds": ["timeline"]
+    }
+  ],
+  "revealPolicies": [
+    {
+      "groupId": "home:reveal",
+      "order": "forwards",
+      "tail": "collapsed",
+      "boundaryIds": ["profile", "timeline"],
+      "arrivalOrder": ["timeline", "profile"]
+    },
+    {
+      "groupId": "reverse:reveal",
+      "order": "backwards",
+      "tail": "hidden",
+      "boundaryIds": ["profile", "timeline"]
+    }
+  ],
+  "invalidPolicy": {
+    "suspense": [
+      {
+        "boundaryId": "profile",
+        "sourceOrder": 0,
+        "fallbackId": "profile:fallback",
+        "finalId": "profile:content"
+      }
+    ],
+    "revealPolicies": [
+      {
+        "groupId": "bad:reveal",
+        "order": "waterfall",
+        "tail": "collapsed",
+        "boundaryIds": ["profile"]
+      },
+      {
+        "groupId": "missing:reveal",
+        "order": "forwards",
+        "tail": "collapsed",
+        "boundaryIds": ["profile", "timeline"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "eventProps": [
+    {
+      "eventId": "click:add",
+      "elementId": "button:add",
+      "propName": "onClick",
+      "handler": "increment",
+      "module": "./counter.js",
+      "exportName": "increment",
+      "syncEventApis": ["preventDefault"],
+      "commands": [["preventDefault"]],
+      "emissionMode": "direct-import",
+      "preserveSyncEventApi": true
+    },
+    {
+      "eventId": "input:name",
+      "elementId": "input:name",
+      "propName": "onInput",
+      "handler": "writeName",
+      "emissionMode": "inline"
+    },
+    {
+      "eventId": "pointer:warm",
+      "elementId": "section:profile",
+      "propName": "onPointerEnter",
+      "handler": "warmProfile",
+      "chunk": "profile-warm.js",
+      "emissionMode": "lazy-chunk",
+      "preload": true
+    }
+  ],
+  "invalidNoBuildSyntax": [
+    {
+      "eventId": "bad:no-build",
+      "elementId": "button:add",
+      "propName": "on:click",
+      "handler": "increment",
+      "syntax": "no-build"
+    }
+  ],
+  "invalidLazySemantics": [
+    {
+      "eventId": "click:lazy",
+      "elementId": "button:add",
+      "propName": "onClick",
+      "handler": "lazyClick",
+      "syncEventApis": ["preventDefault"],
+      "emissionMode": "lazy-chunk",
+      "chunk": "lazy-click.js"
+    }
+  ]
+}
