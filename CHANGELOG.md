@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.19 - 2026-06-19
+
+- Added the first build-required profile subpaths,
+  `@async/framework/jsx` and `@async/framework/vite`, with package export,
+  declaration, pack, and installed-package coverage.
+- Added JSX authoring markers for `signal`, `component`, `Suspense`, and
+  `Reveal` that stay inert for compiler analysis instead of executing app code.
+- Added a Vite 8+ Rolldown plugin spike that emits a deterministic virtual
+  runtime plan/report from fixture metadata and rejects unsupported hosts before
+  transform output is trusted.
+- Added the build-profile report fixture proving selected runtime slices,
+  omitted no-build systems, visible fallbacks, signal/event/stream counts, and
+  generated locator counts without importing the root `Async` app hub.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 221,403 B (221.4 KB / 0.221 MB), gzip 42,093 B (42.1 KB / 0.042 MB), br 34,797 B (34.8 KB / 0.035 MB) -> `browser.min.js` raw 95,027 B (95.0 KB / 0.095 MB), gzip 28,145 B (28.1 KB / 0.028 MB), br 24,793 B (24.8 KB / 0.025 MB); delta raw -126,376 B (-126.4 KB / -0.126 MB), gzip -13,948 B (-13.9 KB / -0.014 MB), br -10,004 B (-10.0 KB / -0.010 MB).
+
 ## 0.11.18 - 2026-06-19
 
 - Added inert build optimizer artifact helpers for ADR 26 pass records,
