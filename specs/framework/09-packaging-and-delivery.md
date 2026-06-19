@@ -31,6 +31,9 @@ Package surfaces include:
 - Root import with condition-specific browser and Node behavior.
 - `@async/framework/browser` for browser runtime APIs.
 - `@async/framework/server` for server-capable APIs.
+- `@async/framework/runtime` and `@async/framework/runtime/*` for optimized
+  built-mode runtime slices defined by
+  [11-runtime-slice-entrypoints.md](./11-runtime-slice-entrypoints.md).
 - Explicit artifact subpaths such as `browser.js`, `browser.min.js`,
   `browser.umd.min.js`, `browser.ts`, `browser.d.ts`, `server.js`,
   `framework.ts`, and `framework.d.ts`.
@@ -109,7 +112,8 @@ Published artifacts must support resume and streaming:
 ## Open Or Deferred Decisions
 
 - Whether specs should be included in the published package file list.
-- Public package policy for future compiler/build subpaths.
+- Public package policy for future compiler/build subpaths beyond the initial
+  runtime slice lane.
 - Browser compatibility targets beyond the current package baseline.
 - Long-term release cadence and versioning policy for protocol changes.
 - A dedicated no-bundler/module-cache delivery spec that defines how Async can

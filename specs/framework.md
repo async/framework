@@ -119,3 +119,6 @@ tree or hidden hydration model.
 - [10-deferred-systems.md](./framework/10-deferred-systems.md) - System 2
   compiler layers, lazy chunks, deeper resumability metadata, and future
   decisions.
+- [11-runtime-slice-entrypoints.md](./framework/11-runtime-slice-entrypoints.md)
+  - optimized built-mode runtime entrypoints, generated plan contracts, slice
+  controllers, teardown, and scenario size budgets.
