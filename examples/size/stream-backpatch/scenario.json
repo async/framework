@@ -1,5 +1,5 @@
 {
-  "id": "boundary-receiver",
+  "id": "stream-backpatch",
   "entry": "main.js",
   "scripts": [
     "../../../dist/browser.min.js",

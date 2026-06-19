@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Async scenario: stream backpatch</title>
+  </head>
+  <body>
+    <main>
+      <section async:reveal="dashboard" async:reveal-order="forwards" async:reveal-tail="collapsed">
+        <section async:boundary="profile">
+          <div data-pending-id="profile-pending">Loading profile...</div>
+        </section>
+        <section async:boundary="timeline">
+          <input id="timeline-filter" async:patch="timeline-filter" aria-describedby="">
+          <div data-pending-id="timeline-pending">Loading timeline...</div>
+        </section>
+      </section>
+
+      <template async:stream-template="timeline-ready">
+        <p id="timeline-help">Timeline loaded out of order.</p>
+      </template>
+
+      <script type="application/json" async:stream-patch>
+        {
+          "boundary": "timeline",
+          "seq": 1,
+          "replace": {
+            "target": "timeline-pending",
+            "template": "timeline-ready"
+          },
+          "attrs": [
+            ["timeline-filter", "aria-describedby", "timeline-help"]
+          ]
+        }
+      </script>
+      <script type="application/json" async:stream-patch>
+        {
+          "boundary": "profile",
+          "seq": 1,
+          "html": "<p>Profile loaded first in reveal order.</p>"
+        }
+      </script>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

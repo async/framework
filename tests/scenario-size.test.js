@@ -22,7 +22,8 @@ test("scenario-size receipt reports raw and gzip bytes for current fixtures", as
     "runtime-lazy-handler",
     "runtime-signals-counter",
     "server-call-button",
-    "signals-counter"
+    "signals-counter",
+    "stream-backpatch"
   ]);
   for (const scenario of receipt.scenarios) {
     assert.ok(scenario.closure.rawBytes > 0);

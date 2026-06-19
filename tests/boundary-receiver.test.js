@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   Loader,
+  AsyncStream,
   createBoundaryReceiver,
   createCacheRegistry,
   createHandlerRegistry,
@@ -360,6 +361,337 @@ test("boundary receiver flushes scheduled bindings after swap", async () => {
   });
 
   assert.equal(document.querySelector("#mirror").textContent, "new");
+  loader.destroy();
+});
+
+test("boundary receiver applies built attribute triples without rescanning", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="checkout">
+      <input id="zip" data-async-backpatch aria-describedby="">
+      <p id="help" data-async-backpatch hidden>Loading help...</p>
+      <section async:boundary="nested">
+        <input id="nested" data-async-backpatch aria-describedby="">
+      </section>
+    </section>
+  `;
+  const loader = Loader({ root: document.body }).start();
+  const originalScan = loader.scan.bind(loader);
+  let scans = 0;
+  loader.scan = (root) => {
+    scans += 1;
+    return originalScan(root);
+  };
+  const receiver = createBoundaryReceiver({ loader });
+
+  const result = await receiver.apply({
+    boundary: "checkout",
+    seq: 1,
+    attrs: [
+      0, "aria-describedby", "zip-help",
+      1, "hidden", false
+    ]
+  });
+
+  assert.deepEqual(result, {
+    status: "applied",
+    boundary: "checkout",
+    seq: 1,
+    attrs: { applied: 2, ignored: 0 }
+  });
+  assert.equal(scans, 0);
+  assert.equal(document.querySelector("#zip").getAttribute("aria-describedby"), "zip-help");
+  assert.equal(document.querySelector("#help").hasAttribute("hidden"), false);
+  assert.equal(document.querySelector("#nested").getAttribute("aria-describedby"), "");
+  loader.destroy();
+});
+
+test("boundary receiver applies no-build named attribute tuples", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="checkout">
+      <input id="zip" async:patch="zip-input" aria-describedby="">
+      <button id="submit" async:patch="submit">Submit</button>
+    </section>
+  `;
+  const loader = Loader({ root: document.body }).start();
+  const receiver = createBoundaryReceiver({ loader });
+
+  const result = await receiver.apply({
+    boundary: "checkout",
+    seq: 1,
+    attrs: [
+      ["zip-input", "aria-describedby", "zip-help-ca"],
+      ["submit", "disabled", true]
+    ]
+  });
+
+  assert.deepEqual(result.attrs, { applied: 2, ignored: 0 });
+  assert.equal(document.querySelector("#zip").getAttribute("aria-describedby"), "zip-help-ca");
+  assert.equal(document.querySelector("#submit").getAttribute("disabled"), "");
+  loader.destroy();
+});
+
+test("boundary receiver rejects unsafe attribute patches before consuming seq", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="checkout"><input async:patch="zip-input"></section>`;
+  const loader = Loader({ root: document.body }).start();
+  const receiver = createBoundaryReceiver({ loader });
+
+  for (const attr of ["onclick", "on:click", "on-click", "innerHTML", "textContent", "bad name"]) {
+    await assert.rejects(
+      receiver.apply({
+        boundary: "checkout",
+        seq: 1,
+        attrs: [["zip-input", attr, "x"]]
+      }),
+      /not allowed/
+    );
+  }
+
+  assert.equal(receiver.inspect().boundaries.checkout, undefined);
+  loader.destroy();
+});
+
+test("boundary receiver applies replacement before attrs and rescans inserted content", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="checkout">
+      <input id="zip" async:patch="zip-input" aria-describedby="">
+      <div data-pending-id="shipping-help">Loading shipping rules...</div>
+    </section>
+  `;
+  const signals = createSignalRegistry({
+    selected: signal(false)
+  });
+  const handlers = createHandlerRegistry({
+    select() {
+      this.signals.set("selected", true);
+    }
+  });
+  const loader = Loader({ root: document.body, handlers, signals }).start();
+  const receiver = createBoundaryReceiver({ loader });
+
+  const result = await receiver.apply({
+    boundary: "checkout",
+    seq: 1,
+    replace: {
+      target: "shipping-help",
+      html: `<p id="zip-help-ca">California shipping requires ZIP+4. <button id="select" on:click="select" signal:class:selected="selected">Select</button></p>`
+    },
+    attrs: [["zip-input", "aria-describedby", "zip-help-ca"]]
+  });
+
+  assert.deepEqual(result.replace, { applied: 1 });
+  assert.deepEqual(result.attrs, { applied: 1, ignored: 0 });
+  assert.equal(document.querySelector("[data-pending-id='shipping-help']"), null);
+  assert.equal(document.querySelector("#zip").getAttribute("aria-describedby"), "zip-help-ca");
+  document.querySelector("#select").click();
+  await delay(0);
+  assert.equal(signals.get("selected"), true);
+  assert.equal(document.querySelector("#select").classList.contains("selected"), true);
+  loader.destroy();
+});
+
+test("boundary receiver buffers forwards reveal chunks and updates collapsed tail", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:reveal="dashboard" async:reveal-order="forwards" async:reveal-tail="collapsed">
+      <section id="profile" async:boundary="profile">Profile fallback</section>
+      <section id="timeline" async:boundary="timeline">Timeline fallback</section>
+      <section id="details" async:boundary="details">Details fallback</section>
+    </section>
+  `;
+  const loader = Loader({ root: document.body }).start();
+  const receiver = createBoundaryReceiver({ loader });
+
+  const details = await receiver.apply({
+    boundary: "details",
+    seq: 1,
+    reveal: { group: "dashboard", index: 2, count: 3, order: "forwards", tail: "collapsed" },
+    html: `<p>Details ready</p>`
+  });
+
+  assert.equal(details.status, "buffered");
+  assert.equal(document.querySelector("#profile").hasAttribute("hidden"), false);
+  assert.equal(document.querySelector("#timeline").hasAttribute("hidden"), true);
+  assert.equal(document.querySelector("#details").hasAttribute("hidden"), true);
+
+  const profile = await receiver.apply({
+    boundary: "profile",
+    seq: 1,
+    reveal: { group: "dashboard", index: 0, count: 3, order: "forwards", tail: "collapsed" },
+    html: `<p>Profile ready</p>`
+  });
+
+  assert.equal(profile.status, "applied");
+  assert.equal(document.querySelector("#profile").textContent, "Profile ready");
+  assert.equal(document.querySelector("#timeline").hasAttribute("hidden"), false);
+  assert.equal(document.querySelector("#details").hasAttribute("hidden"), true);
+
+  const timeline = await receiver.apply({
+    boundary: "timeline",
+    seq: 1,
+    reveal: { group: "dashboard", index: 1, count: 3, order: "forwards", tail: "collapsed" },
+    html: `<p>Timeline ready</p>`
+  });
+
+  assert.equal(timeline.status, "applied");
+  assert.equal(document.querySelector("#timeline").textContent, "Timeline ready");
+  assert.equal(document.querySelector("#details").textContent, "Details ready");
+  assert.equal(document.querySelector("#details").hasAttribute("hidden"), false);
+  loader.destroy();
+});
+
+test("boundary receiver supports as-ready, backwards, and together reveal orders", async () => {
+  {
+    const window = new Window();
+    const { document } = window;
+    document.body.innerHTML = `
+      <section async:reveal="as-ready">
+        <section async:boundary="first">First fallback</section>
+        <section async:boundary="second">Second fallback</section>
+      </section>
+    `;
+    const loader = Loader({ root: document.body }).start();
+    const receiver = createBoundaryReceiver({ loader });
+    const second = await receiver.apply({
+      boundary: "second",
+      seq: 1,
+      reveal: { group: "as-ready", index: 1, count: 2, order: "as-ready" },
+      html: `<p>Second ready</p>`
+    });
+    assert.equal(second.status, "applied");
+    assert.equal(document.querySelector("[async\\:boundary='second']").textContent, "Second ready");
+    loader.destroy();
+  }
+
+  {
+    const window = new Window();
+    const { document } = window;
+    document.body.innerHTML = `
+      <section async:reveal="reverse">
+        <section async:boundary="first">First fallback</section>
+        <section async:boundary="second">Second fallback</section>
+      </section>
+    `;
+    const loader = Loader({ root: document.body }).start();
+    const receiver = createBoundaryReceiver({ loader });
+    const first = await receiver.apply({
+      boundary: "first",
+      seq: 1,
+      reveal: { group: "reverse", index: 0, count: 2, order: "backwards" },
+      html: `<p>First ready</p>`
+    });
+    assert.equal(first.status, "buffered");
+    const second = await receiver.apply({
+      boundary: "second",
+      seq: 1,
+      reveal: { group: "reverse", index: 1, count: 2, order: "backwards" },
+      html: `<p>Second ready</p>`
+    });
+    assert.equal(second.status, "applied");
+    assert.equal(document.querySelector("[async\\:boundary='first']").textContent, "First ready");
+    assert.equal(document.querySelector("[async\\:boundary='second']").textContent, "Second ready");
+    loader.destroy();
+  }
+
+  {
+    const window = new Window();
+    const { document } = window;
+    document.body.innerHTML = `
+      <section async:reveal="together">
+        <section async:boundary="first">First fallback</section>
+        <section async:boundary="second">Second fallback</section>
+      </section>
+    `;
+    const loader = Loader({ root: document.body }).start();
+    const receiver = createBoundaryReceiver({ loader });
+    const first = await receiver.apply({
+      boundary: "first",
+      seq: 1,
+      reveal: { group: "together", index: 0, count: 2, order: "together" },
+      html: `<p>First ready</p>`
+    });
+    assert.equal(first.status, "buffered");
+    assert.equal(document.querySelector("[async\\:boundary='first']").textContent, "First fallback");
+    const second = await receiver.apply({
+      boundary: "second",
+      seq: 1,
+      reveal: { group: "together", index: 1, count: 2, order: "together" },
+      html: `<p>Second ready</p>`
+    });
+    assert.equal(second.status, "applied");
+    assert.equal(document.querySelector("[async\\:boundary='first']").textContent, "First ready");
+    assert.equal(document.querySelector("[async\\:boundary='second']").textContent, "Second ready");
+    loader.destroy();
+  }
+});
+
+test("AsyncStream applies JSON scripts with templates, attrs, and DOM reveal metadata", async () => {
+  const window = new Window();
+  const { document } = window;
+  const attributes = { async: ["async:", "data-async-"] };
+  document.body.innerHTML = `
+    <section data-async-reveal="dashboard" data-async-reveal-order="forwards">
+      <section data-async-boundary="profile">
+        <div data-pending-id="profile-pending">Profile fallback</div>
+      </section>
+      <section data-async-boundary="timeline">
+        <input id="timeline-input" data-async-patch="timeline-input" aria-describedby="">
+        <div data-pending-id="timeline-pending">Timeline fallback</div>
+      </section>
+    </section>
+    <template data-async-stream-template="timeline-ready">
+      <p id="timeline-help">Timeline ready</p>
+    </template>
+    <script id="timeline-patch" type="application/json" data-async-stream-patch>
+      {
+        "boundary": "timeline",
+        "seq": 1,
+        "replace": {
+          "target": "timeline-pending",
+          "template": "timeline-ready"
+        },
+        "attrs": [
+          ["timeline-input", "aria-describedby", "timeline-help"]
+        ]
+      }
+    </script>
+    <script id="profile-patch" type="application/json" data-async-stream-patch>
+      {
+        "boundary": "profile",
+        "seq": 1,
+        "html": "<p>Profile ready</p>"
+      }
+    </script>
+  `;
+  const loader = Loader({ root: document.body, attributes }).start();
+  const receiver = createBoundaryReceiver({ loader, attributes });
+
+  const timeline = await AsyncStream.applyScript(document.querySelector("#timeline-patch"), {
+    receiver,
+    attributes,
+    root: document.body
+  });
+  assert.equal(timeline.status, "buffered");
+  assert.equal(document.querySelector("[data-async-boundary='timeline']").textContent.includes("Timeline fallback"), true);
+  assert.equal(document.querySelector("#timeline-input").getAttribute("aria-describedby"), "");
+
+  const profile = await AsyncStream.applyScript(document.querySelector("#profile-patch"), {
+    receiver,
+    attributes,
+    root: document.body
+  });
+  assert.equal(profile.status, "applied");
+  assert.equal(document.querySelector("[data-async-boundary='profile']").textContent, "Profile ready");
+  assert.equal(document.querySelector("[data-async-boundary='timeline']").textContent.includes("Timeline ready"), true);
+  assert.equal(document.querySelector("#timeline-input").getAttribute("aria-describedby"), "timeline-help");
   loader.destroy();
 });
 
