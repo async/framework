@@ -28,7 +28,7 @@ Async.use({
     "view.apps": () => setView("apps"),
     "view.results": () => setView("results"),
     "filters.all": () => selectFrameworks(frameworkOptions(latestResults?.results ?? []).map((option) => option.framework)),
-    "filters.asyncOnly": () => selectFrameworks(["async-framework"]),
+    "filters.asyncOnly": () => selectFrameworks(["async-framework", "js-only"]),
   },
 });
 
