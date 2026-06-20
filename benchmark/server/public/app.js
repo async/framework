@@ -55,11 +55,11 @@ function renderOverallTable(results) {
       framework: result.framework,
       totalRatios: [],
       memoryRatios: [],
-      gzipKB: result.gzipKB,
+      brKB: result.brKB,
     };
     current.totalRatios.push(result.totalRatio);
     current.memoryRatios.push(result.memoryRatio);
-    current.gzipKB = result.gzipKB;
+    current.brKB = result.brKB;
     frameworks.set(result.frameworkVersion, current);
   }
 
@@ -72,16 +72,16 @@ function renderOverallTable(results) {
     .sort((a, b) => a.totalScore - b.totalScore);
   const bestTotal = Math.min(...rows.map((row) => row.totalScore));
   const bestMemory = Math.min(...rows.map((row) => row.memoryScore));
-  const bestSize = Math.min(...rows.map((row) => row.gzipKB));
+  const bestSize = Math.min(...rows.map((row) => row.brKB));
 
   return renderTable(
-    ["Rank", "Framework", "Total", "Memory", "Gzip"],
+    ["Rank", "Framework", "Total", "Memory", "BR"],
     rows.map((row, index) => [
       textCell(`#${index + 1}`, "rank-cell"),
       textCell(row.frameworkVersion, "framework-cell"),
       scoreCell(`${formatRatio(row.totalScore)}x`, row.totalScore / bestTotal),
       scoreCell(`${formatRatio(row.memoryScore)}x`, row.memoryScore / bestMemory),
-      scoreCell(`${format(row.gzipKB)} KB`, row.gzipKB / bestSize),
+      scoreCell(`${format(row.brKB)} KB`, row.brKB / bestSize),
     ]),
   );
 }
@@ -95,7 +95,7 @@ function renderBenchmarkGroup(group) {
   heading.textContent = `${group[0].benchmark} · ${group[0].label}`;
 
   const table = renderTable(
-    ["Framework", "Total", "Script", "Paint", "Memory", "Gzip"],
+    ["Framework", "Total", "Script", "Paint", "Memory", "BR"],
     group
       .toSorted((a, b) => a.total - b.total)
       .map((result) => [
@@ -104,7 +104,7 @@ function renderBenchmarkGroup(group) {
         scoreCell(`${format(result.script)} ms · ${formatRatio(result.scriptRatio)}x`, result.scriptRatio),
         scoreCell(`${format(result.paint)} ms · ${formatRatio(result.paintRatio)}x`, result.paintRatio),
         scoreCell(`${format(result.memory)} MB · ${formatRatio(result.memoryRatio)}x`, result.memoryRatio),
-        scoreCell(`${format(result.gzipKB)} KB · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio),
+        scoreCell(`${format(result.brKB)} KB · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio),
       ]),
   );
 
@@ -164,25 +164,25 @@ function enrichResults(results) {
     const bestScript = minMetric(group, (result) => result.summary.script.median);
     const bestPaint = minMetric(group, (result) => result.summary.paint.median);
     const bestMemory = minMetric(group, (result) => result.summary.memoryMB.median);
-    const bestSize = minMetric(group, (result) => result.size.gzipBytes / 1024);
+    const bestSize = minMetric(group, (result) => compressedBytes(result.size) / 1024);
     for (const result of group) {
       const total = result.summary.total.median;
       const script = result.summary.script.median;
       const paint = result.summary.paint.median;
       const memory = result.summary.memoryMB.median;
-      const gzipKB = result.size.gzipBytes / 1024;
+      const brKB = compressedBytes(result.size) / 1024;
       enriched.push({
         ...result,
         total,
         script,
         paint,
         memory,
-        gzipKB,
+        brKB,
         totalRatio: ratio(total, bestTotal),
         scriptRatio: ratio(script, bestScript),
         paintRatio: ratio(paint, bestPaint),
         memoryRatio: ratio(memory, bestMemory),
-        sizeRatio: ratio(gzipKB, bestSize),
+        sizeRatio: ratio(brKB, bestSize),
       });
     }
   }
@@ -242,4 +242,8 @@ function format(value) {
 
 function formatRatio(value) {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
+}
+
+function compressedBytes(size) {
+  return size.brBytes;
 }

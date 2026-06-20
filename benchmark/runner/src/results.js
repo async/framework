@@ -18,7 +18,7 @@ async function main() {
   const resultPath = path.resolve(process.argv[2] ?? path.join(runnerRoot, "results", "latest.json"));
   const data = JSON.parse(await readFile(resultPath, "utf8"));
   console.log(`Modern benchmark results: ${data.generatedAt} (${data.mode}, ${data.browser})`);
-  console.log("framework\tbenchmark\ttotal(ms)\tscript(ms)\tpaint(ms)\tmemory(MB)\tgzip(bytes)");
+  console.log("framework\tbenchmark\ttotal(ms)\tscript(ms)\tpaint(ms)\tmemory(MB)\tbr(bytes)");
   for (const result of data.results) {
     console.log(
       [
@@ -28,7 +28,7 @@ async function main() {
         formatNumber(result.summary.script?.mean),
         formatNumber(result.summary.paint?.mean),
         formatNumber(result.summary.memoryMB?.mean),
-        result.size?.gzipBytes ?? "-",
+        result.size?.brBytes ?? "-",
       ].join("\t")
     );
   }
