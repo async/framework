@@ -99,6 +99,7 @@
     "benchmark:apps": "npm --prefix benchmark run apps",
     "benchmark:results": "npm --prefix benchmark run benchmark:results",
     "benchmark:run": "npm --prefix benchmark run benchmark:run",
+    "benchmark:update": "npm --prefix benchmark run benchmark:update",
     "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",

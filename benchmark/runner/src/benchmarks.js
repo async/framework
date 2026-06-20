@@ -1,4 +1,4 @@
-export const DEFAULT_FRAMEWORKS = ["async-framework", "js-only", "react", "qwik-v1", "qwik-v2", "solid-v1", "solid-v2"];
+export const DEFAULT_FRAMEWORKS = ["async-framework", "js-only", "htmx", "react", "qwik-v1", "qwik-v2", "solid-v1", "solid-v2"];
 
 const rowIdSelector = (row) => `tbody>tr:nth-of-type(${row})>td:nth-of-type(1)`;
 const rowLabelSelector = (row) => `tbody>tr:nth-of-type(${row})>td:nth-of-type(2)>a`;

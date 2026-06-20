@@ -1,8 +1,8 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { DEFAULT_FRAMEWORKS, selectBenchmarks } from "./benchmarks.js";
+import { BENCHMARKS, DEFAULT_FRAMEWORKS, selectBenchmarks } from "./benchmarks.js";
 import { captureTrace, computeTraceMetrics } from "./trace.js";
 import { summarizeRecords } from "./stats.js";
 import { computeBundleSize } from "./size.js";
@@ -22,6 +22,7 @@ function parseArgs(argv) {
     benchmarks: [],
     iterations: undefined,
     warmups: undefined,
+    updateLatest: false,
     chromeBinary: undefined,
     resultsDir: path.join(runnerRoot, "results"),
     tracesDir: path.join(runnerRoot, "traces"),
@@ -50,6 +51,7 @@ function parseArgs(argv) {
     else if (arg === "--benchmark") options.benchmarks.push(...readValues());
     else if (arg === "--iterations") options.iterations = Number(readValue());
     else if (arg === "--warmups") options.warmups = Number(readValue());
+    else if (arg === "--update-latest") options.updateLatest = true;
     else if (arg === "--chromeBinary") options.chromeBinary = readValue();
     else if (arg === "--results") options.resultsDir = path.resolve(readValue());
     else if (arg === "--traces") options.tracesDir = path.resolve(readValue());
@@ -63,13 +65,16 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node src/cli.js [--mode smoke|trace] [--framework react ...] [--benchmark 01_ ...] [--iterations 3]
+  console.log(`Usage: node src/cli.js [--mode smoke|trace] [--framework react ...] [--benchmark 01_ ...] [--iterations 3] [--update-latest]
 
 Defaults:
   mode       trace
-  framework  async-framework js-only react qwik-v1 qwik-v2 solid-v1 solid-v2
+  framework  async-framework js-only htmx react qwik-v1 qwik-v2 solid-v1 solid-v2
   benchmark  all row-operation benchmarks
   browser    Chromium via Playwright
+
+Use --update-latest with --framework and/or --benchmark to replace matching
+rows in runner/results/latest.json while preserving every other existing row.
 `);
 }
 
@@ -148,6 +153,62 @@ async function measureMemoryMB(page, client) {
 
 function tracePathFor(options, framework, benchmark, iteration) {
   return path.join(options.tracesDir, `${framework.fullName}_${benchmark.id}_${iteration}.json`);
+}
+
+function resultKey(result) {
+  return `${result.framework}\0${result.benchmark}`;
+}
+
+function resultSortKey(result) {
+  const frameworkIndex = DEFAULT_FRAMEWORKS.indexOf(result.framework);
+  const benchmarkIndex = BENCHMARKS.findIndex((benchmark) => benchmark.id === result.benchmark);
+  return [
+    frameworkIndex === -1 ? Number.MAX_SAFE_INTEGER : frameworkIndex,
+    benchmarkIndex === -1 ? Number.MAX_SAFE_INTEGER : benchmarkIndex,
+    result.framework,
+    result.benchmark,
+  ];
+}
+
+function sortResults(results) {
+  return results.toSorted((left, right) => {
+    const leftKey = resultSortKey(left);
+    const rightKey = resultSortKey(right);
+    for (let index = 0; index < leftKey.length; index++) {
+      if (leftKey[index] < rightKey[index]) return -1;
+      if (leftKey[index] > rightKey[index]) return 1;
+    }
+    return 0;
+  });
+}
+
+function countUnique(results, field) {
+  return new Set(results.map((result) => result[field])).size;
+}
+
+async function readLatestResults(outputPath) {
+  try {
+    return JSON.parse(await readFile(outputPath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function mergeLatestResults(existing, update) {
+  if (!existing?.results) return update;
+  const merged = new Map(existing.results.map((result) => [resultKey(result), result]));
+  for (const result of update.results) {
+    merged.set(resultKey(result), result);
+  }
+  const results = sortResults([...merged.values()]);
+  return {
+    ...existing,
+    ...update,
+    frameworkCount: countUnique(results, "framework"),
+    benchmarkCount: countUnique(results, "benchmark"),
+    results,
+  };
 }
 
 async function runOneIteration({ browser, framework, benchmark, options, iteration }) {
@@ -252,7 +313,8 @@ async function run() {
       results,
     };
     const outputPath = path.join(options.resultsDir, "latest.json");
-    await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+    const latest = options.updateLatest ? mergeLatestResults(await readLatestResults(outputPath), output) : output;
+    await writeFile(outputPath, `${JSON.stringify(latest, null, 2)}\n`, "utf8");
     console.log(`Modern benchmark results written to ${path.relative(benchmarkRoot, outputPath)}`);
   } finally {
     await server.close();

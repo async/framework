@@ -1,0 +1,28 @@
+{
+  "name": "@async/framework-benchmark-app-htmx",
+  "version": "1.0.0",
+  "description": "HTMX benchmark app",
+  "async-framework-benchmark": {
+    "frameworkVersionFromPackage": "htmx.org",
+    "frameworkHomeURL": "https://htmx.org/",
+    "language": "JavaScript"
+  },
+  "scripts": {
+    "dev": "npm run build-prod",
+    "build-prod": "mkdir -p dist && cp node_modules/htmx.org/dist/htmx.min.js dist/htmx.min.js && cp src/main.js dist/main.js"
+  },
+  "keywords": [
+    "htmx",
+    "benchmark"
+  ],
+  "author": "Async",
+  "license": "MIT",
+  "homepage": "https://github.com/async/framework",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/async/framework.git"
+  },
+  "dependencies": {
+    "htmx.org": "2.0.10"
+  }
+}

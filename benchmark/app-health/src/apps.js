@@ -7,7 +7,7 @@ import { ensureServer, fetchJson } from "./server.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const runnerRoot = path.resolve(__dirname, "..");
 const benchmarkRoot = path.resolve(runnerRoot, "..");
-const DEFAULT_APPS = ["async-framework", "js-only", "react", "qwik-v1", "qwik-v2", "solid-v1", "solid-v2"];
+const DEFAULT_APPS = ["async-framework", "js-only", "htmx", "react", "qwik-v1", "qwik-v2", "solid-v1", "solid-v2"];
 const requiredControls = ["#run", "#runlots", "#add", "#update", "#clear", "#swaprows"];
 
 function parseArgs(argv) {

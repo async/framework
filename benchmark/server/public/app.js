@@ -402,6 +402,7 @@ function displayBenchmarkLabel(result) {
 function displayFrameworkLabel(framework, frameworkVersion = "") {
   if (framework === "async-framework") return "@async/framework";
   if (framework === "js-only") return "JavaScript";
+  if (framework === "htmx") return "HTMX";
   if (framework === "react") return `React v${majorVersion(frameworkVersion) ?? "19"}`;
   if (framework === "solid-v1") return "Solid v1";
   if (framework === "solid-v2") return "Solid v2";
