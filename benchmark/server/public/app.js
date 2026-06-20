@@ -20,6 +20,7 @@ const sizeUnits = new Map([
   ["mb", { label: "MB", divisor: 1024 * 1024 }],
 ]);
 let latestResults = null;
+let availableFrameworks = [];
 let selectedFrameworks = new Set();
 let sizeUnit = loadSizeUnit();
 
@@ -54,13 +55,14 @@ frameworkToggles.addEventListener("change", (event) => {
   renderResultsView();
 });
 
-await Promise.all([renderApps(), renderResults()]);
+await renderApps();
+await renderResults();
 setView(root.dataset.view === "results" ? "results" : "apps");
 
 async function renderApps() {
-  const frameworks = await fetchJson("/ls");
+  availableFrameworks = await fetchJson("/ls");
   appsGrid.replaceChildren(
-    ...frameworks.map((framework) => {
+    ...availableFrameworks.map((framework) => {
       const link = document.createElement("a");
       link.className = "rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900";
       link.href = `/${framework.uri}/index.html`;
@@ -88,8 +90,10 @@ function renderResultsView() {
 
   const options = frameworkOptions(latestResults.results);
   const visibleResults = latestResults.results.filter((result) => selectedFrameworks.has(result.framework));
+  const visibleFrameworkCount = new Set(visibleResults.map((result) => result.framework)).size;
+  const resultFrameworkText = visibleFrameworkCount === 1 ? "1 framework has" : `${visibleFrameworkCount} frameworks have`;
   resultsMeta.textContent = `${latestResults.generatedAt} · ${latestResults.mode} · ${latestResults.browser} · ${visibleResults.length} of ${latestResults.results.length} rows`;
-  frameworkFilterSummary.textContent = `${selectedFrameworks.size} of ${options.length} frameworks visible. Scores are recalculated against the visible set.`;
+  frameworkFilterSummary.textContent = `${selectedFrameworks.size} of ${options.length} frameworks selected. ${resultFrameworkText} results in this file.`;
   syncFrameworkToggles();
 
   if (visibleResults.length === 0) {
@@ -99,7 +103,7 @@ function renderResultsView() {
   }
 
   const enriched = enrichResults(visibleResults);
-  const colorScores = selectedFrameworks.size > 1;
+  const colorScores = visibleFrameworkCount > 1;
   resultsOverall.replaceChildren(renderOverallTable(enriched, colorScores));
   resultsGroups.replaceChildren(...groupByBenchmark(enriched).map((group) => renderBenchmarkGroup(group, colorScores)));
 }
@@ -119,7 +123,18 @@ function renderFrameworkToggles(results) {
       name.className = "font-medium text-slate-900";
       name.textContent = option.label;
 
-      label.replaceChildren(input, name);
+      if (option.resultCount === 0) {
+        const detail = document.createElement("span");
+        detail.className = "text-xs text-slate-500";
+        detail.textContent = "No results";
+
+        const text = document.createElement("span");
+        text.className = "flex flex-col";
+        text.replaceChildren(name, detail);
+        label.replaceChildren(input, text);
+      } else {
+        label.replaceChildren(input, name);
+      }
       return label;
     }),
   );
@@ -127,14 +142,25 @@ function renderFrameworkToggles(results) {
 
 function frameworkOptions(results) {
   const frameworks = new Map();
+  for (const framework of availableFrameworks) {
+    frameworks.set(framework.directory, {
+      framework: framework.directory,
+      frameworkVersion: framework.frameworkVersionString,
+      label: displayFrameworkLabel(framework.directory, framework.frameworkVersionString),
+      resultCount: 0,
+    });
+  }
   for (const result of results) {
-    if (!frameworks.has(result.framework)) {
-      frameworks.set(result.framework, {
-        framework: result.framework,
-        frameworkVersion: result.frameworkVersion,
-        label: displayFrameworkLabel(result.framework, result.frameworkVersion),
-      });
-    }
+    const current = frameworks.get(result.framework) ?? {
+      framework: result.framework,
+      frameworkVersion: result.frameworkVersion,
+      label: displayFrameworkLabel(result.framework, result.frameworkVersion),
+      resultCount: 0,
+    };
+    current.frameworkVersion = result.frameworkVersion;
+    current.label = displayFrameworkLabel(result.framework, result.frameworkVersion);
+    current.resultCount += 1;
+    frameworks.set(result.framework, current);
   }
   return [...frameworks.values()];
 }
@@ -230,11 +256,11 @@ function renderBenchmarkGroup(group, colorScores) {
       .toSorted((a, b) => a.total - b.total)
       .map((result) => [
         textCell(result.frameworkLabel, "framework-cell"),
-        scoreCell(`${format(result.total)} ms · ${formatRatio(result.totalRatio)}x`, result.totalRatio, colorScores),
-        scoreCell(`${format(result.script)} ms · ${formatRatio(result.scriptRatio)}x`, result.scriptRatio, colorScores),
-        scoreCell(`${format(result.paint)} ms · ${formatRatio(result.paintRatio)}x`, result.paintRatio, colorScores),
-        scoreCell(`${format(result.memory)} MB · ${formatRatio(result.memoryRatio)}x`, result.memoryRatio, colorScores),
-        scoreCell(`${formatSize(result.brBytes)} · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio, colorScores),
+        scoreCell(formatMetric(result.total, "ms", result.totalRatio), result.totalRatio, colorScores),
+        scoreCell(formatMetric(result.script, "ms", result.scriptRatio), result.scriptRatio, colorScores),
+        scoreCell(formatMetric(result.paint, "ms", result.paintRatio), result.paintRatio, colorScores),
+        scoreCell(formatMetric(result.memory, "MB", result.memoryRatio), result.memoryRatio, colorScores),
+        scoreCell(formatSizeMetric(result.brBytes, result.sizeRatio), result.sizeRatio, colorScores),
       ]),
   );
 
@@ -281,7 +307,7 @@ function textCell(text, type) {
 
 function scoreCell(text, ratio, colorScores) {
   const cell = document.createElement("td");
-  cell.className = `px-3 py-2 text-right tabular-nums${colorScores ? ` ${scoreClass(ratio)}` : ""}`;
+  cell.className = `px-3 py-2 text-right tabular-nums${colorScores && Number.isFinite(ratio) ? ` ${scoreClass(ratio)}` : ""}`;
   cell.textContent = text;
   return cell;
 }
@@ -290,16 +316,16 @@ function enrichResults(results) {
   const groups = groupByBenchmark(results);
   const enriched = [];
   for (const group of groups) {
-    const bestTotal = minMetric(group, (result) => result.summary.total.median);
-    const bestScript = minMetric(group, (result) => result.summary.script.median);
-    const bestPaint = minMetric(group, (result) => result.summary.paint.median);
-    const bestMemory = minMetric(group, (result) => result.summary.memoryMB.median);
+    const bestTotal = minMetric(group, (result) => metricMedian(result, "total"));
+    const bestScript = minMetric(group, (result) => metricMedian(result, "script"));
+    const bestPaint = minMetric(group, (result) => metricMedian(result, "paint"));
+    const bestMemory = minMetric(group, (result) => metricMedian(result, "memoryMB"));
     const bestSize = minMetric(group, (result) => compressedBytes(result.size));
     for (const result of group) {
-      const total = result.summary.total.median;
-      const script = result.summary.script.median;
-      const paint = result.summary.paint.median;
-      const memory = result.summary.memoryMB.median;
+      const total = metricMedian(result, "total");
+      const script = metricMedian(result, "script");
+      const paint = metricMedian(result, "paint");
+      const memory = metricMedian(result, "memoryMB");
       const brBytes = compressedBytes(result.size);
       enriched.push({
         ...result,
@@ -379,6 +405,11 @@ function compressedBytes(size) {
   return size.brBytes;
 }
 
+function metricMedian(result, metric) {
+  const value = result.summary?.[metric]?.median;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function currentSizeUnit() {
   return sizeUnits.get(sizeUnit) ?? sizeUnits.get("kb");
 }
@@ -388,6 +419,17 @@ function formatSize(bytes) {
   const value = bytes / unit.divisor;
   const decimals = unit.label === "MB" && value < 1 ? 3 : 2;
   return `${format(value, decimals)} ${unit.label}`;
+}
+
+function formatMetric(value, unit, metricRatio) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/a";
+  const ratioText = formatRatio(metricRatio);
+  return ratioText ? `${format(value)} ${unit} · ${ratioText}x` : `${format(value)} ${unit}`;
+}
+
+function formatSizeMetric(bytes, sizeRatio) {
+  const ratioText = formatRatio(sizeRatio);
+  return ratioText ? `${formatSize(bytes)} · ${ratioText}x` : formatSize(bytes);
 }
 
 function loadSizeUnit() {
