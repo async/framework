@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "clean": "node cli.js cleanup",
-    "build-apps": "node cli.js build-apps --ci -f js-only react qwik-v1 qwik-v2 solid-v1 solid-v2",
+    "build-apps": "node cli.js build-apps --ci -f async-framework js-only react qwik-v1 qwik-v2 solid-v1 solid-v2",
     "build": "npm run build-apps",
     "build-prod": "npm run build-apps",
     "compile": "npm run build-apps",

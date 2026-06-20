@@ -7,6 +7,7 @@ import { generateAndServeIndex } from "../frameworks/frameworksControllers.js";
 import { FastifyInstance } from "fastify";
 
 const projectRootPath = path.join(cwd(), "..");
+const frameworkSourcePath = path.join(projectRootPath, "..", "src");
 
 async function routes(fastify: FastifyInstance) {
   fastify.register(fastifyStatic, {
@@ -22,6 +23,12 @@ async function routes(fastify: FastifyInstance) {
   fastify.register(fastifyStatic, {
     root: path.join(projectRootPath, "css"),
     prefix: "/css",
+    decorateReply: false,
+  });
+
+  fastify.register(fastifyStatic, {
+    root: frameworkSourcePath,
+    prefix: "/framework",
     decorateReply: false,
   });
 

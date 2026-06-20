@@ -52,6 +52,7 @@ function isFrameworkDir(framework: string): boolean {
 }
 
 const packageJSONProvider = new PackageJSONProvider(appsDirectory);
+const rootPackageJSONPath = path.resolve(appsDirectory, "..", "..", "package.json");
 
 /**
  * Load framework information from package.json and package-lock.json files.
@@ -88,6 +89,21 @@ export async function loadFrameworkInfo(framework: string) {
     );
 
     result.versions = versions;
+
+    copyProps(result, benchmarkData);
+  } else if (benchmarkData.frameworkVersionFromRootPackage) {
+    const rootPackageJSON = JSON.parse(await fs.promises.readFile(rootPackageJSONPath, "utf8"));
+    if (rootPackageJSON.name !== benchmarkData.frameworkVersionFromRootPackage) {
+      result.error = `Root package name ${rootPackageJSON.name} does not match ${benchmarkData.frameworkVersionFromRootPackage}`;
+      return result;
+    }
+    if (typeof rootPackageJSON.version !== "string") {
+      result.error = "Root package.json must contain a string version";
+      return result;
+    }
+
+    result.version = rootPackageJSON.version;
+    result.frameworkVersionString = buildFrameworkVersionString(framework, rootPackageJSON.version);
 
     copyProps(result, benchmarkData);
   } else if (typeof benchmarkData.frameworkVersion === "string") {

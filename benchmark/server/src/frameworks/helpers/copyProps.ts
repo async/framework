@@ -1,7 +1,7 @@
 import { BenchmarkData, Result } from "../types/index.js";
 
 export function copyProps(result: Partial<Result & BenchmarkData>, benchmarkData: Partial<BenchmarkData>) {
-  const { issues, customURL, frameworkHomeURL, language, useShadowRoot, useRowShadowRoot, shadowRootName, buttonsInShadowRoot, startLogicEventName } =
+  const { issues, customURL, frameworkHomeURL, language, useShadowRoot, useRowShadowRoot, shadowRootName, buttonsInShadowRoot, startLogicEventName, sizeRoot } =
     benchmarkData;
 
   result.issues = issues;
@@ -13,4 +13,5 @@ export function copyProps(result: Partial<Result & BenchmarkData>, benchmarkData
   result.shadowRootName = useShadowRoot ? shadowRootName ?? "main-element" : undefined;
   result.buttonsInShadowRoot = useShadowRoot ? buttonsInShadowRoot ?? true : undefined;
   result.startLogicEventName = startLogicEventName ?? "click";
+  result.sizeRoot = sizeRoot;
 }

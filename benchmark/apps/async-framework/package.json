@@ -1,0 +1,28 @@
+{
+  "name": "@async/framework-benchmark-app-async-framework",
+  "version": "1.0.0",
+  "description": "Async Framework no-build benchmark app",
+  "type": "module",
+  "async-framework-benchmark": {
+    "frameworkVersionFromRootPackage": "@async/framework",
+    "frameworkHomeURL": "https://github.com/async/framework",
+    "language": "JavaScript",
+    "sizeRoot": "../src"
+  },
+  "scripts": {
+    "dev": "exit 0",
+    "build-prod": "exit 0"
+  },
+  "keywords": [
+    "async",
+    "framework",
+    "no-build"
+  ],
+  "author": "Async",
+  "license": "MIT",
+  "homepage": "https://github.com/async/framework",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/async/framework.git"
+  }
+}

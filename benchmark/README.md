@@ -7,6 +7,7 @@ It keeps app loading checks separate from actual benchmark runs.
 
 The comparable apps live in `apps/`:
 
+- `async-framework`
 - `js-only`
 - `react`
 - `qwik-v1`
@@ -14,6 +15,8 @@ The comparable apps live in `apps/`:
 - `solid-v1`
 - `solid-v2`
 
+`async-framework` uses the local root `@async/framework` browser source through
+the benchmark server, so its result version follows the package being tested.
 Qwik v2 and Solid v2 are beta package lines as of June 20, 2026. Their folders
 stay structurally aligned with the v1 apps except for package imports and build
 configuration required by those package lines.
@@ -31,7 +34,7 @@ registry first or pass `--registry=https://registry.npmjs.org`.
 
 ## App Health
 
-Use this for cheap local verification. It builds the six apps, starts or reuses
+Use this for cheap local verification. It builds the seven apps, starts or reuses
 the local server, loads each app page in Chromium, and verifies the shared
 controls are present. It does not click row-operation buttons, collect timings,
 or write trace data.
@@ -62,6 +65,13 @@ Use these only when you intend to run benchmark operations:
 npm run benchmark:smoke
 npm run benchmark:run -- --benchmark 01_ --iterations 1
 npm run benchmark:results
+```
+
+By default, benchmark runs include `async-framework` plus the JavaScript-only,
+React, Qwik, and Solid apps. To select a subset:
+
+```bash
+npm run benchmark:run -- --framework async-framework react solid-v2 --benchmark 01_ --iterations 3
 ```
 
 The benchmark runner uses Playwright and Chromium CDP trace events for

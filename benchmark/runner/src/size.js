@@ -37,7 +37,9 @@ async function listAssets(root, dir = root) {
 }
 
 export async function computeBundleSize(benchmarkRoot, framework) {
-  const frameworkRoot = path.join(benchmarkRoot, framework.uri.replace(/\/dist$/, ""));
+  const frameworkRoot = framework.sizeRoot
+    ? path.resolve(benchmarkRoot, framework.sizeRoot)
+    : path.join(benchmarkRoot, framework.uri.replace(/\/dist$/, ""));
   const distRoot = path.join(frameworkRoot, "dist");
   const root = await stat(distRoot).then(() => distRoot).catch(() => frameworkRoot);
   const files = await listAssets(root);

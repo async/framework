@@ -8,8 +8,10 @@ export interface BenchmarkData {
   shadowRootName?: string;
   buttonsInShadowRoot?: string | boolean;
   frameworkVersionFromPackage?: string;
+  frameworkVersionFromRootPackage?: string;
   frameworkVersion?: string;
   startLogicEventName?: string;
+  sizeRoot?: string;
 }
 
 export interface Result {
@@ -20,6 +22,7 @@ export interface Result {
   versions?: Record<string, string>;
   frameworkVersionString?: string;
   customURL?: string;
+  sizeRoot?: string;
   useShadowRoot?: string;
   uri?: string;
 }

@@ -67,7 +67,7 @@ function printHelp() {
 
 Defaults:
   mode       trace
-  framework  js-only react qwik-v1 qwik-v2 solid-v1 solid-v2
+  framework  async-framework js-only react qwik-v1 qwik-v2 solid-v1 solid-v2
   benchmark  all row-operation benchmarks
   browser    Chromium via Playwright
 `);
@@ -117,6 +117,7 @@ async function loadFrameworks(host, port, selectedFrameworks) {
       fullName: row.frameworkVersionString,
       uri: `apps/${row.directory}${row.customURL ?? ""}`,
       customURL: row.customURL,
+      sizeRoot: row.sizeRoot,
       versions: row.versions ?? {},
       language: row.language ?? "",
       startLogicEventName: row.startLogicEventName ?? "click",
