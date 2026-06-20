@@ -1,0 +1,10 @@
+.known-issues {
+  margin-top: 20px;
+}
+
+.known-issues__issue-code {
+  float: left;
+  width: 50px;
+  padding: 0;
+  margin: 0;
+}
