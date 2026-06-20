@@ -1,27 +1,22 @@
 # Async Framework Benchmark Harness
 
-This folder is a trimmed copy of
-[`krausest/js-framework-benchmark`](https://github.com/krausest/js-framework-benchmark)
-for local `@async/framework` comparison work.
+This folder contains the modern local harness for framework comparison work.
+It keeps app loading checks separate from actual benchmark runs.
 
-Imported upstream snapshot: `krausest/js-framework-benchmark@4fbccf5`.
+## Apps
 
-## Included Frameworks
+The comparable apps live in `apps/`:
 
-Only keyed implementations are included:
+- `js-only`
+- `react`
+- `qwik-v1`
+- `qwik-v2`
+- `solid-v1`
+- `solid-v2`
 
-- `keyed/js-only` from upstream `vanillajs`
-- `keyed/react` from upstream `react-hooks`
-- `keyed/qwik-v1` from upstream `qwik`, using `@builder.io/qwik`
-- `keyed/qwik-v2`, seeded from upstream `qwik`, using the public `@qwik.dev/*`
-  beta packages
-- `keyed/solid-v1` from upstream `solid`
-- `keyed/solid-v2`, seeded from upstream `solid`, using the public
-  `solid-js@next` beta package
-
-As of June 20, 2026, Qwik 2 and Solid 2 are beta package lines, not stable
-major releases. Their folders are present so we can start measuring and adjust
-the implementation as those APIs settle.
+Qwik v2 and Solid v2 are beta package lines as of June 20, 2026. Their folders
+stay structurally aligned with the v1 apps except for package imports and build
+configuration required by those package lines.
 
 ## Setup
 
@@ -29,24 +24,17 @@ the implementation as those APIs settle.
 cd benchmark
 npm ci --registry=https://registry.npmjs.org
 npm run install-apps --registry=https://registry.npmjs.org
-npm_config_registry=https://registry.npmjs.org npm run build-selected
 ```
 
-If npm is configured to use the local registry on `127.0.0.1:4873`, start that
-registry first or pass `--registry=https://registry.npmjs.org` for this
-benchmark work. Use `npm_config_registry=https://registry.npmjs.org` for
-scripts such as `build-selected` or `apps` that spawn nested npm installs.
+If npm is configured to use a local registry on `127.0.0.1:4873`, start that
+registry first or pass `--registry=https://registry.npmjs.org`.
 
-`install-apps` installs only the modern Playwright app-health runner and the
-local benchmark server. Use `install-local` only when you also need the legacy
-upstream harness.
+## App Health
 
-## App Health Check
-
-Most local checks should start here. This builds the six selected apps, starts
-or reuses the benchmark server, loads each app page in Chromium, and verifies
-the shared app controls are present. It does not click row-operation buttons,
-run benchmark iterations, collect timings, or produce trace data.
+Use this for cheap local verification. It builds the six apps, starts or reuses
+the local server, loads each app page in Chromium, and verifies the shared
+controls are present. It does not click row-operation buttons, collect timings,
+or write trace data.
 
 From the repository root:
 
@@ -54,7 +42,7 @@ From the repository root:
 pnpm run benchmark:apps
 ```
 
-From this `benchmark/` folder:
+From this folder:
 
 ```bash
 npm run apps
@@ -63,44 +51,22 @@ npm run apps
 To only load already-built apps:
 
 ```bash
-npm run bench-modern-apps
+npm run app-health
 ```
 
 ## Benchmark Runs
 
-The preferred local runner is the modern Playwright-first runner:
+Use these only when you intend to run benchmark operations:
 
 ```bash
-npm run bench-modern-smoke
-npm run bench-modern -- --benchmark 01_ --iterations 1
-npm run bench-modern-results
+npm run benchmark:smoke
+npm run benchmark:run -- --benchmark 01_ --iterations 1
+npm run benchmark:results
 ```
 
-The modern runner starts the benchmark server automatically when `/ls` is not
-already reachable on `localhost:8080`. It uses Playwright for browser control
-and Chromium CDP trace events for CPU/script/paint metrics. Its JSON output is
-written under `modern-runner/results/`, and raw traces are written under
-`modern-runner/traces/`.
+The benchmark runner uses Playwright and Chromium CDP trace events for
+CPU/script/paint metrics. JSON results are written under `runner/results/`, and
+raw traces are written under `runner/traces/`.
 
-`webdriver-ts` is retained as the upstream-compatible legacy harness and
-reference path while the modern runner proves parity.
-
-Start the local benchmark server:
-
-```bash
-npm start
-```
-
-In another shell, run a quick smoke benchmark:
-
-```bash
-npm run bench-smoke -- --headless
-```
-
-Run the selected frameworks against the full benchmark set:
-
-```bash
-npm run bench-selected -- --headless
-```
-
-The original upstream README is kept in `UPSTREAM_README.md`.
+The local benchmark server starts automatically when `/ls` is not already
+reachable on `localhost:8080`.

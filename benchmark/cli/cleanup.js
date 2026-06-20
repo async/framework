@@ -18,28 +18,16 @@ function deleteFrameworkFiles(frameworkPath, filesToDelete) {
 }
 
 /**
- * Cleans all framework directories of package-lock.json, yarn-lock and the elm-stuff, node-modules, bower-components and dist directories.
+ * Cleans app directories of package-lock.json, yarn-lock, node_modules, and dist output.
  * @param {Object} options
- * @param {string} options.frameworksDirPath
- * @param {Array<string>} options.frameworksTypes
+ * @param {string} options.appsDirPath
  */
-export function cleanFrameworkDirectories({ frameworksDirPath, frameworksTypes }) {
-  console.log(
-    "Clean framework directories",
-    "frameworksDirPath",
-    frameworksDirPath,
-    "frameworksTypes",
-    frameworksTypes
-  );
+export function cleanFrameworkDirectories({ appsDirPath }) {
+  console.log("Clean app directories", "appsDirPath", appsDirPath);
 
-  for (const frameworkType of frameworksTypes) {
-    const frameworkDir = path.resolve(frameworksDirPath, frameworkType);
-    const directories = fs.readdirSync(frameworkDir);
-
-    for (const directory of directories) {
-      const frameworkPath = path.resolve(frameworkDir, directory);
-      console.log(`cleaning ${frameworkPath}`);
-      deleteFrameworkFiles(frameworkPath, filesToDelete);
-    }
+  for (const directory of fs.readdirSync(path.resolve(appsDirPath))) {
+    const frameworkPath = path.resolve(appsDirPath, directory);
+    console.log(`cleaning ${frameworkPath}`);
+    deleteFrameworkFiles(frameworkPath, filesToDelete);
   }
 }

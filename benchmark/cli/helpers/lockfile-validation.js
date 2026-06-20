@@ -9,7 +9,7 @@ const ALLOWED_REGISTRY_PREFIXES = [
 /**
  * Validates that all resolved URLs in a package-lock.json point to allowed registries.
  * This prevents supply chain attacks where a contributor points resolved URLs to a malicious registry.
- * @param {string} frameworkPath - Path to the framework directory (e.g., "frameworks/keyed/vue")
+ * @param {string} frameworkPath - Path to the app directory (e.g., "apps/react")
  * @returns {{ valid: boolean, violations: string[] }}
  */
 export function validateLockfileUrls(frameworkPath) {

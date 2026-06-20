@@ -32,33 +32,26 @@ function deleteFrameworkFiles(frameworkPath, filesToDelete) {
 }
 
 /**
- * Build a single framework. The framework argument must be in the format "type/name" (e.g., "keyed/vue").
- * @param {string} framework
+ * Build a single app.
+ * @param {string} app
  * @param {boolean} useCi
  * @returns {boolean} true if the build succeeded, false otherwise
  */
-export function rebuildFramework(framework, useCi) {
-  const components = framework.split("/");
-
-  if (components.length !== 2) {
-    console.log(`ERROR: invalid name ${framework}. It must contain exactly one /.`);
-    return false;
-  }
-  const [type, name] = components;
-  const frameworkPath = path.join("frameworks", type, name);
+export function rebuildFramework(app, useCi) {
+  const frameworkPath = path.join("apps", app);
   const packageJSONPath = path.join(frameworkPath, "package.json");
 
   if (!fs.existsSync(packageJSONPath)) {
-    console.log(`WARN: skipping ${framework} since there's no package.json`);
+    console.log(`WARN: skipping ${app} since there's no package.json`);
     return true;
   }
 
-  console.log("Rebuilding framework", framework);
+  console.log("Building app", app);
 
   if (useCi) {
     const { valid, violations } = validateLockfileUrls(frameworkPath);
     if (!valid) {
-      console.log(`ERROR: package-lock.json for ${framework} contains resolved URLs pointing to non-allowed registries:`);
+      console.log(`ERROR: package-lock.json for ${app} contains resolved URLs pointing to non-allowed registries:`);
       for (const v of violations) {
         console.log(`  ${v}`);
       }

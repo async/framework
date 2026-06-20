@@ -1,0 +1,28 @@
+{
+  "name": "@async/framework-benchmark-app-js-only",
+  "version": "1.1.1",
+  "description": "JavaScript-only demo",
+  "main": "index.js",
+  "async-framework-benchmark": {
+    "frameworkVersion": "",
+    "issues": [
+      772
+    ],
+    "language": "JavaScript"
+  },
+  "scripts": {
+    "dev": "exit 0",
+    "build-prod": "exit 0"
+  },
+  "keywords": [
+    "javascript",
+    "dom"
+  ],
+  "author": "Stefan Krause",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/async/framework",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/async/framework.git"
+  }
+}

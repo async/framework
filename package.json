@@ -97,6 +97,8 @@
     "bundle:size": "pnpm run bundle && node scripts/bundle-size.js",
     "bundle:size:check": "pnpm run bundle && node scripts/bundle-size.js --check",
     "benchmark:apps": "npm --prefix benchmark run apps",
+    "benchmark:results": "npm --prefix benchmark run benchmark:results",
+    "benchmark:run": "npm --prefix benchmark run benchmark:run",
     "docs:build": "node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",

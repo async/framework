@@ -1,16 +1,14 @@
 import path from "node:path";
 import process from "node:process";
 
-// Checks if the directory is explicitly specified.
-// It can be specified by writing for example `npm start other-frameworks-directory`.
-const isFrameworksDirectorySpecifies = process.argv.length === 3;
+const isAppsDirectorySpecified = process.argv.length === 3;
 
-const frameworksDirectory = isFrameworksDirectorySpecifies
+const appsDirectory = isAppsDirectorySpecified
   ? path.join(process.cwd(), "..", process.argv[2])
-  : path.join(process.cwd(), "..", "frameworks");
+  : path.join(process.cwd(), "..", "apps");
 
-if (isFrameworksDirectorySpecifies) {
+if (isAppsDirectorySpecified) {
   console.log(`Changing working directory to ${process.argv[2]}`);
 }
 
-export { frameworksDirectory };
+export { appsDirectory };

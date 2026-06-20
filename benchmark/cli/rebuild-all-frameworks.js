@@ -9,13 +9,12 @@ it deletes all package.json and package-lock.json files
 and invokes npm install and npm run build-prod for all benchmarks 
 
 If building a framework fails you can resume building like
-npm run rebuild-frameworks --restartWith keyed/react
+npm run build-all -- --restart-with-app react
 */
 
 /**
  * @typedef {Object} Framework
- * @property {string} name - Name of the framework (e.g., "vue", "qwik", "svelte")
- * @property {string} type - Type of the framework (e.g., "keyed" or "non-keyed")
+ * @property {string} name - Name of the app
  */
 
 /**
@@ -23,35 +22,28 @@ npm run rebuild-frameworks --restartWith keyed/react
  * @param {string} restartWithFramework
  * @returns {boolean}
  */
-function shouldSkipFramework({ type, name }, restartWithFramework) {
-  if (!restartWithFramework) return false;
-  if (restartWithFramework.includes("/")) {
-    return !`${type}/${name}`.startsWith(restartWithFramework);
-  } else {
-    return !name.startsWith(restartWithFramework);
-  }
+function shouldSkipFramework({ name }, restartWithApp) {
+  if (!restartWithApp) return false;
+  return !name.startsWith(restartWithApp);
 }
 
 /**
  * @param {Object} options
- * @param {string[]} [options.type]
- * @param {string} options.restartWithFramework
+ * @param {string} options.restartWithApp
  * @param {boolean} options.useCi
  */
-export function rebuildAllFrameworks({ type, restartWithFramework, useCi }) {
-  let types = type || ["keyed", "non-keyed"];
-  console.log(`Rebuild all frameworks. ci: ${useCi}, restartWith: ${restartWithFramework}, types: ${types}`);
+export function rebuildAllFrameworks({ restartWithApp, useCi }) {
+  console.log(`Build all apps. ci: ${useCi}, restartWith: ${restartWithApp}`);
 
   let frameworks = getFrameworks();
-  frameworks = frameworks.filter(f => types.includes(f.type));
   const skippableFrameworks = takeWhile(frameworks, (framework) =>
-    shouldSkipFramework(framework, restartWithFramework)
+    shouldSkipFramework(framework, restartWithApp)
   );
   const buildableFrameworks = frameworks.slice(skippableFrameworks.length);
 
   for (const framework of buildableFrameworks) {
-    rebuildFramework(`${framework.type}/${framework.name}`, useCi);
+    rebuildFramework(framework.name, useCi);
   }
 
-  console.log("All frameworks were built!");
+  console.log("All apps were built!");
 }

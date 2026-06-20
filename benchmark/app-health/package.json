@@ -1,0 +1,14 @@
+{
+  "name": "@async/framework-app-health",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright load check for the Async framework comparison apps.",
+  "scripts": {
+    "app-health": "node src/apps.js",
+    "apps": "node src/apps.js"
+  },
+  "dependencies": {
+    "playwright": "1.58.2"
+  }
+}

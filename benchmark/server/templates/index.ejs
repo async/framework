@@ -1,34 +1,26 @@
 <!doctype html>
 <html>
   <head>
-    <title>JS-Frameworks Benchmark</title>
+    <title>Async Framework App Harness</title>
     <meta charset="UTF-8" />
-    <link href="css/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="css/main.css" />
+    <link rel="stylesheet" href="css/tailwind.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
 
   <body>
-    <div class="container">
-      <div class="panel panel-default">
-        <div class="panel-heading">
-          <h3 class="panel-title">Choose a framework:</h3>
-        </div>
-        <div class="panel-body">
-          <ul class="nav nav-pills nav-stacked">
+    <div class="min-h-screen bg-slate-50 py-8">
+      <main class="mx-auto max-w-7xl px-6">
+        <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 class="mb-6 text-4xl font-semibold tracking-normal text-slate-900">Async Framework App Harness</h1>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <% frameworks.forEach(framework => { %>
-            <li>
-              <a href="/<%= framework.uri %>/index.html"
-                ><span
-                  class="glyphicon glyphicon-arrow-right mr-5"
-                  aria-hidden="true"
-                ></span>&nbsp;<%= framework.frameworkVersionString %>
-              </a>
-            </li>
+            <a class="rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900" href="/<%= framework.uri %>/index.html"
+              ><%= framework.frameworkVersionString %>
+            </a>
             <% }); %>
-          </ul>
-        </div>
-      </div>
+          </div>
+        </section>
+      </main>
     </div>
   </body>
 </html>

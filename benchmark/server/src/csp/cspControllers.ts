@@ -15,9 +15,8 @@ export function addCSP(request: FastifyRequest, reply: FastifyReply) {
 
   // @ts-expect-error - It's better to use a validator
   const uri = body["csp-report"]["document-uri"];
-  const frameworkRegEx = /((non-)?keyed\/.*?\/)/;
-  let framework = uri.match(frameworkRegEx)[0];
-  framework = framework.slice(0, Math.max(0, framework.length - 1));
+  const appRegEx = /apps\/([^/]+)/;
+  let framework = uri.match(appRegEx)?.[1] ?? "unknown";
 
   if (!violations.includes(framework)) {
     violations.push(framework);

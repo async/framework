@@ -4,8 +4,7 @@ import path from "node:path";
 
 /**
  * @typedef {Object} Framework
- * @property {string} name - Name of the framework (e.g., "vue", "qwik", "svelte")
- * @property {string} type - Type of the framework (e.g., "keyed" or "non-keyed")
+ * @property {string} name - Name of the app (e.g., "react", "qwik-v1")
  */
 
 /**
@@ -14,13 +13,6 @@ import path from "node:path";
  * @param {Array<string>} frameworksTypes
  * @returns {Framework[]}
  */
-export function getFrameworks(frameworksDirPath = "frameworks", frameworksTypes = ["keyed", "non-keyed"]) {
-  const frameworks = frameworksTypes.flatMap((type) =>
-    fs.readdirSync(path.join(frameworksDirPath, type)).map((framework) => ({
-      name: framework,
-      type,
-    }))
-  );
-
-  return frameworks;
+export function getFrameworks(appsDirPath = "apps") {
+  return fs.readdirSync(appsDirPath).map((app) => ({ name: app }));
 }

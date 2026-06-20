@@ -13,7 +13,7 @@ export interface BenchmarkData {
 }
 
 export interface Result {
-  type: string;
+  type: "app";
   directory: string;
   error?: string;
   version?: string;
