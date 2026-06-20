@@ -119,23 +119,23 @@ function shellHtml(view) {
           <div id="apps-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
         </section>
         <section id="results-panel" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" hidden>
-          <div id="results-meta" class="mb-4 text-sm text-slate-600"></div>
-          <div class="overflow-x-auto">
-            <table class="w-full border-collapse bg-white text-sm text-slate-900">
-              <thead>
-                <tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-                  <th class="px-3 py-2">Framework</th>
-                  <th class="px-3 py-2">Benchmark</th>
-                  <th class="px-3 py-2 text-right">Total ms</th>
-                  <th class="px-3 py-2 text-right">Script ms</th>
-                  <th class="px-3 py-2 text-right">Paint ms</th>
-                  <th class="px-3 py-2 text-right">Memory MB</th>
-                  <th class="px-3 py-2 text-right">Gzip KB</th>
-                </tr>
-              </thead>
-              <tbody id="results-body"></tbody>
-            </table>
+          <div class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div id="results-meta" class="text-sm text-slate-600"></div>
+            <div class="flex flex-col gap-3 sm:flex-row">
+              <span class="inline-flex items-center gap-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"><span class="inline-block h-3 w-3 rounded bg-emerald-500"></span>Best</span>
+              <span class="inline-flex items-center gap-2 rounded border border-lime-200 bg-lime-50 px-3 py-2 text-sm text-lime-900"><span class="inline-block h-3 w-3 rounded bg-lime-500"></span>Close</span>
+              <span class="inline-flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"><span class="inline-block h-3 w-3 rounded bg-amber-500"></span>Behind</span>
+              <span class="inline-flex items-center gap-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"><span class="inline-block h-3 w-3 rounded bg-rose-500"></span>Slowest</span>
+            </div>
           </div>
+          <section class="mb-6">
+            <h2 class="mb-3 text-2xl font-semibold tracking-normal text-slate-900">Overall</h2>
+            <div id="results-overall" class="overflow-x-auto"></div>
+          </section>
+          <section>
+            <h2 class="mb-3 text-2xl font-semibold tracking-normal text-slate-900">Benchmarks</h2>
+            <div id="results-groups" class="flex flex-col gap-5"></div>
+          </section>
         </section>
       </section>
     </main>
