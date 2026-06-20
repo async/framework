@@ -78,5 +78,7 @@ The benchmark runner uses Playwright and Chromium CDP trace events for
 CPU/script/paint metrics. JSON results are written under `runner/results/`, and
 raw traces are written under `runner/traces/`.
 
+The local server also exposes the latest JSON as a table at `/results`.
+
 The local benchmark server starts automatically when `/ls` is not already
 reachable on `localhost:8080`.

@@ -2,34 +2,20 @@
   "name": "@async/framework-benchmark-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "Local app server for the Async framework benchmark harness.",
+  "description": "Dependency-free local app/results server for the Async framework benchmark harness.",
   "main": "index.js",
   "scripts": {
-    "start": "tsx index.ts",
-    "dev": "tsx watch index.ts",
-    "typecheck": "tsc --noEmit",
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "typecheck": "node --check index.js && node --check public/app.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run typecheck"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/async/framework.git"
   },
   "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "@fastify/static": "^9.1.3",
-    "@fastify/view": "^12.0.0",
-    "ejs": "^6.0.1",
-    "fastify": "^5.8.5",
-    "npm-check-updates": "^22.2.3",
-    "tsx": "^4.22.4"
-  },
-  "devDependencies": {
-    "@types/ejs": "^3.1.5",
-    "@types/html-minifier": "^4.0.6",
-    "@types/node": "^25.9.3",
-    "typescript": "^6.0.3"
-  }
+  "license": "ISC"
 }
