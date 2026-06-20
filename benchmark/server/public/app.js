@@ -99,8 +99,9 @@ function renderResultsView() {
   }
 
   const enriched = enrichResults(visibleResults);
-  resultsOverall.replaceChildren(renderOverallTable(enriched));
-  resultsGroups.replaceChildren(...groupByBenchmark(enriched).map(renderBenchmarkGroup));
+  const colorScores = selectedFrameworks.size > 1;
+  resultsOverall.replaceChildren(renderOverallTable(enriched, colorScores));
+  resultsGroups.replaceChildren(...groupByBenchmark(enriched).map((group) => renderBenchmarkGroup(group, colorScores)));
 }
 
 function renderFrameworkToggles(results) {
@@ -174,7 +175,7 @@ function emptyMessage(text) {
   return message;
 }
 
-function renderOverallTable(results) {
+function renderOverallTable(results, colorScores) {
   const frameworks = new Map();
   for (const result of results) {
     const current = frameworks.get(result.framework) ?? {
@@ -207,14 +208,14 @@ function renderOverallTable(results) {
     rows.map((row, index) => [
       textCell(`#${index + 1}`, "rank-cell"),
       textCell(row.frameworkLabel, "framework-cell"),
-      scoreCell(`${formatRatio(row.totalScore)}x`, row.totalScore / bestTotal),
-      scoreCell(`${formatRatio(row.memoryScore)}x`, row.memoryScore / bestMemory),
-      scoreCell(formatSize(row.brBytes), row.brBytes / bestSize),
+      scoreCell(`${formatRatio(row.totalScore)}x`, row.totalScore / bestTotal, colorScores),
+      scoreCell(`${formatRatio(row.memoryScore)}x`, row.memoryScore / bestMemory, colorScores),
+      scoreCell(formatSize(row.brBytes), row.brBytes / bestSize, colorScores),
     ]),
   );
 }
 
-function renderBenchmarkGroup(group) {
+function renderBenchmarkGroup(group, colorScores) {
   const section = document.createElement("section");
   section.className = "rounded-lg border border-slate-200 bg-white p-4";
 
@@ -229,11 +230,11 @@ function renderBenchmarkGroup(group) {
       .toSorted((a, b) => a.total - b.total)
       .map((result) => [
         textCell(result.frameworkLabel, "framework-cell"),
-        scoreCell(`${format(result.total)} ms · ${formatRatio(result.totalRatio)}x`, result.totalRatio),
-        scoreCell(`${format(result.script)} ms · ${formatRatio(result.scriptRatio)}x`, result.scriptRatio),
-        scoreCell(`${format(result.paint)} ms · ${formatRatio(result.paintRatio)}x`, result.paintRatio),
-        scoreCell(`${format(result.memory)} MB · ${formatRatio(result.memoryRatio)}x`, result.memoryRatio),
-        scoreCell(`${formatSize(result.brBytes)} · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio),
+        scoreCell(`${format(result.total)} ms · ${formatRatio(result.totalRatio)}x`, result.totalRatio, colorScores),
+        scoreCell(`${format(result.script)} ms · ${formatRatio(result.scriptRatio)}x`, result.scriptRatio, colorScores),
+        scoreCell(`${format(result.paint)} ms · ${formatRatio(result.paintRatio)}x`, result.paintRatio, colorScores),
+        scoreCell(`${format(result.memory)} MB · ${formatRatio(result.memoryRatio)}x`, result.memoryRatio, colorScores),
+        scoreCell(`${formatSize(result.brBytes)} · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio, colorScores),
       ]),
   );
 
@@ -278,9 +279,9 @@ function textCell(text, type) {
   return cell;
 }
 
-function scoreCell(text, ratio) {
+function scoreCell(text, ratio, colorScores) {
   const cell = document.createElement("td");
-  cell.className = `px-3 py-2 text-right tabular-nums ${scoreClass(ratio)}`;
+  cell.className = `px-3 py-2 text-right tabular-nums${colorScores ? ` ${scoreClass(ratio)}` : ""}`;
   cell.textContent = text;
   return cell;
 }
