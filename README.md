@@ -318,6 +318,7 @@ import {
   createLazyRegistry,
   component,
   computed,
+  component,
   createSignal,
   createHandlerRegistry,
   createPartialRegistry,
@@ -332,7 +333,6 @@ import {
   defineAttributeConfig,
   defineApp,
   defineCache,
-  defineComponent,
   defineRegistrySnapshot,
   defineRoute,
   delay,
@@ -1049,6 +1049,34 @@ If an `async:snapshot` script is present under the root or document,
 const snapshot = readSnapshot(document);
 ```
 
+## Loader Bootstrap Queue
+
+`Async.loader` is a promise-returning facade for script-friendly loader work
+that may run before the app has attached a root. Calls to `scan`, `swap`, and
+`mount` queue until `Async.start({ root })` or `Async.attachRoot(root)` creates
+the concrete runtime loader:
+
+```js
+Async.use("handler", {
+  selectProduct() {
+    this.signals.set("selected", true);
+  }
+});
+
+const swapped = Async.loader.swap(
+  "route",
+  `<button type="button" on:click="selectProduct">Select</button>`
+);
+
+Async.start({ root: document, router: false });
+await swapped;
+```
+
+`Async.loader.ready()` resolves with the concrete `runtime.loader`.
+`Async.loader.inspect()` reports whether a loader is ready and how many loader
+operations are still pending. The concrete `runtime.loader` remains
+synchronous for routers, boundary receivers, and server-result application.
+
 ## Components
 
 Components are scoped fragment functions. They return strings or `html`
@@ -1056,7 +1084,7 @@ templates; Loader inserts and scans the result. There is no virtual node
 type and no rerender loop.
 
 ```js
-const Toggle = defineComponent(function Toggle() {
+const Toggle = component(function Toggle() {
   const selected = this.signal(false);
   const attach = this.handler("attach", function ({ element }) {
     element.dataset.attached = "true";
@@ -1086,8 +1114,6 @@ const loader = Loader({ root: document });
 loader.mount(document.querySelector("#app"), Toggle);
 ```
 
-`component(...)` remains a compatibility alias for `defineComponent(...)`.
-
 Component helpers:
 
 | Helper | Behavior |
@@ -1113,7 +1139,7 @@ caller owns the boundary element, and the loader chooses the loading, ready, or
 error template from the async signal status.
 
 ```js
-const Product = defineComponent(function Product() {
+const Product = component(function Product() {
   const product = this.asyncSignal("product", async function () {
     return this.server.products.get("sku-1");
   });
@@ -1202,7 +1228,7 @@ Use `this.on("intersect", ...)` when a component needs continuous visibility
 state:
 
 ```js
-const Card = defineComponent(function Card() {
+const Card = component(function Card() {
   const visible = this.signal(false);
 
   this.on("intersect", { threshold: 0.5 }, ({ isIntersecting }) => {
@@ -1217,7 +1243,7 @@ Use `this.intersect(...)` with a direct element when a parent owns scroll-spy or
 active-section state:
 
 ```js
-const Section = defineComponent(function Section({ id, observeSection }) {
+const Section = component(function Section({ id, observeSection }) {
   const attach = this.handler("attach", function ({ element }) {
     return observeSection(id, element);
   });
@@ -1225,7 +1251,7 @@ const Section = defineComponent(function Section({ id, observeSection }) {
   return html`<section on:attach="${attach}"><h2>${id}</h2></section>`;
 });
 
-const Page = defineComponent(function Page() {
+const Page = component(function Page() {
   const active = this.signal("intro");
   const ratios = new Map();
   const options = {

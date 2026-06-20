@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   Async,
+  component,
   createApp,
   createLazyRegistry,
   createScheduler,
@@ -117,6 +118,110 @@ test("Async singleton can start an app and expose the latest runtime", async () 
 
   assert.equal(document.querySelector("output").textContent, "singleton");
   assert.equal(Async.runtime, runtime);
+  runtime.destroy();
+});
+
+test("Async.loader queues swaps until the singleton runtime has a loader", async () => {
+  const window = new Window();
+  const { document } = window;
+  const signalId = `queuedStatus${Date.now()}`;
+  const handlerId = `queuedClick${Date.now()}`;
+  document.body.innerHTML = `<main async:boundary="route"></main>`;
+
+  Async.use({
+    signal: {
+      [signalId]: createSignal("idle")
+    },
+    handler: {
+      [handlerId]() {
+        this.signals.set(signalId, "clicked");
+      }
+    }
+  });
+
+  const ready = Async.loader.ready();
+  const swap = Async.loader.swap("route", `
+    <button type="button" on:click="${handlerId}">Run</button>
+    <output signal:text="${signalId}"></output>
+  `);
+
+  assert.equal(swap instanceof Promise, true);
+  assert.deepEqual(Async.loader.inspect(), {
+    ready: false,
+    pending: 1,
+    root: undefined
+  });
+
+  const runtime = Async.start({ root: document.body, router: false });
+  const loader = await ready;
+  const boundary = await swap;
+
+  assert.equal(loader, runtime.loader);
+  assert.equal(Async.loader.current, runtime.loader);
+  assert.equal(Async.loader.inspect().ready, true);
+  assert.equal(Async.loader.inspect().pending, 0);
+  assert.equal(boundary.getAttribute("async:boundary"), "route");
+  assert.equal(document.querySelector("output").textContent, "idle");
+
+  document.querySelector("button").click();
+  await delay(0);
+
+  assert.equal(document.querySelector("output").textContent, "clicked");
+  runtime.destroy();
+});
+
+test("app loader queued failures reject without blocking later loader work", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main async:boundary="route"></main>`;
+  const app = defineApp();
+
+  const missing = app.loader.swap("missing", `<p>Missing</p>`);
+  const ok = app.loader.swap("route", `<p id="ok">OK</p>`);
+
+  const runtime = app.start({ root: document.body, router: false });
+
+  await assert.rejects(missing, /Boundary "missing" was not found/);
+  assert.equal((await ok).id, "");
+  assert.equal(document.querySelector("#ok").textContent, "OK");
+  assert.equal(app.loader.current, runtime.loader);
+  assert.equal(app.loader.inspect().pending, 0);
+  runtime.destroy();
+});
+
+test("app loader queues mount and scan until a rootless runtime attaches", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main id="app"></main>
+    <output id="late" signal:text="status"></output>
+  `;
+  const app = defineApp({
+    signal: {
+      status: createSignal("ready")
+    }
+  });
+  const Widget = component(function Widget() {
+    return html`<button type="button" signal:text="status"></button>`;
+  });
+
+  const runtime = app.start({ router: false });
+  const mounted = app.loader.mount(document.querySelector("#app"), Widget);
+  const scanned = app.loader.scan(document.querySelector("#late"));
+
+  assert.equal(app.loader.inspect().ready, false);
+  assert.equal(app.loader.inspect().pending, 2);
+  assert.equal(document.querySelector("#app").textContent.trim(), "");
+  assert.equal(document.querySelector("#late").textContent, "");
+
+  runtime.attachRoot(document.body);
+  await mounted;
+  await scanned;
+
+  assert.equal(document.querySelector("#app button").textContent, "ready");
+  assert.equal(document.querySelector("#late").textContent, "ready");
+  assert.equal(app.loader.inspect().ready, true);
+  assert.equal(app.loader.inspect().pending, 0);
   runtime.destroy();
 });
 

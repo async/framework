@@ -39,6 +39,11 @@ Default protocol attributes include:
 newly inserted content. `loader.swap(boundary, html)` replaces a boundary and
 rescans the inserted fragment.
 
+`Async.loader.scan(...)`, `Async.loader.swap(...)`, and
+`Async.loader.mount(...)` are promise-returning app-level facade methods. They
+queue until a concrete runtime loader exists, then delegate to the same
+synchronous loader operations.
+
 ## Subsystem Boundaries
 
 - The DOM protocol reads registry IDs and signal paths; it does not own the
@@ -47,6 +52,8 @@ rescans the inserted fragment.
 - The signal registry reads and writes state.
 - The component system may emit protocol attributes in rendered fragments.
 - The boundary receiver and router call loader swaps for replacement.
+- The app-level loader facade may buffer work before bootstrap, but it does not
+  change boundary replacement semantics once a concrete loader exists.
 
 ## Protocol Contract
 
@@ -74,6 +81,8 @@ DOM resume means existing HTML becomes live by scanning:
 - Event listeners attach through protocol attributes.
 - Signal bindings update in place.
 - Boundary swaps clean old scoped resources and rescan new content.
+- Loader facade queues preserve operation order before bootstrap and flush into
+  normal scan, swap, and mount behavior after root attachment.
 - Repeated scans are idempotent for already-bound event and signal attributes.
 
 ## Invariants
@@ -91,6 +100,8 @@ DOM resume means existing HTML becomes live by scanning:
 - Missing delegated handlers dispatch an Async error event or reject through the
   handler path.
 - Missing boundaries throw when a swap targets them.
+- Missing boundaries in queued facade swaps reject that queued operation without
+  blocking later queued operations.
 - Invalid command chains fail before partially running unsupported commands.
 - Server commands reject raw DOM locals before transport.
 - Destroyed loaders reject scanning and swapping.

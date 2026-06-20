@@ -25,6 +25,10 @@ The runtime exposes:
 
 - `Async.use(...)` for app-level declaration registration.
 - `Async.start(...)` and `createApp(...).start()` for runtime creation.
+- `Async.loader.ready()`, `Async.loader.scan(...)`,
+  `Async.loader.swap(...)`, `Async.loader.mount(...)`, and
+  `Async.loader.inspect()` for promise-returning loader work that may be issued
+  before a browser root has been attached.
 - `runtime.use(...)` for late declaration adoption.
 - `runtime.attachRoot(root)` and `runtime.detachRoot(root)` for root lifecycle.
 - `runtime.applySnapshot(snapshot)` for browser-visible state restoration.
@@ -37,6 +41,8 @@ not attach DOM roots.
 
 - The kernel owns registry materialization and runtime lifecycle.
 - The loader owns DOM scanning once a root is attached.
+- The app-level loader facade owns only bootstrap ordering. The concrete
+  runtime loader keeps synchronous DOM semantics.
 - The router owns navigation once started for a root.
 - The scheduler owns queued work ordering.
 - Signal and cache registries own mutable data state.
@@ -60,6 +66,8 @@ Runtime activation must support resumed documents:
 
 - A browser runtime can start with an existing document and snapshot.
 - A rootless runtime can prepare registries before the root exists.
+- The app-level loader facade can queue scan, swap, and mount operations until
+  a concrete runtime loader exists.
 - Attaching a root scans existing protocol attributes and connects them to the
   runtime registries.
 - Detaching or destroying a root cancels scoped scheduler jobs and cleanup
@@ -72,6 +80,8 @@ Runtime activation must support resumed documents:
 - Server cache and browser cache are distinct runtime surfaces.
 - Destroyed runtimes reject future root attachment.
 - Attaching the same root more than once is idempotent.
+- `Async.use(...)` remains synchronous and registry-first; queued loader work
+  observes declarations that were registered before the queue flushes.
 
 ## Failure Modes
 
@@ -79,6 +89,8 @@ Runtime activation must support resumed documents:
 - Duplicate IDs fail unless a subsystem explicitly defines compatible adoption.
 - Server runtimes reject DOM root attachment.
 - Destroyed runtimes reject future lifecycle operations.
+- Queued app-level loader operations reject individually if the concrete loader
+  cannot apply them.
 - Snapshot parse or shape failures are surfaced as Async-specific errors.
 
 ## Acceptance Criteria
@@ -87,6 +99,8 @@ Runtime activation must support resumed documents:
   values or cache entries.
 - Late `app.use(...)` declarations become visible to active runtimes.
 - Rootless startup can later attach and detach roots without duplicate binding.
+- Loader work queued before startup flushes in order once the first browser
+  root is attached, without changing the synchronous `runtime.loader` contract.
 - Runtime inspection can list registry keys without exposing browser-forbidden
   server internals.
 - Destroying a runtime cleans loaders, routers, signal state, and owned

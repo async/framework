@@ -60,6 +60,9 @@ Only fields needed for a patch must be present.
 - HTML replacement belongs to the loader's boundary swap.
 - Redirects belong to the router or document navigation fallback.
 - Sequence and retry state belongs to the boundary receiver.
+- Bootstrap loader queues belong to the app-level loader facade. Future
+  streamed fulfillment queues should reuse the same operation-record shape
+  without changing concrete loader semantics.
 
 ## Protocol Contract
 
@@ -126,4 +129,7 @@ Resume must preserve document continuity:
 - Compact patch encodings for production streaming.
 - Server transport protocol for delivering patch streams.
 - Boundary transaction grouping across multiple regions.
+- A partial fulfillment inbox where early HTML/data can be keyed by resource,
+  params, boundary, and version so later Suspense or partial work can skip
+  duplicate HTML transfer and request only missing data.
 - Browser-level resume metrics and diagnostics.

@@ -5,10 +5,11 @@ import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
 const componentKind = Symbol.for("@async/framework.component");
 let componentCounter = 0;
+let defineComponentWarned = false;
 
-export function defineComponent(fn) {
+export function component(fn) {
   if (typeof fn !== "function") {
-    throw new TypeError("defineComponent(fn) requires a function.");
+    throw new TypeError("component(fn) requires a function.");
   }
   Object.defineProperty(fn, componentKind, {
     configurable: true,
@@ -17,7 +18,13 @@ export function defineComponent(fn) {
   return fn;
 }
 
-export const component = defineComponent;
+export function defineComponent(fn) {
+  if (!defineComponentWarned) {
+    defineComponentWarned = true;
+    console.warn?.("defineComponent(...) is deprecated. Use component(...) instead.");
+  }
+  return component(fn);
+}
 
 export function createComponentRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();

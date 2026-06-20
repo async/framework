@@ -12,7 +12,7 @@ scoped registry entries that the loader can scan and clean up.
 
 ## Responsibilities
 
-- Define component functions through `defineComponent(...)`.
+- Define component functions through `component(...)`.
 - Render component output to HTML fragments or templates.
 - Provide scoped helpers for local signals, computed values, async signals,
   handlers, effects, child rendering, suspense templates, and lifecycle hooks.

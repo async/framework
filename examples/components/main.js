@@ -1,6 +1,6 @@
-import { Loader, defineComponent, html } from "../../src/index.js";
+import { Loader, component, html } from "../../src/index.js";
 
-const Toggle = defineComponent(function Toggle() {
+const Toggle = component(function Toggle() {
   const selected = this.signal(false);
   const attach = this.handler("attach", function ({ element }) {
     element.dataset.attached = "true";

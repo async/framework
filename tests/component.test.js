@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { Loader, component, createComponentRegistry, createHandlerRegistry, createScheduler, createServerRegistry, defineAttributeConfig, delay, html } from "../src/index.js";
+import { Loader, component, createComponentRegistry, createHandlerRegistry, createScheduler, createServerRegistry, defineAttributeConfig, defineComponent, delay, html } from "../src/index.js";
 
 test("component helpers create scoped signals, handlers, effects, children, and lifecycle cleanup", async () => {
   const window = new Window();
@@ -77,6 +77,28 @@ test("component helpers create scoped signals, handlers, effects, children, and 
 
   loader.destroy();
   assert.equal(cleaned, 1);
+});
+
+test("defineComponent remains as a one-time warning compatibility alias", () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    function First() {
+      return html`<p>first</p>`;
+    }
+    function Second() {
+      return html`<p>second</p>`;
+    }
+
+    assert.equal(defineComponent(First), First);
+    assert.equal(defineComponent(Second), Second);
+    assert.deepEqual(warnings, [
+      "defineComponent(...) is deprecated. Use component(...) instead."
+    ]);
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 function serverEnvelope(fields = {}) {

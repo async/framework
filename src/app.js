@@ -17,9 +17,11 @@ export function defineApp(initial, options = {}) {
   const registry = createRegistryStore(undefined, { target: "browser" });
   const runtimes = new Set();
   const createRuntime = options.createRuntime ?? createApp;
+  const loaderFacade = createLoaderFacade();
 
   const app = {
     registry,
+    loader: loaderFacade,
 
     use(typeOrModule, entries) {
       const normalized = normalizeUse(typeOrModule, entries);
@@ -147,6 +149,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
           registerRootLoader(loader.root, loader);
           loader.start();
           startRouterFor(loader.root);
+          app.loader._setCurrent(runtime.loader);
         } else if (startupRoot != null) {
           runtime.attachRoot(startupRoot);
         }
@@ -191,6 +194,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       configureServerContext({ cache: browserCache });
       signals._setContext?.({ server, loader: runtime.loader, cache: browserCache, scheduler });
       startRouterFor(root);
+      app.loader._setCurrent(runtime.loader);
       return runtime;
     },
 
@@ -200,6 +204,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
         return runtime;
       }
       if (root == null) {
+        const detachedLoaders = [...new Set(rootLoaders.values())];
         for (const rootLoader of new Set(rootLoaders.values())) {
           rootLoader.destroy?.();
         }
@@ -210,6 +215,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
         loader = undefined;
         runtime.loader = undefined;
         runtime.router = undefined;
+        app.loader._clearCurrent(detachedLoaders);
         return runtime;
       }
       const rootLoader = rootLoaders.get(root);
@@ -228,6 +234,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
         runtime.router = undefined;
         if (next) {
           startRouterFor(next.root);
+          app.loader._setCurrent(next);
+        } else {
+          app.loader._clearCurrent(rootLoader);
         }
       }
       return runtime;
@@ -315,6 +324,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
       if (loader && !destroyedLoaders.has(loader)) {
         loader?.destroy?.();
       }
+      app.loader._clearCurrent([...destroyedLoaders, loader]);
+      app.loader._rejectPending(new Error("Async loader queue was cleared because the runtime was destroyed."));
       signals.destroy?.();
       if (ownsScheduler) {
         scheduler.destroy();
@@ -401,6 +412,107 @@ export function createApp(appOrDefinition = Async, options = {}) {
 }
 
 export const Async = defineApp();
+
+function createLoaderFacade() {
+  let current;
+  const pending = [];
+  const readyWaiters = [];
+
+  const facade = {
+    get current() {
+      return current;
+    },
+
+    ready() {
+      if (current) {
+        return Promise.resolve(current);
+      }
+      return new Promise((resolve, reject) => {
+        readyWaiters.push({ resolve, reject });
+      });
+    },
+
+    scan(rootOrFragment) {
+      return enqueue("scan", [rootOrFragment]);
+    },
+
+    swap(boundaryId, fragmentOrTemplate) {
+      return enqueue("swap", [boundaryId, fragmentOrTemplate]);
+    },
+
+    mount(target, Component, props) {
+      return enqueue("mount", [target, Component, props]);
+    },
+
+    inspect() {
+      return {
+        ready: Boolean(current),
+        pending: pending.length,
+        root: current?.root
+      };
+    }
+  };
+
+  Object.defineProperties(facade, {
+    _setCurrent: {
+      value(loader) {
+        if (!loader) {
+          return;
+        }
+        current = loader;
+        while (readyWaiters.length > 0) {
+          readyWaiters.shift().resolve(loader);
+        }
+        flushPending(loader);
+      }
+    },
+    _clearCurrent: {
+      value(loaderOrLoaders) {
+        if (loaderOrLoaders === undefined) {
+          current = undefined;
+          return;
+        }
+        const loaders = Array.isArray(loaderOrLoaders) ? loaderOrLoaders : [loaderOrLoaders];
+        if (loaders.includes(current)) {
+          current = undefined;
+        }
+      }
+    },
+    _rejectPending: {
+      value(error) {
+        while (pending.length > 0) {
+          pending.shift().reject(error);
+        }
+        while (readyWaiters.length > 0) {
+          readyWaiters.shift().reject(error);
+        }
+      }
+    }
+  });
+
+  return facade;
+
+  function enqueue(method, args) {
+    if (current) {
+      return invoke(current, method, args);
+    }
+    return new Promise((resolve, reject) => {
+      pending.push({ method, args, resolve, reject });
+    });
+  }
+
+  function flushPending(loader) {
+    while (pending.length > 0) {
+      const operation = pending.shift();
+      invoke(loader, operation.method, operation.args)
+        .then(operation.resolve, operation.reject);
+    }
+  }
+
+  async function invoke(loader, method, args) {
+    return loader[method](...args);
+  }
+}
 
 export function readSnapshot(root = globalThis.document, { attributes } = {}) {
   const attributeConfig = normalizeAttributeConfig(attributes);

@@ -83,6 +83,8 @@ test("ESM Async export stays the app hub", () => {
   for (const module of [source, bundle, minBundle]) {
     assert.equal(typeof module.Async.use, "function");
     assert.equal(typeof module.Async.start, "function");
+    assert.equal(typeof module.Async.loader.ready, "function");
+    assert.equal(typeof module.Async.loader.swap, "function");
     assert.equal(module.Async.createSignal, undefined);
     assert.equal(module.Async.Async, undefined);
   }
@@ -167,6 +169,8 @@ test("browser UMD bundles expose the public browser runtime API", () => {
     }
     assert.equal(typeof browserContext.Async.use, "function");
     assert.equal(typeof browserContext.Async.start, "function");
+    assert.equal(typeof browserContext.Async.loader.ready, "function");
+    assert.equal(typeof browserContext.Async.loader.swap, "function");
     assert.equal(browserContext.Async.Loader, browserContext.Async.AsyncLoader);
 
     const cjsContext = {
@@ -181,6 +185,8 @@ test("browser UMD bundles expose the public browser runtime API", () => {
         assert.equal(typeof cjsContext.module.exports[key], typeof source[key]);
       }
     }
+    assert.equal(typeof cjsContext.module.exports.loader.ready, "function");
+    assert.equal(typeof cjsContext.module.exports.loader.swap, "function");
     assert.equal(cjsContext.module.exports.Loader, cjsContext.module.exports.AsyncLoader);
   }
 });
@@ -617,6 +623,9 @@ test("browser and server declarations expose the right public APIs", () => {
   assert.match(serverDeclarations, /createRequestContextStore/);
   assert.match(browserDeclarations, /declare global/);
   assert.match(browserDeclarations, /export declare const Async: AppHub/);
+  assert.match(browserDeclarations, /export interface AsyncLoaderFacade/);
+  assert.match(browserDeclarations, /loader: AsyncLoaderFacade/);
+  assert.match(browserDeclarations, /swap\(boundaryId: string, fragmentOrTemplate: TemplateLike\): Promise<Element>/);
   assert.match(browserDeclarations, /const Async: AsyncNamespace/);
   assert.match(browserDeclarations, /const AsyncFramework: AsyncNamespace/);
 });
