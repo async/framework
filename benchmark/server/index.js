@@ -128,6 +128,19 @@ function shellHtml(view) {
               <span class="inline-flex items-center gap-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"><span class="inline-block h-3 w-3 rounded bg-rose-500"></span>Slowest</span>
             </div>
           </div>
+          <section class="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div class="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold tracking-normal text-slate-900">Frameworks</h2>
+                <p id="framework-filter-summary" class="mt-2 text-sm text-slate-600"></p>
+              </div>
+              <div class="flex gap-3">
+                <button type="button" on:click="filters.all" class="rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900">All</button>
+                <button type="button" on:click="filters.asyncOnly" class="rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900">Only Async</button>
+              </div>
+            </div>
+            <div id="framework-toggles" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+          </section>
           <section class="mb-6">
             <h2 class="mb-3 text-2xl font-semibold tracking-normal text-slate-900">Overall</h2>
             <div id="results-overall" class="overflow-x-auto"></div>

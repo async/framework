@@ -8,15 +8,35 @@ const appsGrid = document.getElementById("apps-grid");
 const resultsMeta = document.getElementById("results-meta");
 const resultsOverall = document.getElementById("results-overall");
 const resultsGroups = document.getElementById("results-groups");
+const frameworkFilterSummary = document.getElementById("framework-filter-summary");
+const frameworkToggles = document.getElementById("framework-toggles");
+
+const frameworkSelectionStorageKey = "async-framework-benchmark.visible-frameworks";
+let latestResults = null;
+let selectedFrameworks = new Set();
 
 Async.use({
   handler: {
     "view.apps": () => setView("apps"),
     "view.results": () => setView("results"),
+    "filters.all": () => selectFrameworks(frameworkOptions(latestResults?.results ?? []).map((option) => option.framework)),
+    "filters.asyncOnly": () => selectFrameworks(["async-framework"]),
   },
 });
 
 Async.start({ root, router: false });
+frameworkToggles.addEventListener("change", (event) => {
+  if (!(event.target instanceof HTMLInputElement) || event.target.type !== "checkbox") return;
+  const framework = event.target.dataset.framework;
+  if (!framework) return;
+  if (event.target.checked) {
+    selectedFrameworks.add(framework);
+  } else {
+    selectedFrameworks.delete(framework);
+  }
+  saveSelectedFrameworks();
+  renderResultsView();
+});
 
 await Promise.all([renderApps(), renderResults()]);
 setView(root.dataset.view === "results" ? "results" : "apps");
@@ -41,10 +61,100 @@ async function renderResults() {
     return;
   }
 
-  resultsMeta.textContent = `${results.generatedAt} · ${results.mode} · ${results.browser} · ${results.frameworkCount} frameworks · ${results.benchmarkCount} benchmarks · ${results.results.length} rows`;
-  const enriched = enrichResults(results.results);
+  latestResults = results;
+  selectedFrameworks = loadSelectedFrameworks(frameworkOptions(results.results));
+  renderFrameworkToggles(results.results);
+  renderResultsView();
+}
+
+function renderResultsView() {
+  if (!latestResults) return;
+
+  const options = frameworkOptions(latestResults.results);
+  const visibleResults = latestResults.results.filter((result) => selectedFrameworks.has(result.framework));
+  resultsMeta.textContent = `${latestResults.generatedAt} · ${latestResults.mode} · ${latestResults.browser} · ${visibleResults.length} of ${latestResults.results.length} rows`;
+  frameworkFilterSummary.textContent = `${selectedFrameworks.size} of ${options.length} frameworks visible. Scores are recalculated against the visible set.`;
+  syncFrameworkToggles();
+
+  if (visibleResults.length === 0) {
+    resultsOverall.replaceChildren(emptyMessage("Select at least one framework to compare."));
+    resultsGroups.replaceChildren();
+    return;
+  }
+
+  const enriched = enrichResults(visibleResults);
   resultsOverall.replaceChildren(renderOverallTable(enriched));
   resultsGroups.replaceChildren(...groupByBenchmark(enriched).map(renderBenchmarkGroup));
+}
+
+function renderFrameworkToggles(results) {
+  frameworkToggles.replaceChildren(
+    ...frameworkOptions(results).map((option) => {
+      const label = document.createElement("label");
+      label.className = "flex items-center gap-3 rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.framework = option.framework;
+      input.checked = selectedFrameworks.has(option.framework);
+
+      const name = document.createElement("span");
+      name.className = "font-medium text-slate-900";
+      name.textContent = option.frameworkVersion;
+
+      label.replaceChildren(input, name);
+      return label;
+    }),
+  );
+}
+
+function frameworkOptions(results) {
+  const frameworks = new Map();
+  for (const result of results) {
+    if (!frameworks.has(result.framework)) {
+      frameworks.set(result.framework, {
+        framework: result.framework,
+        frameworkVersion: result.frameworkVersion,
+      });
+    }
+  }
+  return [...frameworks.values()];
+}
+
+function loadSelectedFrameworks(options) {
+  const validFrameworks = new Set(options.map((option) => option.framework));
+  try {
+    const saved = JSON.parse(localStorage.getItem(frameworkSelectionStorageKey) ?? "[]");
+    const selected = saved.filter((framework) => validFrameworks.has(framework));
+    if (selected.length > 0) return new Set(selected);
+  } catch {
+    localStorage.removeItem(frameworkSelectionStorageKey);
+  }
+  return new Set(validFrameworks);
+}
+
+function selectFrameworks(frameworks) {
+  const validFrameworks = new Set(frameworkOptions(latestResults?.results ?? []).map((option) => option.framework));
+  selectedFrameworks = new Set(frameworks.filter((framework) => validFrameworks.has(framework)));
+  saveSelectedFrameworks();
+  renderResultsView();
+}
+
+function saveSelectedFrameworks() {
+  localStorage.setItem(frameworkSelectionStorageKey, JSON.stringify([...selectedFrameworks]));
+}
+
+function syncFrameworkToggles() {
+  for (const input of frameworkToggles.querySelectorAll("input[type='checkbox']")) {
+    input.checked = selectedFrameworks.has(input.dataset.framework);
+  }
+}
+
+function emptyMessage(text) {
+  const message = document.createElement("p");
+  message.className = "rounded border border-slate-200 bg-white p-4 text-sm text-slate-600";
+  message.textContent = text;
+  return message;
 }
 
 function renderOverallTable(results) {
