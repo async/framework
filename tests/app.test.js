@@ -103,7 +103,7 @@ test("runtime.use delegates through the same app hub", async () => {
   runtime.destroy();
 });
 
-test("Async singleton can start an app and expose the latest runtime", async () => {
+test("Async singleton hides runtime behind inspectRuntime diagnostics", async () => {
   const window = new Window();
   const { document } = window;
   const signalId = `asyncSingleton${Date.now()}`;
@@ -117,8 +117,32 @@ test("Async singleton can start an app and expose the latest runtime", async () 
   await delay(0);
 
   assert.equal(document.querySelector("output").textContent, "singleton");
-  assert.equal(Async.runtime, runtime);
+  assert.equal(Async.runtime, undefined);
+  assert.equal(Async._runtime, runtime);
+  assert.equal(Object.keys(Async).includes("_runtime"), false);
+  assert.deepEqual(
+    {
+      active: Async.inspectRuntime().active,
+      started: Async.inspectRuntime().started,
+      destroyed: Async.inspectRuntime().destroyed,
+      target: Async.inspectRuntime().target,
+      roots: Async.inspectRuntime().roots.count,
+      loader: Async.inspectRuntime().loader.ready,
+      router: Async.inspectRuntime().router
+    },
+    {
+      active: true,
+      started: true,
+      destroyed: false,
+      target: "browser",
+      roots: 1,
+      loader: true,
+      router: false
+    }
+  );
   runtime.destroy();
+  assert.equal(Async.inspectRuntime().active, false);
+  assert.equal(Async.inspectRuntime().roots.count, 0);
 });
 
 test("Async.loader queues swaps until the singleton runtime has a loader", async () => {
@@ -205,10 +229,15 @@ test("app loader queues mount and scan until a rootless runtime attaches", async
     return html`<button type="button" signal:text="status"></button>`;
   });
 
+  assert.equal(app.inspectRuntime().active, false);
+  assert.equal(app.inspectRuntime().loader.ready, false);
+
   const runtime = app.start({ router: false });
   const mounted = app.loader.mount(document.querySelector("#app"), Widget);
   const scanned = app.loader.scan(document.querySelector("#late"));
 
+  assert.equal(app.inspectRuntime().active, true);
+  assert.equal(app.inspectRuntime().roots.count, 0);
   assert.equal(app.loader.inspect().ready, false);
   assert.equal(app.loader.inspect().pending, 2);
   assert.equal(document.querySelector("#app").textContent.trim(), "");
@@ -218,6 +247,7 @@ test("app loader queues mount and scan until a rootless runtime attaches", async
   await mounted;
   await scanned;
 
+  assert.equal(app.inspectRuntime().roots.count, 1);
   assert.equal(document.querySelector("#app button").textContent, "ready");
   assert.equal(document.querySelector("#late").textContent, "ready");
   assert.equal(app.loader.inspect().ready, true);

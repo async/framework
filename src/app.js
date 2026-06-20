@@ -18,6 +18,7 @@ export function defineApp(initial, options = {}) {
   const runtimes = new Set();
   const createRuntime = options.createRuntime ?? createApp;
   const loaderFacade = createLoaderFacade();
+  let currentRuntime;
 
   const app = {
     registry,
@@ -38,7 +39,7 @@ export function defineApp(initial, options = {}) {
 
     start(options = {}) {
       const runtime = createRuntime(app, options).start();
-      app.runtime = runtime;
+      setCurrentRuntime(runtime);
       return runtime;
     },
 
@@ -47,12 +48,12 @@ export function defineApp(initial, options = {}) {
     },
 
     detachRoot(root) {
-      return app.runtime?.detachRoot(root) ?? app;
+      return currentRuntime?.detachRoot(root) ?? app;
     },
 
     applySnapshot(snapshot, snapshotOptions = {}) {
-      if (app.runtime) {
-        app.runtime.applySnapshot(snapshot, snapshotOptions);
+      if (currentRuntime) {
+        currentRuntime.applySnapshot(snapshot, snapshotOptions);
         return app;
       }
       appendSnapshotDeclarations(registry, snapshot, snapshotOptions);
@@ -60,7 +61,11 @@ export function defineApp(initial, options = {}) {
     },
 
     inspectRoots() {
-      return app.runtime?.inspectRoots() ?? { count: 0, roots: [] };
+      return currentRuntime?.inspectRoots() ?? { count: 0, roots: [] };
+    },
+
+    inspectRuntime() {
+      return inspectRuntimeState(currentRuntime, loaderFacade);
     },
 
     _attach(runtime) {
@@ -70,14 +75,36 @@ export function defineApp(initial, options = {}) {
 
     _detach(runtime) {
       runtimes.delete(runtime);
+      if (currentRuntime === runtime) {
+        currentRuntime = latestRuntime(runtimes);
+      }
     }
   };
+
+  Object.defineProperties(app, {
+    _runtime: {
+      get() {
+        return currentRuntime;
+      }
+    },
+    _setRuntime: {
+      value(runtime) {
+        setCurrentRuntime(runtime);
+      }
+    }
+  });
 
   if (initial) {
     app.use(initial);
   }
 
   return app;
+
+  function setCurrentRuntime(runtime) {
+    if (runtime) {
+      currentRuntime = runtime;
+    }
+  }
 }
 
 export function createApp(appOrDefinition = Async, options = {}) {
@@ -140,6 +167,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
         return runtime;
       }
       started = true;
+      app._setRuntime?.(runtime);
 
       if (target !== "server") {
         configureServerContext({ cache: browserCache });
@@ -336,6 +364,22 @@ export function createApp(appOrDefinition = Async, options = {}) {
       applyUseToRuntime(runtime, normalized);
     }
   };
+
+  Object.defineProperties(runtime, {
+    _inspect: {
+      value() {
+        return {
+          active: !destroyed,
+          started,
+          destroyed,
+          target,
+          roots: runtime.inspectRoots(),
+          loader: app.loader.inspect(),
+          router: Boolean(runtime.router)
+        };
+      }
+    }
+  });
 
   server.cache = serverCache;
   runtime.server.cache = serverCache;
@@ -664,10 +708,33 @@ function isAppHub(value) {
 }
 
 function ensureRuntime(app) {
-  if (!app.runtime) {
+  if (!app._runtime) {
     app.start();
   }
-  return app.runtime;
+  return app._runtime;
+}
+
+function latestRuntime(runtimes) {
+  let latest;
+  for (const runtime of runtimes) {
+    latest = runtime;
+  }
+  return latest;
+}
+
+function inspectRuntimeState(runtime, loaderFacade) {
+  if (runtime?._inspect) {
+    return runtime._inspect();
+  }
+  return {
+    active: Boolean(runtime),
+    started: Boolean(runtime),
+    destroyed: false,
+    target: runtime?.target,
+    roots: runtime?.inspectRoots?.() ?? { count: 0, roots: [] },
+    loader: loaderFacade.inspect(),
+    router: Boolean(runtime?.router)
+  };
 }
 
 function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {

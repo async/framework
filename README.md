@@ -404,13 +404,13 @@ You can also create isolated app hubs and runtimes:
 ```js
 const app = defineApp();
 app.use("signal", { count: createSignal(0) });
-
-const runtime = createApp(app, { root: document }).start();
-runtime.use("handler", {
+app.use("handler", {
   increment() {
     this.signals.update("count", (count) => count + 1);
   }
 });
+
+const runtime = createApp(app, { root: document }).start();
 ```
 
 Naming rules:
@@ -471,6 +471,28 @@ runtime.registry.get("server", "products.get");
 runtime.registry.snapshot().entries.server;
 // {}
 ```
+
+The singleton runtime is intentionally internal. Use app-level methods for
+global lifecycle work, and use `inspectRuntime()` for diagnostics:
+
+```js
+Async.attachRoot(document.body);
+Async.applySnapshot(snapshot);
+
+Async.inspectRuntime();
+// {
+//   active: true,
+//   started: true,
+//   destroyed: false,
+//   target: "browser",
+//   roots: { count: 1, roots: [...] },
+//   loader: { ready: true, pending: 0, root: document.body },
+//   router: false
+// }
+```
+
+`Async.runtime` is not public API. If you need direct instance ownership, keep
+the handle returned from `Async.start(...)` or `createApp(...).start()`.
 
 ### Signals
 

@@ -25,17 +25,25 @@ The runtime exposes:
 
 - `Async.use(...)` for app-level declaration registration.
 - `Async.start(...)` and `createApp(...).start()` for runtime creation.
+- `Async.attachRoot(root)` and `Async.detachRoot(root)` for singleton root
+  lifecycle.
+- `Async.applySnapshot(snapshot)` for browser-visible state restoration before
+  or after startup.
+- `Async.inspectRoots()` and `Async.inspectRuntime()` for diagnostics that do
+  not expose the runtime as the public singleton API.
 - `Async.loader.ready()`, `Async.loader.scan(...)`,
   `Async.loader.swap(...)`, `Async.loader.mount(...)`, and
   `Async.loader.inspect()` for promise-returning loader work that may be issued
   before a browser root has been attached.
-- `runtime.use(...)` for late declaration adoption.
-- `runtime.attachRoot(root)` and `runtime.detachRoot(root)` for root lifecycle.
-- `runtime.applySnapshot(snapshot)` for browser-visible state restoration.
 - `runtime.registry` and `Async.registry` for inspection.
 
 Browser runtimes may start rootless and attach roots later. Server runtimes do
 not attach DOM roots.
+
+`Async.runtime` is not a supported public API. The app hub may retain an
+internal non-enumerable `_runtime` slot for framework integrations, but
+application code should use app-level methods or the explicit runtime handle
+returned from `Async.start(...)` / `createApp(...).start()`.
 
 ## Subsystem Boundaries
 
@@ -77,6 +85,8 @@ Runtime activation must support resumed documents:
 
 - App declarations are reusable; runtime state is not shared by accident.
 - A runtime's signal and cache registries are mutable runtime state.
+- App hubs do not expose mutable runtime state through a public `runtime`
+  property.
 - Server cache and browser cache are distinct runtime surfaces.
 - Destroyed runtimes reject future root attachment.
 - Attaching the same root more than once is idempotent.
@@ -101,14 +111,15 @@ Runtime activation must support resumed documents:
 - Rootless startup can later attach and detach roots without duplicate binding.
 - Loader work queued before startup flushes in order once the first browser
   root is attached, without changing the synchronous `runtime.loader` contract.
-- Runtime inspection can list registry keys without exposing browser-forbidden
-  server internals.
+- Runtime inspection can report active target, root, loader, and router state
+  without exposing the mutable runtime as `Async.runtime`.
 - Destroying a runtime cleans loaders, routers, signal state, and owned
   scheduler work.
 
 ## Open Or Deferred Decisions
 
-- Public shape of deeper runtime introspection APIs.
+- Public shape of deeper runtime introspection APIs beyond
+  `Async.inspectRuntime()`.
 - Whether app hubs should support named runtime instances.
 - How strict live declaration replacement should be when IDs already exist.
 - Whether root lifecycle should emit public diagnostic events.

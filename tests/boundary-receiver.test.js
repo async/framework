@@ -9,6 +9,7 @@ import {
   createHandlerRegistry,
   createScheduler,
   createSignalRegistry,
+  defineApp,
   delay,
   signal
 } from "../src/index.js";
@@ -693,6 +694,42 @@ test("AsyncStream applies JSON scripts with templates, attrs, and DOM reveal met
   assert.equal(document.querySelector("[data-async-boundary='timeline']").textContent.includes("Timeline ready"), true);
   assert.equal(document.querySelector("#timeline-input").getAttribute("aria-describedby"), "timeline-help");
   loader.destroy();
+});
+
+test("AsyncStream resolves global Async through the internal runtime slot", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main async:boundary="route"></main>
+    <script id="patch" type="application/json">
+      {
+        "boundary": "route",
+        "seq": 1,
+        "html": "<p id=\\"ready\\">Ready</p>"
+      }
+    </script>
+  `;
+  const app = defineApp();
+  const runtime = app.start({ root: document.body, router: false });
+  const previousAsync = globalThis.Async;
+  globalThis.Async = app;
+
+  try {
+    assert.equal(app.runtime, undefined);
+    assert.equal(app._runtime, runtime);
+
+    const result = await AsyncStream.applyScript(document.querySelector("#patch"));
+
+    assert.equal(result.status, "applied");
+    assert.equal(document.querySelector("#ready").textContent, "Ready");
+  } finally {
+    runtime.destroy();
+    if (previousAsync === undefined) {
+      delete globalThis.Async;
+    } else {
+      globalThis.Async = previousAsync;
+    }
+  }
 });
 
 test("boundary receiver redirects through router after effects", async () => {

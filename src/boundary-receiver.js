@@ -486,7 +486,7 @@ function resolveReceiver(options = {}) {
   if (options.receiver && typeof options.receiver.apply === "function") {
     return options.receiver;
   }
-  const runtime = options.runtime ?? globalThis.Async?.runtime;
+  const runtime = options.runtime ?? globalThis.Async?._runtime;
   const loader = options.loader ?? runtime?.loader;
   if (!loader) {
     throw new TypeError("AsyncStream requires receiver, loader, or runtime.loader.");

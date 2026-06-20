@@ -21,7 +21,7 @@ export function defineAsyncContainerElement(options = {}) {
       if (this.__asyncAttached) {
         return;
       }
-      const runtime = app.runtime ?? app.start?.();
+      const runtime = app._runtime ?? app.start?.();
       runtime?.attachRoot?.(this);
       this.__asyncRuntime = runtime;
       this.__asyncAttached = true;
