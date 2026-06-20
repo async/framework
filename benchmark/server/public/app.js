@@ -10,10 +10,18 @@ const resultsOverall = document.getElementById("results-overall");
 const resultsGroups = document.getElementById("results-groups");
 const frameworkFilterSummary = document.getElementById("framework-filter-summary");
 const frameworkToggles = document.getElementById("framework-toggles");
+const sizeUnitSelect = document.getElementById("size-unit");
 
 const frameworkSelectionStorageKey = "async-framework-benchmark.visible-frameworks";
+const sizeUnitStorageKey = "async-framework-benchmark.size-unit";
+const sizeUnits = new Map([
+  ["k", { label: "K", divisor: 1000 }],
+  ["kb", { label: "KB", divisor: 1024 }],
+  ["mb", { label: "MB", divisor: 1024 * 1024 }],
+]);
 let latestResults = null;
 let selectedFrameworks = new Set();
+let sizeUnit = loadSizeUnit();
 
 Async.use({
   handler: {
@@ -25,6 +33,14 @@ Async.use({
 });
 
 Async.start({ root, router: false });
+sizeUnitSelect.value = sizeUnit;
+sizeUnitSelect.addEventListener("change", (event) => {
+  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!sizeUnits.has(event.target.value)) return;
+  sizeUnit = event.target.value;
+  localStorage.setItem(sizeUnitStorageKey, sizeUnit);
+  renderResultsView();
+});
 frameworkToggles.addEventListener("change", (event) => {
   if (!(event.target instanceof HTMLInputElement) || event.target.type !== "checkbox") return;
   const framework = event.target.dataset.framework;
@@ -48,7 +64,7 @@ async function renderApps() {
       const link = document.createElement("a");
       link.className = "rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900";
       link.href = `/${framework.uri}/index.html`;
-      link.textContent = framework.frameworkVersionString;
+      link.textContent = displayFrameworkLabel(framework.directory, framework.frameworkVersionString);
       return link;
     }),
   );
@@ -100,7 +116,7 @@ function renderFrameworkToggles(results) {
 
       const name = document.createElement("span");
       name.className = "font-medium text-slate-900";
-      name.textContent = option.frameworkVersion;
+      name.textContent = option.label;
 
       label.replaceChildren(input, name);
       return label;
@@ -115,6 +131,7 @@ function frameworkOptions(results) {
       frameworks.set(result.framework, {
         framework: result.framework,
         frameworkVersion: result.frameworkVersion,
+        label: displayFrameworkLabel(result.framework, result.frameworkVersion),
       });
     }
   }
@@ -160,17 +177,17 @@ function emptyMessage(text) {
 function renderOverallTable(results) {
   const frameworks = new Map();
   for (const result of results) {
-    const current = frameworks.get(result.frameworkVersion) ?? {
-      frameworkVersion: result.frameworkVersion,
+    const current = frameworks.get(result.framework) ?? {
+      frameworkLabel: result.frameworkLabel,
       framework: result.framework,
       totalRatios: [],
       memoryRatios: [],
-      brKB: result.brKB,
+      brBytes: result.brBytes,
     };
     current.totalRatios.push(result.totalRatio);
     current.memoryRatios.push(result.memoryRatio);
-    current.brKB = result.brKB;
-    frameworks.set(result.frameworkVersion, current);
+    current.brBytes = result.brBytes;
+    frameworks.set(result.framework, current);
   }
 
   const rows = [...frameworks.values()]
@@ -182,16 +199,17 @@ function renderOverallTable(results) {
     .sort((a, b) => a.totalScore - b.totalScore);
   const bestTotal = Math.min(...rows.map((row) => row.totalScore));
   const bestMemory = Math.min(...rows.map((row) => row.memoryScore));
-  const bestSize = Math.min(...rows.map((row) => row.brKB));
+  const bestSize = Math.min(...rows.map((row) => row.brBytes));
+  const sizeHeader = `BR (${currentSizeUnit().label})`;
 
   return renderTable(
-    ["Rank", "Framework", "Total", "Memory", "BR"],
+    ["Rank", "Framework", "Total", "Memory", sizeHeader],
     rows.map((row, index) => [
       textCell(`#${index + 1}`, "rank-cell"),
-      textCell(row.frameworkVersion, "framework-cell"),
+      textCell(row.frameworkLabel, "framework-cell"),
       scoreCell(`${formatRatio(row.totalScore)}x`, row.totalScore / bestTotal),
       scoreCell(`${formatRatio(row.memoryScore)}x`, row.memoryScore / bestMemory),
-      scoreCell(`${format(row.brKB)} KB`, row.brKB / bestSize),
+      scoreCell(formatSize(row.brBytes), row.brBytes / bestSize),
     ]),
   );
 }
@@ -202,19 +220,20 @@ function renderBenchmarkGroup(group) {
 
   const heading = document.createElement("h3");
   heading.className = "mb-3 text-lg font-semibold tracking-normal text-slate-900";
-  heading.textContent = `${group[0].benchmark} · ${group[0].label}`;
+  heading.textContent = displayBenchmarkLabel(group[0]);
+  const sizeHeader = `BR (${currentSizeUnit().label})`;
 
   const table = renderTable(
-    ["Framework", "Total", "Script", "Paint", "Memory", "BR"],
+    ["Framework", "Total", "Script", "Paint", "Memory", sizeHeader],
     group
       .toSorted((a, b) => a.total - b.total)
       .map((result) => [
-        textCell(result.frameworkVersion, "framework-cell"),
+        textCell(result.frameworkLabel, "framework-cell"),
         scoreCell(`${format(result.total)} ms · ${formatRatio(result.totalRatio)}x`, result.totalRatio),
         scoreCell(`${format(result.script)} ms · ${formatRatio(result.scriptRatio)}x`, result.scriptRatio),
         scoreCell(`${format(result.paint)} ms · ${formatRatio(result.paintRatio)}x`, result.paintRatio),
         scoreCell(`${format(result.memory)} MB · ${formatRatio(result.memoryRatio)}x`, result.memoryRatio),
-        scoreCell(`${format(result.brKB)} KB · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio),
+        scoreCell(`${formatSize(result.brBytes)} · ${formatRatio(result.sizeRatio)}x`, result.sizeRatio),
       ]),
   );
 
@@ -274,25 +293,26 @@ function enrichResults(results) {
     const bestScript = minMetric(group, (result) => result.summary.script.median);
     const bestPaint = minMetric(group, (result) => result.summary.paint.median);
     const bestMemory = minMetric(group, (result) => result.summary.memoryMB.median);
-    const bestSize = minMetric(group, (result) => compressedBytes(result.size) / 1024);
+    const bestSize = minMetric(group, (result) => compressedBytes(result.size));
     for (const result of group) {
       const total = result.summary.total.median;
       const script = result.summary.script.median;
       const paint = result.summary.paint.median;
       const memory = result.summary.memoryMB.median;
-      const brKB = compressedBytes(result.size) / 1024;
+      const brBytes = compressedBytes(result.size);
       enriched.push({
         ...result,
+        frameworkLabel: displayFrameworkLabel(result.framework, result.frameworkVersion),
         total,
         script,
         paint,
         memory,
-        brKB,
+        brBytes,
         totalRatio: ratio(total, bestTotal),
         scriptRatio: ratio(script, bestScript),
         paintRatio: ratio(paint, bestPaint),
         memoryRatio: ratio(memory, bestMemory),
-        sizeRatio: ratio(brKB, bestSize),
+        sizeRatio: ratio(brBytes, bestSize),
       });
     }
   }
@@ -346,8 +366,8 @@ async function fetchJson(url) {
   return response.json();
 }
 
-function format(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
+function format(value, decimals = 2) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "";
 }
 
 function formatRatio(value) {
@@ -356,4 +376,46 @@ function formatRatio(value) {
 
 function compressedBytes(size) {
   return size.brBytes;
+}
+
+function currentSizeUnit() {
+  return sizeUnits.get(sizeUnit) ?? sizeUnits.get("kb");
+}
+
+function formatSize(bytes) {
+  const unit = currentSizeUnit();
+  const value = bytes / unit.divisor;
+  const decimals = unit.label === "MB" && value < 1 ? 3 : 2;
+  return `${format(value, decimals)} ${unit.label}`;
+}
+
+function loadSizeUnit() {
+  const saved = localStorage.getItem(sizeUnitStorageKey);
+  return sizeUnits.has(saved) ? saved : "kb";
+}
+
+function displayBenchmarkLabel(result) {
+  return result.label || humanizeIdentifier(result.benchmark);
+}
+
+function displayFrameworkLabel(framework, frameworkVersion = "") {
+  if (framework === "async-framework") return "@async/framework";
+  if (framework === "js-only") return "JavaScript";
+  if (framework === "react") return `React v${majorVersion(frameworkVersion) ?? "19"}`;
+  if (framework === "solid-v1") return "Solid v1";
+  if (framework === "solid-v2") return "Solid v2";
+  if (framework === "qwik-v1") return "Qwik v1";
+  if (framework === "qwik-v2") return "Qwik v2";
+  return humanizeIdentifier(framework);
+}
+
+function majorVersion(value) {
+  return value.match(/-v(\d+)/)?.[1];
+}
+
+function humanizeIdentifier(value) {
+  return String(value)
+    .replace(/^\d+_/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

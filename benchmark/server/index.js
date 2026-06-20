@@ -134,7 +134,15 @@ function shellHtml(view) {
                 <h2 class="text-lg font-semibold tracking-normal text-slate-900">Frameworks</h2>
                 <p id="framework-filter-summary" class="mt-2 text-sm text-slate-600"></p>
               </div>
-              <div class="flex gap-3">
+              <div class="flex flex-col gap-3 sm:flex-row">
+                <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  Size
+                  <select id="size-unit" class="rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900">
+                    <option value="k">K</option>
+                    <option value="kb" selected>KB</option>
+                    <option value="mb">MB</option>
+                  </select>
+                </label>
                 <button type="button" on:click="filters.all" class="rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900">All</button>
                 <button type="button" on:click="filters.asyncOnly" class="rounded border border-slate-200 bg-white px-4 py-2.5 text-sky-700 transition hover:text-sky-900">Only Async</button>
               </div>
