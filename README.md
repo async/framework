@@ -1483,9 +1483,10 @@ then runs release doctor.
 
 ## Status
 
-The core runtime is intentionally small. Bundling, lazy chunk manifests, JSX
-lowering, TSRX lowering, server resource compilation, and higher-level
-resumability metadata are deferred to later layers.
+The core runtime is intentionally small. Build-required JSX has optimizer
+artifacts for event, signal, stream, and children-fragment lowering, while full
+compiler emission, lazy chunk manifests, TSRX lowering, server resource
+compilation, and higher-level resumability metadata remain later layers.
 
 ## Async And htmx
 

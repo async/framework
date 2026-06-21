@@ -3,6 +3,7 @@ export const OPTIMIZER_ARTIFACT_VERSION = 1;
 export const OPTIMIZER_PASSES = Object.freeze([
   "source-inventory",
   "jsx-semantic-graph",
+  "jsx-children-fragment-lowering",
   "signal-source-classification",
   "signal-ownership-lifetime",
   "event-symbol-extraction",
@@ -43,6 +44,7 @@ export function createOptimizerArtifactSet(input = {}) {
   const diagnostics = [];
   const sourceInventory = createSourceInventoryArtifact(input.sourceInventory, { diagnostics });
   const jsxSemanticGraph = createJsxSemanticGraphArtifact(input.semanticGraph, { diagnostics });
+  const childrenFragments = lowerJsxChildren(jsxSemanticGraph, { diagnostics }).artifact;
   const signalSources = classifySignalSources(jsxSemanticGraph.signals, { diagnostics }).artifact;
   const signalOwnership = inferSignalOwnership(jsxSemanticGraph.signals, { diagnostics }).artifact;
   const eventSymbols = extractEventSymbols(jsxSemanticGraph.eventProps, { diagnostics }).artifact;
@@ -62,7 +64,8 @@ export function createOptimizerArtifactSet(input = {}) {
     streamBoundaries,
     runtimeSelection,
     handlerEmission,
-    jsxSemanticGraph
+    jsxSemanticGraph,
+    childrenFragments
   });
   const buildEmit = {
     bootstrap: {
@@ -83,6 +86,7 @@ export function createOptimizerArtifactSet(input = {}) {
     artifacts: {
       sourceInventory,
       jsxSemanticGraph,
+      childrenFragments,
       signalSources,
       signalOwnership,
       eventSymbols,
@@ -167,11 +171,119 @@ export function createJsxSemanticGraphArtifact(input = {}) {
     components: arrayOf(input.components),
     signals: arrayOf(input.signals),
     eventProps: arrayOf(input.eventProps),
+    children: arrayOf(input.children),
     suspense: arrayOf(input.suspense),
     revealPolicies: arrayOf(input.revealPolicies),
     serverCalls: arrayOf(input.serverCalls),
     routes: arrayOf(input.routes),
     locators: arrayOf(input.locators)
+  };
+}
+
+export function lowerJsxChildren(semanticGraph = {}, options = {}) {
+  const diagnostics = getDiagnostics(options);
+  const fragments = [];
+
+  for (const [index, feature] of arrayOf(semanticGraph.children).entries()) {
+    const fragmentId = requireFeatureId(feature, "children-fragment", diagnostics, "jsx-children-fragment-lowering");
+    if (!fragmentId) {
+      continue;
+    }
+    const componentId = feature.componentId ?? feature.component ?? feature.ownerComponent;
+    const hasNestedChildren = feature.nestedChildren !== false && (
+      feature.hasNestedChildren === true ||
+      arrayOf(feature.children).length > 0 ||
+      arrayOf(feature.nodes).length > 0
+    );
+    const hasExplicitChildrenProp = feature.explicitChildrenProp === true || feature.source === "children-prop";
+
+    if (hasExplicitChildrenProp && hasNestedChildren) {
+      addDiagnostic(diagnostics, "duplicate-jsx-children-source", "JSX children cannot mix explicit children props with nested children.", {
+        pass: "jsx-children-fragment-lowering",
+        sourceId: fragmentId,
+        componentId
+      });
+      continue;
+    }
+    if (hasExplicitChildrenProp) {
+      addDiagnostic(diagnostics, "author-written-children-prop", "Default JSX children must be nested source content, not an authored children prop.", {
+        pass: "jsx-children-fragment-lowering",
+        sourceId: fragmentId,
+        componentId
+      });
+      continue;
+    }
+    if (feature.runtimeRepresentation === "jsx-node-array" || feature.runtimeChildrenKind === "jsx-node-array") {
+      addDiagnostic(diagnostics, "runtime-jsx-children-array", "Production runtime children must lower to framework Children fragments, not JSX node arrays.", {
+        pass: "jsx-children-fragment-lowering",
+        sourceId: fragmentId,
+        componentId
+      });
+      continue;
+    }
+    if (!hasNestedChildren) {
+      fragments.push({
+        fragmentId,
+        componentId,
+        mode: "empty",
+        lowersTo: "undefined",
+        runtimeRepresentation: "undefined"
+      });
+      continue;
+    }
+
+    const resourcefulness = classifyChildrenResourcefulness(feature);
+    if (!resourcefulness) {
+      addDiagnostic(diagnostics, "unknown-jsx-children-resourcefulness", "JSX children lowering must prove whether a fragment is static or resourceful before output is trusted.", {
+        pass: "jsx-children-fragment-lowering",
+        sourceId: fragmentId,
+        componentId
+      });
+      continue;
+    }
+    const mode = resourcefulness.resourceful ? "lazy" : "static";
+    fragments.push({
+      fragmentId,
+      componentId,
+      mode,
+      lowersTo: "Children",
+      runtimeRepresentation: mode === "lazy" ? "lazy-children-factory" : "html-fragment",
+      childIds: arrayOf(feature.children).map((child) => child.id).filter(Boolean),
+      reasons: resourcefulness.reasons
+    });
+  }
+
+  return {
+    artifact: {
+      version: OPTIMIZER_ARTIFACT_VERSION,
+      fragments
+    },
+    diagnostics
+  };
+}
+
+function classifyChildrenResourcefulness(feature) {
+  if (feature.resourceful === true || feature.mode === "lazy") {
+    return { resourceful: true, reasons: arrayOf(feature.reasons).length > 0 ? arrayOf(feature.reasons) : ["marked-resourceful"] };
+  }
+  if (feature.resourceful === false || feature.mode === "static") {
+    return { resourceful: false, reasons: [] };
+  }
+  const children = [...arrayOf(feature.children), ...arrayOf(feature.nodes)];
+  if (children.length === 0) {
+    return null;
+  }
+  const resourcefulKinds = new Set(["component", "handler", "event", "signal", "boundary", "suspense", "reveal", "resourceful"]);
+  const reasons = [];
+  for (const child of children) {
+    const kind = child.kind ?? child.type;
+    if (child.resourceful === true || resourcefulKinds.has(kind)) {
+      reasons.push(child.id ?? kind);
+    }
+  }
+  return {
+    resourceful: reasons.length > 0,
+    reasons
   };
 }
 
@@ -558,6 +670,11 @@ export function createOptimizerReport(artifacts) {
     "collapsed",
     "hidden"
   ]);
+  const childrenCounts = countBy(artifacts.childrenFragments.fragments, "mode", [
+    "empty",
+    "static",
+    "lazy"
+  ]);
 
   return {
     version: OPTIMIZER_ARTIFACT_VERSION,
@@ -578,6 +695,9 @@ export function createOptimizerReport(artifacts) {
     },
     handlers: {
       emission: handlerEmissionCounts
+    },
+    children: {
+      fragments: childrenCounts
     },
     stream: {
       suspenseBoundaryCount: artifacts.streamBoundaries.suspenseBoundaries.length,

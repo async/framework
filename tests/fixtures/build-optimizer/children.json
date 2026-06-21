@@ -1,0 +1,81 @@
+{
+  "semanticGraph": {
+    "children": [
+      {
+        "id": "Card:empty",
+        "componentId": "Card",
+        "hasNestedChildren": false
+      },
+      {
+        "id": "Card:static",
+        "componentId": "Card",
+        "children": [
+          {
+            "id": "copy:status",
+            "kind": "text"
+          },
+          {
+            "id": "node:p",
+            "kind": "element"
+          }
+        ]
+      },
+      {
+        "id": "Card:lazy",
+        "componentId": "Card",
+        "children": [
+          {
+            "id": "Badge",
+            "kind": "component"
+          },
+          {
+            "id": "statusSignal",
+            "kind": "signal"
+          },
+          {
+            "id": "click:details",
+            "kind": "event"
+          }
+        ]
+      }
+    ]
+  },
+  "invalid": {
+    "semanticGraph": {
+      "children": [
+        {
+          "id": "Card:explicit",
+          "componentId": "Card",
+          "source": "children-prop"
+        },
+        {
+          "id": "Card:duplicate",
+          "componentId": "Card",
+          "explicitChildrenProp": true,
+          "children": [
+            {
+              "id": "copy:status",
+              "kind": "text"
+            }
+          ]
+        },
+        {
+          "id": "Card:runtime-array",
+          "componentId": "Card",
+          "children": [
+            {
+              "id": "Badge",
+              "kind": "component"
+            }
+          ],
+          "runtimeRepresentation": "jsx-node-array"
+        },
+        {
+          "id": "Card:unknown",
+          "componentId": "Card",
+          "hasNestedChildren": true
+        }
+      ]
+    }
+  }
+}
