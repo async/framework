@@ -62,16 +62,19 @@ Use these abbreviations in ADRs, issues, review notes, and Codex prompts:
 
 ## Attribute Example Style
 
-- In NB docs and examples, prefer the default shorthand prefixes:
-  `async:`, `signal:`, `on:`, `class:`, and `intersect:`.
+- In framework docs, ADRs, specs, examples, review notes, and prompts, always
+  describe author-facing syntax with the default shorthand prefixes: `async:`,
+  `signal:`, `on:`, `class:`, and `intersect:`.
+- Use `on:` syntax for no-build event examples. Use JSX event props such as
+  `onClick` only when the subject is the BR JSX authoring profile or its
+  lowering to `on:click`.
 - Treat `data-async-*`, `data-signal-*`, `data-on-*`, and related data
-  attributes as configured compatibility forms. Use them in examples only when
-  documenting custom attribute configuration or raw compatibility behavior.
+  attributes as configured compatibility forms, not the framework's syntax.
+  Do not use them when explaining syntax or giving ordinary examples. Mention
+  them only when the subject is custom attribute configuration, raw
+  compatibility behavior, or compatibility tests.
 - For reveal examples, prefer `async:reveal`, `async:reveal-order`, and
-  `async:reveal-tail`. The configured compatibility form
-  `data-async-reveal`, `data-async-reveal-order`, and
-  `data-async-reveal-tail` must continue to work when the `async` prefix maps
-  to `data-async-`.
+  `async:reveal-tail`.
 
 ## Generated Artifacts And Pipeline
 

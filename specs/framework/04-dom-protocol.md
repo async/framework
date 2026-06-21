@@ -27,6 +27,7 @@ Default protocol attributes include:
 
 - `async:container`
 - `async:boundary`
+- `async:component`
 - `async:loading`, `async:ready`, `async:error`
 - `async:snapshot`
 - `signal:text`, `signal:value`, `signal:attr:*`, `signal:prop:*`,
@@ -81,6 +82,7 @@ DOM resume means existing HTML becomes live by scanning:
 - Event listeners attach through protocol attributes.
 - Signal bindings update in place.
 - Boundary swaps clean old scoped resources and rescan new content.
+- `async:component` mounts a registered component into an element during scan.
 - Loader facade queues preserve operation order before bootstrap and flush into
   normal scan, swap, and mount behavior after root attachment.
 - Repeated scans are idempotent for already-bound event and signal attributes.

@@ -1148,6 +1148,7 @@ Component helpers:
 | `this.handler(name, fn)` | Scoped named handler registry entry |
 | `this.handler(fn)` | Generated scoped handler registry entry |
 | `this.render(Component, props)` | Child fragment rendering |
+| `this.slot(Component, propsOrFn)` | Child component outlet using an `on:attach` target |
 | `this.suspense(signalRef, views)` | Async boundary template helper |
 | `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
 | `this.onMount(fn)` | Compatibility alias for `this.on("attach", fn)` |
@@ -1357,6 +1358,9 @@ rerendering.
 
 ## Examples
 
+See [`examples/README.md`](./examples/README.md) for start commands and a short
+description of every example.
+
 | Example | Shows |
 | --- | --- |
 | [`examples/counter`](./examples/counter) | Signal text binding and delegated handlers |
@@ -1368,6 +1372,7 @@ rerendering.
 | [`examples/partials`](./examples/partials) | Server-rendered partial fragments |
 | [`examples/cache`](./examples/cache) | Browser/server cache declarations |
 | [`examples/ssr`](./examples/ssr) | Server render output and browser activation snapshot |
+| [`examples/size`](./examples/size) | Scenario-size fixtures for bundle and runtime slices |
 
 ## Pipeline
 

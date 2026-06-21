@@ -576,6 +576,77 @@ test("component child render attach hooks do not dedupe each other", async () =>
   loader.destroy();
 });
 
+test("Loader mounts registered components from async:component attributes", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main async:component="Greeting"></main>`;
+
+  let sawComponents = false;
+  const Child = component(function Child() {
+    return html`<span>Child</span>`;
+  });
+  const Greeting = component(function Greeting() {
+    assert.equal(this.components.resolve("Child"), Child);
+    sawComponents = true;
+    return html`<h1>Hello</h1>`;
+  });
+  const components = createComponentRegistry({
+    Child,
+    Greeting
+  });
+
+  const loader = Loader({ root: document, components }).start();
+  await delay(0);
+
+  assert.equal(document.querySelector("h1").textContent, "Hello");
+  assert.equal(sawComponents, true);
+  loader.destroy();
+});
+
+test("component slots mount child components into attached outlets and update from signal props", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const Row = component(function Row({ label }) {
+    return html`<li>${label}</li>`;
+  });
+
+  const List = component(function List({ rows, RowComponent }) {
+    return html`${rows.map((label) => this.render(RowComponent, { label }))}`;
+  });
+
+  const App = component(function App() {
+    const rows = this.signal("rows", []);
+    const rowsSlot = this.slot(List, () => ({
+      rows: rows.value,
+      RowComponent: Row
+    }));
+
+    return html`
+      <button
+        id="add"
+        type="button"
+        on:click="${this.handler(() => {
+          rows.set([...rows.value, `row-${rows.value.length + 1}`]);
+        })}"
+      >Add</button>
+      <ul id="rows" on:attach="${rowsSlot.attach}"></ul>
+    `;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("#app"), App);
+  await delay(0);
+
+  assert.equal(document.querySelectorAll("li").length, 0);
+  document.querySelector("#add").click();
+  await delay(0);
+
+  assert.deepEqual([...document.querySelectorAll("li")].map((node) => node.textContent), ["row-1"]);
+  loader.destroy();
+});
+
 test("component returning a Promise throws a clear unsupported error", () => {
   const window = new Window();
   const { document } = window;

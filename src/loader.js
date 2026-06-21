@@ -6,7 +6,7 @@ import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attri
 
 const inlineBindingPrefix = "__async:inline:";
 
-export function Loader({ root, signals, handlers, server, router, cache, attributes, scheduler } = {}) {
+export function Loader({ root, signals, handlers, server, router, cache, components, attributes, scheduler } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
@@ -22,6 +22,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
   const intersectionBindings = new WeakMap();
   const boundaryState = new WeakMap();
   const renderingBoundaries = new WeakSet();
+  const componentBindings = new WeakSet();
   const inlineBindings = new Map();
   const scopedCleanups = new WeakMap();
   let inlineBindingCounter = 0;
@@ -34,6 +35,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
     server,
     router,
     cache,
+    components,
     scheduler: schedulerInstance,
     attributes: attributeConfig,
 
@@ -50,6 +52,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
       bindClassAttributes(rootOrFragment);
       bindEventAttributes(rootOrFragment);
       bindBoundaries(rootOrFragment);
+      bindComponentAttributes(rootOrFragment);
       runPseudoEvents(rootOrFragment);
       return api;
     },
@@ -75,6 +78,7 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         server: api.server,
         router: api.router,
         cache: api.cache,
+        components: api.components,
         scheduler: schedulerInstance,
         attributes: attributeConfig
       });
@@ -366,6 +370,32 @@ export function Loader({ root, signals, handlers, server, router, cache, attribu
         addCleanup(state.cleanup, boundary);
       }
       renderBoundary(boundary);
+    }
+  }
+
+  function bindComponentAttributes(scope) {
+    for (const element of elementsIn(scope)) {
+      const id = readAttribute(element, attributeConfig, "async", "component");
+      if (id == null) {
+        continue;
+      }
+      if (componentBindings.has(element)) {
+        continue;
+      }
+      if (!components?.resolve) {
+        throw new Error(`Component "${id}" cannot be mounted because no component registry is available.`);
+      }
+      const Component = components.resolve(id);
+      if (!Component) {
+        throw new Error(`Component "${id}" was not found.`);
+      }
+      componentBindings.add(element);
+      try {
+        api.mount(element, Component);
+      } catch (error) {
+        componentBindings.delete(element);
+        throw error;
+      }
     }
   }
 

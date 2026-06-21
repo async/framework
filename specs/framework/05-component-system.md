@@ -31,6 +31,7 @@ Component helpers include:
 - `this.effect(fn)`.
 - `this.handler(name, fn)` and `this.handler(fn)`.
 - `this.render(Component, props)`.
+- `this.slot(Component, propsOrFn)`.
 - `this.suspense(signalRef, views)`.
 - `this.on(event, fn)` with `attach`, `visible`, `intersect`, and `destroy`
   behavior.
@@ -58,6 +59,8 @@ Components emit the same protocol as hand-authored HTML:
 - Local signals become scoped signal IDs referenced by `signal:*` or `class:*`.
 - Suspense helpers emit boundary templates and do not own wrapper elements.
 - Child rendering returns fragment output that remains scannable by the loader.
+- Slots mount a child component into an attached DOM target and may recompute
+  props from signals without exposing loader mounting to application code.
 
 ## Resume Contract
 
@@ -74,6 +77,7 @@ Components must not be required to rerun to activate server-rendered DOM:
 
 - Components are scoped fragments, not virtual nodes.
 - Component output does not cause a component rerender loop.
+- Slot updates are explicit child component replacement, not parent rerendering.
 - Component-local state and handlers are unregistered on fragment cleanup.
 - `on:visible` is a one-shot visibility lifecycle hook.
 - `on:intersect` and `this.intersect(...)` are continuous observation paths

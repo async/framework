@@ -223,10 +223,11 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
 }
 
 function createComponentContext({ runtime, scope, cleanups, attachHooks, visibleHooks, intersectionHooks, destroyHooks, renderScopedTemplate }) {
-  const { signals, handlers, loader, server, router, cache, scheduler } = runtime;
+  const { signals, handlers, loader, server, router, cache, components, scheduler } = runtime;
   const generatedHandlers = new WeakMap();
   let generatedHandlerCounter = 0;
   let generatedSignalCounter = 0;
+  let generatedSlotCounter = 0;
   const context = {
     scope,
     signals,
@@ -235,6 +236,7 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     server,
     router,
     cache,
+    components,
     scheduler,
 
     signal(name, initial) {
@@ -312,6 +314,38 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
       visibleHooks.push((target) => child.visible(target, loader._observeVisible));
       intersectionHooks.push((target) => child.intersection(target, loader._observeIntersection));
       return rawHtml(child.html);
+    },
+
+    slot(Child, propsOrFn = {}) {
+      let target;
+      let latestProps = {};
+      const renderSlot = () => {
+        if (!target) {
+          return;
+        }
+        loader.mount(target, Child, latestProps);
+      };
+      const attach = registerScopedHandler(`slot.${++generatedSlotCounter}.attach`, function ({ element }) {
+        target = element;
+        renderSlot();
+        return () => {
+          target = undefined;
+        };
+      });
+      const cleanup = signals.effect(() => {
+        latestProps = typeof propsOrFn === "function" ? propsOrFn.call(context) : propsOrFn;
+        renderSlot();
+      }, {
+        scheduler,
+        phase: "effect",
+        scope,
+        key: `slot:${generatedSlotCounter}`
+      });
+      cleanups.push(cleanup);
+      return {
+        attach,
+        render: renderSlot
+      };
     },
 
     suspense(signalRef, views) {

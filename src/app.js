@@ -214,6 +214,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
             handlers,
             server,
             cache: browserCache,
+            components,
             scheduler,
             attributes
           });
