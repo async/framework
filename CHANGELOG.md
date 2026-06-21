@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.27 - 2026-06-21
+
+- Added the composition pattern catalog covering default children, named
+  regions, scoped content templates, presenter component props, dynamic outlets,
+  boundaries, and anti-patterns.
+- Separated L1 and L2 examples for each composition pattern and marked planned
+  source forms so released behavior is distinct from future build-required
+  syntax.
+- Added out-of-order streaming guidance for every composition pattern,
+  including boundary placement, independent commits, same-boundary sequencing,
+  and rescanning inserted streamed HTML.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 231,217 B (231.2 KB / 0.231 MB), gzip 44,078 B (44.1 KB / 0.044 MB), br 36,392 B (36.4 KB / 0.036 MB) -> `browser.min.js` raw 98,972 B (99.0 KB / 0.099 MB), gzip 29,418 B (29.4 KB / 0.029 MB), br 25,930 B (25.9 KB / 0.026 MB); delta raw -132,245 B (-132.2 KB / -0.132 MB), gzip -14,660 B (-14.7 KB / -0.015 MB), br -10,462 B (-10.5 KB / -0.010 MB).
+
 ## 0.11.26 - 2026-06-21
 
 - Added a build-optimizer children-fragment lowering artifact for JSX nested

@@ -122,3 +122,6 @@ tree or hidden hydration model.
 - [11-runtime-slice-entrypoints.md](./framework/11-runtime-slice-entrypoints.md)
   - optimized built-mode runtime entrypoints, generated plan contracts, slice
   controllers, teardown, and scenario size budgets.
+- [12-composition-patterns.md](./framework/12-composition-patterns.md) -
+  composition pattern guidance for children, regions, templates, presenters,
+  outlets, boundaries, and anti-patterns.

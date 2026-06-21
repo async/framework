@@ -1486,7 +1486,9 @@ then runs release doctor.
 The core runtime is intentionally small. Build-required JSX has optimizer
 artifacts for event, signal, stream, and children-fragment lowering, while full
 compiler emission, lazy chunk manifests, TSRX lowering, server resource
-compilation, and higher-level resumability metadata remain later layers.
+compilation, and higher-level resumability metadata remain later layers. See
+`specs/framework/12-composition-patterns.md` for composition pattern guidance
+and planned source forms.
 
 ## Async And htmx
 
