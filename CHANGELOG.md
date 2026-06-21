@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.23 - 2026-06-21
+
+- Added first-class JSX type profiles for runtime/no-build and
+  buildtime/build-required authoring, including profile-local automatic
+  `jsx-runtime` and `jsx-dev-runtime` package subpaths.
+- Added TypeScript fixtures proving runtime JSX accepts protocol attributes,
+  strict buildtime JSX rejects protocol props, and both profiles avoid global
+  ambient JSX pollution.
+- Added component registry mounting through `async:component` plus
+  `this.slot(...)` outlets for child component replacement from signal-derived
+  props.
+- Added example README coverage and clarified benchmark smoke checks without
+  publishing an incomplete Vite optimizer setup as a public example.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 228,180 B (228.2 KB / 0.228 MB), gzip 43,390 B (43.4 KB / 0.043 MB), br 35,878 B (35.9 KB / 0.036 MB) -> `browser.min.js` raw 97,570 B (97.6 KB / 0.098 MB), gzip 29,015 B (29.0 KB / 0.029 MB), br 25,549 B (25.5 KB / 0.026 MB); delta raw -130,610 B (-130.6 KB / -0.131 MB), gzip -14,375 B (-14.4 KB / -0.014 MB), br -10,329 B (-10.3 KB / -0.010 MB).
+
 ## 0.11.22 - 2026-06-19
 
 - Updated framework release automation to consume `@async/pipeline@0.9.25`,
