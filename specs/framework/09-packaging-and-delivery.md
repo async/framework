@@ -31,6 +31,9 @@ Package surfaces include:
 - Root import with condition-specific browser and Node behavior.
 - `@async/framework/browser` for browser runtime APIs.
 - `@async/framework/server` for server-capable APIs.
+- `@async/framework/jsx` for the current build-required JSX authoring helpers.
+- `@async/framework/vite` for the current Vite 8+ with Rolldown build-required
+  plugin.
 - `@async/framework/runtime` and `@async/framework/runtime/*` for optimized
   built-mode runtime slices defined by
   [11-runtime-slice-entrypoints.md](./11-runtime-slice-entrypoints.md).
@@ -62,6 +65,9 @@ Delivery must preserve the protocol:
 - Generated declaration files match browser/server runtime availability.
 - Examples demonstrate registry IDs, protocol attributes, server envelopes,
   routing, cache, SSR snapshots, and streaming boundaries.
+- Build-required examples should demonstrate Vite setup through the public
+  `./vite`, `./jsx`, and runtime slice subpaths without requiring the no-build
+  `Async` global once source-derived profile generation is available.
 - Future no-bundler delivery must still preserve explicit protocol records,
   module identity, and cache ownership instead of hiding code loading behind an
   opaque app bundle.
