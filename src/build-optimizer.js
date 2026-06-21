@@ -3,6 +3,7 @@ export const OPTIMIZER_ARTIFACT_VERSION = 1;
 export const OPTIMIZER_PASSES = Object.freeze([
   "source-inventory",
   "jsx-semantic-graph",
+  "event-normalization",
   "jsx-children-fragment-lowering",
   "signal-source-classification",
   "signal-ownership-lifetime",
@@ -44,10 +45,14 @@ export function createOptimizerArtifactSet(input = {}) {
   const diagnostics = [];
   const sourceInventory = createSourceInventoryArtifact(input.sourceInventory, { diagnostics });
   const jsxSemanticGraph = createJsxSemanticGraphArtifact(input.semanticGraph, { diagnostics });
+  const eventNormalization = normalizeEventProtocol(jsxSemanticGraph.eventProps, {
+    diagnostics,
+    profile: input.jsxProfile ?? input.profile ?? jsxSemanticGraph.jsxProfile ?? jsxSemanticGraph.profile
+  }).artifact;
   const childrenFragments = lowerJsxChildren(jsxSemanticGraph, { diagnostics }).artifact;
   const signalSources = classifySignalSources(jsxSemanticGraph.signals, { diagnostics }).artifact;
   const signalOwnership = inferSignalOwnership(jsxSemanticGraph.signals, { diagnostics }).artifact;
-  const eventSymbols = extractEventSymbols(jsxSemanticGraph.eventProps, { diagnostics }).artifact;
+  const eventSymbols = extractEventSymbols(eventNormalization.events, { diagnostics, normalized: true }).artifact;
   const streamBoundaries = lowerSuspenseReveal(jsxSemanticGraph, { diagnostics }).artifact;
   const runtimeSelection = selectRuntimeSlices({
     sourceInventory,
@@ -60,6 +65,7 @@ export function createOptimizerArtifactSet(input = {}) {
     sourceInventory,
     signalSources,
     signalOwnership,
+    eventNormalization,
     eventSymbols,
     streamBoundaries,
     runtimeSelection,
@@ -87,6 +93,7 @@ export function createOptimizerArtifactSet(input = {}) {
       sourceInventory,
       jsxSemanticGraph,
       childrenFragments,
+      eventNormalization,
       signalSources,
       signalOwnership,
       eventSymbols,
@@ -168,6 +175,8 @@ export function createSourceInventoryArtifact(input = {}, options = {}) {
 export function createJsxSemanticGraphArtifact(input = {}) {
   return {
     version: OPTIMIZER_ARTIFACT_VERSION,
+    profile: input.profile ?? input.jsxProfile,
+    jsxProfile: input.jsxProfile ?? input.profile,
     components: arrayOf(input.components),
     signals: arrayOf(input.signals),
     eventProps: arrayOf(input.eventProps),
@@ -177,6 +186,92 @@ export function createJsxSemanticGraphArtifact(input = {}) {
     serverCalls: arrayOf(input.serverCalls),
     routes: arrayOf(input.routes),
     locators: arrayOf(input.locators)
+  };
+}
+
+export function normalizeEventProtocol(eventProps = [], options = {}) {
+  const diagnostics = getDiagnostics(options);
+  const events = [];
+  const seenCanonical = new Map();
+  const defaultProfile = normalizeEventProfile(options.profile ?? options.jsxProfile);
+
+  for (const [index, feature] of arrayOf(eventProps).entries()) {
+    const sourceProp = feature.sourceProp ?? feature.propName ?? feature.name;
+    const eventId = feature.eventId ?? `event:${index}`;
+    const elementId = feature.elementId;
+    const profile = normalizeEventProfile(feature.profile ?? feature.jsxProfile ?? defaultProfile);
+    const sourceSyntax = eventSourceSyntax(sourceProp, feature.syntax);
+    const canonical = canonicalEventForProp(sourceProp, sourceSyntax);
+    const handlerId = feature.handlerId ?? feature.handler ?? `${eventId}:handler`;
+
+    if (!sourceSyntax || !canonical) {
+      addDiagnostic(diagnostics, "event-command-unlowerable", "Event command cannot be statically lowered.", {
+        pass: "event-normalization",
+        sourceId: eventId,
+        sourceProp,
+        selectedProfile: profile
+      });
+      continue;
+    }
+
+    if (!eventProfileAllowsSyntax(profile, sourceSyntax)) {
+      addDiagnostic(diagnostics, eventSyntaxDiagnosticCode(profile, sourceSyntax), eventSyntaxDiagnosticMessage(profile, sourceSyntax), {
+        pass: "event-normalization",
+        sourceId: eventId,
+        sourceProp,
+        sourceSyntax,
+        protocolProp: canonical.protocolProp,
+        eventType: canonical.eventType,
+        selectedProfile: profile
+      });
+      continue;
+    }
+
+    const duplicateKey = `${elementId ?? ""}\u0000${canonical.protocolProp}`;
+    const duplicateOf = seenCanonical.get(duplicateKey);
+    if (duplicateOf) {
+      addDiagnostic(diagnostics, "duplicate-canonical-event", "Each element may declare a canonical event only once.", {
+        pass: "event-normalization",
+        sourceId: eventId,
+        sourceProp,
+        sourceSyntax,
+        protocolProp: canonical.protocolProp,
+        eventType: canonical.eventType,
+        selectedProfile: profile,
+        duplicateOf
+      });
+      continue;
+    }
+    seenCanonical.set(duplicateKey, eventId);
+
+    events.push({
+      eventId,
+      elementId,
+      sourceProp,
+      propName: sourceProp,
+      sourceSyntax,
+      protocolProp: canonical.protocolProp,
+      eventType: canonical.eventType,
+      selectedProfile: profile,
+      handlerId,
+      commands: normalizeCommands(feature.commands, handlerId, feature.syncEventApis),
+      module: feature.module,
+      exportName: feature.exportName ?? handlerId,
+      emissionMode: feature.emissionMode,
+      chunk: feature.chunk,
+      preload: Boolean(feature.preload),
+      syncEventApis: arrayOf(feature.syncEventApis),
+      preserveSyncEventApi: Boolean(feature.preserveSyncEventApi)
+    });
+  }
+
+  return {
+    artifact: {
+      version: OPTIMIZER_ARTIFACT_VERSION,
+      profile: defaultProfile,
+      events
+    },
+    diagnostics
   };
 }
 
@@ -402,47 +497,34 @@ export function inferSignalOwnership(signalFeatures = [], options = {}) {
 
 export function extractEventSymbols(eventProps = [], options = {}) {
   const diagnostics = getDiagnostics(options);
+  const normalizedEvents = options.normalized === true
+    ? arrayOf(eventProps)
+    : normalizeEventProtocol(eventProps, { ...options, diagnostics }).artifact.events;
   const events = [];
   const handlers = [];
 
-  for (const [index, feature] of arrayOf(eventProps).entries()) {
-    const propName = feature.propName ?? feature.name;
-    const eventId = feature.eventId ?? `event:${index}`;
-    const handlerId = feature.handlerId ?? feature.handler ?? `${eventId}:handler`;
-
-    if (feature.syntax === "no-build" || String(propName).startsWith("on:")) {
-      addDiagnostic(diagnostics, "no-build-event-syntax-in-jsx", "JSX build profile uses onClick-style props unless compatibility mode is explicit.", {
-        pass: "event-symbol-extraction",
-        sourceId: eventId,
-        value: propName
-      });
-      continue;
-    }
-
-    const eventType = jsxEventType(propName);
-    if (!eventType) {
-      addDiagnostic(diagnostics, "event-command-unlowerable", "Event command cannot be statically lowered.", {
-        pass: "event-symbol-extraction",
-        sourceId: eventId,
-        value: propName
-      });
-      continue;
-    }
-
-    const commands = normalizeCommands(feature.commands, handlerId, feature.syncEventApis);
+  for (const feature of normalizedEvents) {
+    const eventId = feature.eventId;
+    const handlerId = feature.handlerId;
     events.push({
       eventId,
       elementId: feature.elementId,
-      propName,
-      eventType,
-      commands,
+      propName: feature.sourceProp,
+      sourceProp: feature.sourceProp,
+      sourceSyntax: feature.sourceSyntax,
+      protocolProp: feature.protocolProp,
+      eventType: feature.eventType,
+      commands: feature.commands,
       handlerId
     });
     handlers.push({
       symbolId: handlerId,
       eventId,
-      propName,
-      eventType,
+      propName: feature.sourceProp,
+      sourceProp: feature.sourceProp,
+      sourceSyntax: feature.sourceSyntax,
+      protocolProp: feature.protocolProp,
+      eventType: feature.eventType,
       module: feature.module,
       exportName: feature.exportName ?? handlerId,
       mode: feature.emissionMode,
@@ -779,6 +861,78 @@ function ownershipReason(owner) {
     return "signal is created inside component instance scope";
   }
   return "signal ownership is relative to the current owner";
+}
+
+function normalizeEventProfile(profile) {
+  if (profile === "runtime" || profile === "compat" || profile === "buildtime") {
+    return profile;
+  }
+  return "buildtime";
+}
+
+function eventSourceSyntax(propName, syntax) {
+  if (syntax === "jsx-event-prop" || syntax === "jsx") {
+    return "jsx-event-prop";
+  }
+  if (syntax === "protocol-event-prop" || syntax === "protocol" || syntax === "no-build") {
+    return "protocol-event-prop";
+  }
+  if (typeof propName === "string" && propName.startsWith("on:")) {
+    return "protocol-event-prop";
+  }
+  if (typeof propName === "string" && /^on[A-Z]/.test(propName)) {
+    return "jsx-event-prop";
+  }
+  return null;
+}
+
+function canonicalEventForProp(propName, sourceSyntax) {
+  if (sourceSyntax === "protocol-event-prop") {
+    const eventType = protocolEventType(propName);
+    return eventType ? { eventType, protocolProp: `on:${eventType}` } : null;
+  }
+  if (sourceSyntax === "jsx-event-prop") {
+    const eventType = jsxEventType(propName);
+    return eventType ? { eventType, protocolProp: `on:${eventType}` } : null;
+  }
+  return null;
+}
+
+function eventProfileAllowsSyntax(profile, sourceSyntax) {
+  if (profile === "compat") {
+    return true;
+  }
+  if (profile === "runtime") {
+    return sourceSyntax === "protocol-event-prop";
+  }
+  return sourceSyntax === "jsx-event-prop";
+}
+
+function eventSyntaxDiagnosticCode(profile, sourceSyntax) {
+  if (profile === "buildtime" && sourceSyntax === "protocol-event-prop") {
+    return "no-build-event-syntax-in-jsx";
+  }
+  if (profile === "runtime" && sourceSyntax === "jsx-event-prop") {
+    return "jsx-event-syntax-in-runtime-profile";
+  }
+  return "event-syntax-profile-mismatch";
+}
+
+function eventSyntaxDiagnosticMessage(profile, sourceSyntax) {
+  if (profile === "buildtime" && sourceSyntax === "protocol-event-prop") {
+    return "JSX build profile uses onClick-style props unless compatibility mode is explicit.";
+  }
+  if (profile === "runtime" && sourceSyntax === "jsx-event-prop") {
+    return "JSX runtime profile uses on: event props unless compatibility mode is explicit.";
+  }
+  return "Event prop syntax is not accepted by the selected JSX profile.";
+}
+
+function protocolEventType(propName) {
+  if (typeof propName !== "string" || !/^on:[a-z][a-z0-9-]*$/.test(propName)) {
+    return null;
+  }
+  return propName.slice(3);
 }
 
 function jsxEventType(propName) {

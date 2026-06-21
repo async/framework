@@ -38,6 +38,56 @@
       "syntax": "no-build"
     }
   ],
+  "runtimeEventProps": [
+    {
+      "eventId": "click:runtime",
+      "elementId": "button:add",
+      "propName": "on:click",
+      "handler": "increment",
+      "profile": "runtime"
+    }
+  ],
+  "invalidRuntimeSyntax": [
+    {
+      "eventId": "bad:runtime",
+      "elementId": "button:add",
+      "propName": "onClick",
+      "handler": "increment",
+      "profile": "runtime"
+    }
+  ],
+  "compatEventProps": [
+    {
+      "eventId": "click:compat-jsx",
+      "elementId": "button:add",
+      "propName": "onClick",
+      "handler": "increment",
+      "profile": "compat"
+    },
+    {
+      "eventId": "input:compat-protocol",
+      "elementId": "input:name",
+      "propName": "on:input",
+      "handler": "writeName",
+      "profile": "compat"
+    }
+  ],
+  "duplicateCanonicalEvents": [
+    {
+      "eventId": "click:jsx",
+      "elementId": "button:add",
+      "propName": "onClick",
+      "handler": "increment",
+      "profile": "compat"
+    },
+    {
+      "eventId": "click:protocol",
+      "elementId": "button:add",
+      "propName": "on:click",
+      "handler": "incrementProtocol",
+      "profile": "compat"
+    }
+  ],
   "invalidLazySemantics": [
     {
       "eventId": "click:lazy",

@@ -29,6 +29,7 @@ test("optimizer artifact set exposes every ADR 26 pass artifact and report", () 
   assert.deepEqual(result.passes, [
     "source-inventory",
     "jsx-semantic-graph",
+    "event-normalization",
     "jsx-children-fragment-lowering",
     "signal-source-classification",
     "signal-ownership-lifetime",
@@ -38,9 +39,13 @@ test("optimizer artifact set exposes every ADR 26 pass artifact and report", () 
     "handler-emission",
     "plan-bootstrap-emit"
   ]);
+  assert.ok(
+    result.passes.indexOf("event-normalization") < result.passes.indexOf("signal-source-classification")
+  );
   assert.deepEqual(Object.keys(result.artifacts).sort(), [
     "buildEmit",
     "childrenFragments",
+    "eventNormalization",
     "eventSymbols",
     "handlerEmission",
     "jsxSemanticGraph",
@@ -51,6 +56,12 @@ test("optimizer artifact set exposes every ADR 26 pass artifact and report", () 
     "streamBoundaries"
   ]);
   assert.equal(result.artifacts.buildEmit.report, result.report);
+  assert.deepEqual(result.artifacts.eventNormalization.events.map((event) => [
+    event.sourceProp,
+    event.protocolProp
+  ]), [
+    ["onClick", "on:click"]
+  ]);
   assert.deepEqual(result.report.children.fragments, { empty: 0, static: 0, lazy: 0 });
   assert.equal(hasOptimizerErrors(result.diagnostics), false);
 });
@@ -84,7 +95,7 @@ test("build optimizer helper does not import no-build runtime systems", () => {
   for (const bannedImport of bannedRuntimeImports) {
     assert.doesNotMatch(source, new RegExp(`from ["'][^"']*${escapeRegExp(bannedImport)}["']`));
   }
-  assert.deepEqual(OPTIMIZER_PASSES.length, 10);
+  assert.deepEqual(OPTIMIZER_PASSES.length, 11);
 });
 
 test("JSX children lowering records static and lazy Children fragments", () => {
