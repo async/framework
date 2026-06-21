@@ -7,6 +7,7 @@ import { captureTrace, computeTraceMetrics } from "./trace.js";
 import { summarizeRecords } from "./stats.js";
 import { computeBundleSize } from "./size.js";
 import { ensureServer, fetchJson } from "./server.js";
+import { run as runAppHealth } from "../../app-health/src/apps.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const runnerRoot = path.resolve(__dirname, "..");
@@ -59,8 +60,16 @@ function parseArgs(argv) {
     else throw new Error(`Unknown argument ${arg}`);
   }
   if (!["smoke", "trace"].includes(options.mode)) throw new Error(`Unsupported mode ${options.mode}`);
-  options.iterations ??= options.mode === "smoke" ? 1 : 3;
-  options.warmups ??= options.mode === "smoke" ? 0 : undefined;
+  if (options.mode === "smoke") {
+    if (options.benchmarks.length > 0) {
+      throw new Error("Smoke mode only loads apps and does not accept --benchmark.");
+    }
+    if (options.iterations !== undefined || options.warmups !== undefined) {
+      throw new Error("Smoke mode only loads apps and does not accept --iterations or --warmups.");
+    }
+    return options;
+  }
+  options.iterations ??= 3;
   return options;
 }
 
@@ -70,11 +79,15 @@ function printHelp() {
 Defaults:
   mode       trace
   framework  async-framework js-only htmx react qwik-v1 qwik-v2 solid-v1 solid-v2
-  benchmark  all row-operation benchmarks
+  benchmark  all row-operation benchmarks (trace mode only)
   browser    Chromium via Playwright
 
 Use --update-latest with --framework and/or --benchmark to replace matching
 rows in runner/results/latest.json while preserving every other existing row.
+
+Smoke mode starts or reuses the benchmark server, loads selected apps, verifies
+the shared UI is present, and does not click row-operation buttons or collect
+timings.
 `);
 }
 
@@ -255,6 +268,10 @@ async function run() {
     printHelp();
     return;
   }
+  if (options.mode === "smoke") {
+    await runAppHealth(appHealthArgs(options));
+    return;
+  }
   await mkdir(options.resultsDir, { recursive: true });
   await mkdir(options.tracesDir, { recursive: true });
 
@@ -319,6 +336,27 @@ async function run() {
   } finally {
     await server.close();
   }
+}
+
+function appHealthArgs(options) {
+  const args = [
+    "--host",
+    options.host,
+    "--port",
+    String(options.port),
+    "--results",
+    options.resultsDir,
+  ];
+  if (!options.headless) {
+    args.push("--headed");
+  }
+  if (options.chromeBinary) {
+    args.push("--chromeBinary", options.chromeBinary);
+  }
+  if (options.frameworks.length > 0) {
+    args.push("--framework", ...options.frameworks);
+  }
+  return args;
 }
 
 run().catch((error) => {

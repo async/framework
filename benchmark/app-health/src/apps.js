@@ -1,6 +1,6 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { ensureServer, fetchJson } from "./server.js";
 
@@ -144,8 +144,8 @@ async function checkApp(browser, framework, options) {
   }
 }
 
-async function run() {
-  const options = parseArgs(process.argv.slice(2));
+export async function run(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
   if (options.help) {
     printHelp();
     return;
@@ -185,7 +185,9 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

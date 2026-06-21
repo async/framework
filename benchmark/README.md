@@ -57,12 +57,21 @@ To only load already-built apps:
 npm run app-health
 ```
 
+## Smoke Check
+
+Use this when you only need to know that the selected app pages load, shared UI
+is present, and browser requests complete without page errors. It does not click
+row-operation buttons, collect timings, or write trace data.
+
+```bash
+npm run benchmark:smoke
+```
+
 ## Benchmark Runs
 
 Use these only when you intend to run benchmark operations:
 
 ```bash
-npm run benchmark:smoke
 npm run benchmark:run -- --benchmark 01_ --iterations 1
 npm run benchmark:results
 ```
@@ -78,7 +87,26 @@ The benchmark runner uses Playwright and Chromium CDP trace events for
 CPU/script/paint metrics. JSON results are written under `runner/results/`, and
 raw traces are written under `runner/traces/`.
 
-The local server also exposes the latest JSON as a table at `/results`.
+## Results UI
+
+The results UI reads `runner/results/latest.json` through the benchmark server.
+Generate that file with a benchmark run first:
+
+```bash
+npm run benchmark:run -- --benchmark 01_ --iterations 1
+```
+
+Then start the benchmark server and open the results route:
+
+```bash
+npm start
+```
+
+Open `http://localhost:8080/results`.
+
+Use `PORT=8090 npm start` to serve the UI on a different port. Smoke and app
+health checks do not write `runner/results/latest.json`; if no benchmark results
+exist yet, the UI will show a message asking you to run `npm run benchmark:run`.
 
 The local benchmark server starts automatically when `/ls` is not already
 reachable on `localhost:8080`.
