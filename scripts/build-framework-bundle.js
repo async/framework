@@ -14,6 +14,12 @@ const packageExportSpec = packageManifest.exports;
 const browserExport = getPackageExport(packageExportSpec, "./browser");
 const serverExport = getPackageExport(packageExportSpec, "./server");
 const jsxExport = getPackageExport(packageExportSpec, "./jsx");
+const jsxRuntimeProfileExport = getPackageExport(packageExportSpec, "./jsx/runtime");
+const jsxRuntimeProfileJsxRuntimeExport = getPackageExport(packageExportSpec, "./jsx/runtime/jsx-runtime");
+const jsxRuntimeProfileJsxDevRuntimeExport = getPackageExport(packageExportSpec, "./jsx/runtime/jsx-dev-runtime");
+const jsxBuildtimeProfileExport = getPackageExport(packageExportSpec, "./jsx/buildtime");
+const jsxBuildtimeProfileJsxRuntimeExport = getPackageExport(packageExportSpec, "./jsx/buildtime/jsx-runtime");
+const jsxBuildtimeProfileJsxDevRuntimeExport = getPackageExport(packageExportSpec, "./jsx/buildtime/jsx-dev-runtime");
 const viteExport = getPackageExport(packageExportSpec, "./vite");
 const runtimeExport = getPackageExport(packageExportSpec, "./runtime");
 const runtimeSignalsExport = getPackageExport(packageExportSpec, "./runtime/signals");
@@ -31,6 +37,19 @@ const packageJsonArtifact = packagePathToFile(resolveConditionalTarget(packageEx
 const serverEsm = packagePathToFile(resolveConditionalTarget(serverExport, ["import", "node", "default"]));
 const jsxEsm = packagePathToFile(resolveConditionalTarget(jsxExport, ["import", "default"]));
 const jsxDts = packagePathToFile(resolveConditionalTarget(jsxExport, ["types"]));
+const jsxRuntimeProfileEsm = packagePathToFile(resolveConditionalTarget(jsxRuntimeProfileExport, ["import", "default"]));
+const jsxRuntimeProfileDts = packagePathToFile(resolveConditionalTarget(jsxRuntimeProfileExport, ["types"]));
+const jsxRuntimeProfileJsxRuntimeEsm = packagePathToFile(resolveConditionalTarget(jsxRuntimeProfileJsxRuntimeExport, ["import", "default"]));
+const jsxRuntimeProfileJsxRuntimeDts = packagePathToFile(resolveConditionalTarget(jsxRuntimeProfileJsxRuntimeExport, ["types"]));
+const jsxRuntimeProfileJsxDevRuntimeEsm = packagePathToFile(resolveConditionalTarget(jsxRuntimeProfileJsxDevRuntimeExport, ["import", "default"]));
+const jsxRuntimeProfileJsxDevRuntimeDts = packagePathToFile(resolveConditionalTarget(jsxRuntimeProfileJsxDevRuntimeExport, ["types"]));
+const jsxBuildtimeProfileEsm = packagePathToFile(resolveConditionalTarget(jsxBuildtimeProfileExport, ["import", "default"]));
+const jsxBuildtimeProfileDts = packagePathToFile(resolveConditionalTarget(jsxBuildtimeProfileExport, ["types"]));
+const jsxBuildtimeProfileJsxRuntimeEsm = packagePathToFile(resolveConditionalTarget(jsxBuildtimeProfileJsxRuntimeExport, ["import", "default"]));
+const jsxBuildtimeProfileJsxRuntimeDts = packagePathToFile(resolveConditionalTarget(jsxBuildtimeProfileJsxRuntimeExport, ["types"]));
+const jsxBuildtimeProfileJsxDevRuntimeEsm = packagePathToFile(resolveConditionalTarget(jsxBuildtimeProfileJsxDevRuntimeExport, ["import", "default"]));
+const jsxBuildtimeProfileJsxDevRuntimeDts = packagePathToFile(resolveConditionalTarget(jsxBuildtimeProfileJsxDevRuntimeExport, ["types"]));
+const jsxProfileTypesDts = "jsx/types.d.ts";
 const viteEsm = packagePathToFile(resolveConditionalTarget(viteExport, ["import", "default"]));
 const viteDts = packagePathToFile(resolveConditionalTarget(viteExport, ["types"]));
 const runtimeEsm = packagePathToFile(resolveConditionalTarget(runtimeExport, ["import", "default"]));
@@ -51,6 +70,13 @@ const generatedArtifacts = {
   packageJson: packageJsonArtifact,
   serverEsm,
   jsxDts,
+  jsxRuntimeProfileDts,
+  jsxRuntimeProfileJsxRuntimeDts,
+  jsxRuntimeProfileJsxDevRuntimeDts,
+  jsxBuildtimeProfileDts,
+  jsxBuildtimeProfileJsxRuntimeDts,
+  jsxBuildtimeProfileJsxDevRuntimeDts,
+  jsxProfileTypesDts,
   viteDts,
   runtimeDts,
   runtimeSignalsDts,
@@ -63,6 +89,13 @@ const copiedArtifacts = {
 };
 const runtimeCopiedArtifacts = {
   jsxEsm: { source: "src/jsx.js", file: jsxEsm },
+  jsxRuntimeProfileEsm: { source: "src/jsx/runtime.js", file: jsxRuntimeProfileEsm },
+  jsxRuntimeProfileJsxRuntimeEsm: { source: "src/jsx/runtime/jsx-runtime.js", file: jsxRuntimeProfileJsxRuntimeEsm },
+  jsxRuntimeProfileJsxDevRuntimeEsm: { source: "src/jsx/runtime/jsx-dev-runtime.js", file: jsxRuntimeProfileJsxDevRuntimeEsm },
+  jsxBuildtimeProfileEsm: { source: "src/jsx/buildtime.js", file: jsxBuildtimeProfileEsm },
+  jsxBuildtimeProfileJsxRuntimeEsm: { source: "src/jsx/buildtime/jsx-runtime.js", file: jsxBuildtimeProfileJsxRuntimeEsm },
+  jsxBuildtimeProfileJsxDevRuntimeEsm: { source: "src/jsx/buildtime/jsx-dev-runtime.js", file: jsxBuildtimeProfileJsxDevRuntimeEsm },
+  jsxRuntimeFactoryEsm: { source: "src/jsx/jsx-runtime.js", file: "jsx/jsx-runtime.js" },
   viteEsm: { source: "src/vite.js", file: viteEsm },
   buildProfileEsm: { source: "src/build-profile.js", file: "build-profile.js" },
   buildOptimizerEsm: { source: "src/build-optimizer.js", file: "build-optimizer.js" },
@@ -1225,6 +1258,155 @@ const jsxDtsOutput = [
   "export declare function Reveal(props?: Record<string, unknown>): JsxBoundary;",
   ""
 ].join("\n");
+const jsxProfileTypesOutput = [
+  "// Generated by scripts/build-framework-bundle.js. Do not edit by hand.",
+  "// Shared JSX type declarations for @async/framework JSX profiles.",
+  "",
+  "export type AsyncJsxProfile = \"runtime\" | \"buildtime\";",
+  "export type AsyncJSXElementType = string | ((props: Record<string, unknown>) => unknown);",
+  "export type AsyncJSXElement = { readonly kind?: \"async-jsx-node\"; readonly type?: AsyncJSXElementType; readonly props?: Record<string, unknown>; readonly key?: string | number | null } | unknown;",
+  "export type AsyncJSXChild = AsyncJSXElement | string | number | boolean | null | undefined;",
+  "export type AsyncJSXChildren = AsyncJSXChild | readonly AsyncJSXChild[];",
+  "export type AsyncEventHandler<E = Event, T extends EventTarget = EventTarget> = string | ((event: E & { currentTarget: T }) => unknown);",
+  "export interface WritableSignal<T> {",
+  "  readonly kind: \"signal\";",
+  "  value: T;",
+  "}",
+  "export interface ComputedSignal<T> {",
+  "  readonly kind: \"computed\";",
+  "  readonly value: T;",
+  "}",
+  "export interface AsyncSignal<T> {",
+  "  readonly kind: \"asyncSignal\";",
+  "  readonly value: T | undefined;",
+  "  readonly pending: boolean;",
+  "  readonly error: unknown;",
+  "  readonly version: number;",
+  "}",
+  "export interface JsxSignalIntent<T = unknown> {",
+  "  readonly kind: \"async-jsx-signal\";",
+  "  readonly source: T;",
+  "}",
+  "export type Signal<T> = WritableSignal<T> | ComputedSignal<T> | AsyncSignal<T>;",
+  "export type SignalValue<T = unknown> = T | Signal<T> | JsxSignalIntent<T>;",
+  "export type PrimitiveAttributeValue = string | number | boolean | null | undefined;",
+  "export type DataAttributes = { [K in `data-${string}`]?: PrimitiveAttributeValue };",
+  "export type AriaAttributes = { [K in `aria-${string}`]?: PrimitiveAttributeValue };",
+  "export type CommonAttributes = DataAttributes & AriaAttributes & {",
+  "  id?: string;",
+  "  class?: string;",
+  "  className?: string;",
+  "  style?: string | Partial<CSSStyleDeclaration>;",
+  "  title?: string;",
+  "  role?: string;",
+  "  tabIndex?: number;",
+  "  hidden?: boolean;",
+  "  children?: AsyncJSXChildren;",
+  "  key?: string | number;",
+  "};",
+  "export type RuntimeProtocolEventProps = { [K in `on:${string}`]?: AsyncEventHandler | readonly unknown[] };",
+  "export type RuntimeSignalBindingProps = { [K in `signal:${string}`]?: SignalValue };",
+  "export type RuntimeClassToggleProps = { [K in `class:${string}`]?: boolean | SignalValue<boolean> };",
+  "export type BuildtimeEventName = \"Click\" | \"Input\" | \"Change\" | \"Submit\" | \"PointerEnter\" | \"PointerLeave\" | \"PointerDown\" | \"PointerUp\" | \"KeyDown\" | \"KeyUp\" | \"Focus\" | \"Blur\";",
+  "export type BuildtimeEventProps<T extends EventTarget = EventTarget> = { [K in `on${BuildtimeEventName}`]?: AsyncEventHandler<Event, T> };",
+  "export type HTMLAttributeProps<T extends EventTarget> = CommonAttributes & {",
+  "  value?: SignalValue<string | number | readonly string[]>;",
+  "  checked?: SignalValue<boolean>;",
+  "  disabled?: SignalValue<boolean>;",
+  "  name?: string;",
+  "  type?: string;",
+  "  href?: string;",
+  "  src?: string;",
+  "  alt?: string;",
+  "  width?: string | number;",
+  "  height?: string | number;",
+  "  for?: string;",
+  "  htmlFor?: string;",
+  "  placeholder?: string;",
+  "  target?: string;",
+  "  rel?: string;",
+  "  ref?: T | ((element: T) => void);",
+  "};",
+  "export type SVGAttributeProps<T extends EventTarget> = CommonAttributes & {",
+  "  viewBox?: string;",
+  "  xmlns?: string;",
+  "  fill?: string;",
+  "  stroke?: string;",
+  "  d?: string;",
+  "  cx?: string | number;",
+  "  cy?: string | number;",
+  "  r?: string | number;",
+  "  x?: string | number;",
+  "  y?: string | number;",
+  "  ref?: T | ((element: T) => void);",
+  "};",
+  "export type AsyncHTMLProps<Profile extends AsyncJsxProfile, T extends EventTarget = HTMLElement> = HTMLAttributeProps<T> & (Profile extends \"runtime\" ? RuntimeProtocolEventProps & RuntimeSignalBindingProps & RuntimeClassToggleProps : BuildtimeEventProps<T>);",
+  "export type AsyncSVGProps<Profile extends AsyncJsxProfile, T extends EventTarget = SVGElement> = SVGAttributeProps<T> & (Profile extends \"runtime\" ? RuntimeProtocolEventProps & RuntimeSignalBindingProps & RuntimeClassToggleProps : BuildtimeEventProps<T>);",
+  "export type AsyncHTMLElements<Profile extends AsyncJsxProfile> = { [Tag in keyof HTMLElementTagNameMap]: AsyncHTMLProps<Profile, HTMLElementTagNameMap[Tag]> } & { [Tag in `${string}-${string}`]: AsyncHTMLProps<Profile, HTMLElement> };",
+  "export type AsyncSVGElements<Profile extends AsyncJsxProfile> = { [Tag in keyof SVGElementTagNameMap]: AsyncSVGProps<Profile, SVGElementTagNameMap[Tag]> };",
+  "export type RuntimeIntrinsicElements = AsyncHTMLElements<\"runtime\"> & AsyncSVGElements<\"runtime\">;",
+  "export type BuildtimeIntrinsicElements = AsyncHTMLElements<\"buildtime\"> & AsyncSVGElements<\"buildtime\">;",
+  "export type PropsOf<Tag extends keyof RuntimeIntrinsicElements | keyof BuildtimeIntrinsicElements, Profile extends AsyncJsxProfile = \"buildtime\"> = Profile extends \"runtime\" ? RuntimeIntrinsicElements[Extract<Tag, keyof RuntimeIntrinsicElements>] : BuildtimeIntrinsicElements[Extract<Tag, keyof BuildtimeIntrinsicElements>];",
+  "export namespace AsyncJSX {",
+  "  type Element = AsyncJSXElement;",
+  "  interface ElementChildrenAttribute {",
+  "    children: AsyncJSXChildren;",
+  "  }",
+  "}",
+  "export namespace RuntimeJSX {",
+  "  type Element = AsyncJSXElement;",
+  "  interface ElementChildrenAttribute {",
+  "    children: AsyncJSXChildren;",
+  "  }",
+  "  type IntrinsicElements = RuntimeIntrinsicElements;",
+  "}",
+  "export namespace BuildtimeJSX {",
+  "  type Element = AsyncJSXElement;",
+  "  interface ElementChildrenAttribute {",
+  "    children: AsyncJSXChildren;",
+  "  }",
+  "  type IntrinsicElements = BuildtimeIntrinsicElements;",
+  "}",
+  ""
+].join("\n");
+const jsxRuntimeProfileDtsOutput = [
+  "// Generated by scripts/build-framework-bundle.js. Do not edit by hand.",
+  "// Runtime/no-build JSX profile declarations.",
+  "",
+  "export { ASYNC_JSX_COMPONENT, ASYNC_JSX_REVEAL, ASYNC_JSX_SIGNAL, ASYNC_JSX_SUSPENSE, Reveal, Suspense, component, signal } from \"../jsx.js\";",
+  "export type { AsyncEventHandler, AsyncHTMLElements, AsyncJSX, AsyncJSXChild, AsyncJSXChildren, AsyncJSXElement, AsyncJsxProfile, AsyncSVGElements, AsyncSignal, BuildtimeIntrinsicElements, BuildtimeJSX, ComputedSignal, PropsOf, RuntimeIntrinsicElements, RuntimeJSX, Signal, SignalValue, WritableSignal } from \"./types.js\";",
+  ""
+].join("\n");
+const jsxBuildtimeProfileDtsOutput = [
+  "// Generated by scripts/build-framework-bundle.js. Do not edit by hand.",
+  "// Buildtime/build-required JSX profile declarations.",
+  "",
+  "export { ASYNC_JSX_COMPONENT, ASYNC_JSX_REVEAL, ASYNC_JSX_SIGNAL, ASYNC_JSX_SUSPENSE, Reveal, Suspense, component, signal } from \"../jsx.js\";",
+  "export type { AsyncEventHandler, AsyncHTMLElements, AsyncJSX, AsyncJSXChild, AsyncJSXChildren, AsyncJSXElement, AsyncJsxProfile, AsyncSVGElements, AsyncSignal, BuildtimeIntrinsicElements, BuildtimeJSX, ComputedSignal, PropsOf, RuntimeIntrinsicElements, RuntimeJSX, Signal, SignalValue, WritableSignal } from \"./types.js\";",
+  ""
+].join("\n");
+function jsxAutomaticRuntimeDtsOutput(profile) {
+  const profileName = profile === "runtime" ? "RuntimeIntrinsicElements" : "BuildtimeIntrinsicElements";
+  return [
+    "// Generated by scripts/build-framework-bundle.js. Do not edit by hand.",
+    `// Automatic JSX runtime declarations for the ${profile} JSX profile.`,
+    "",
+    "export { Fragment, jsx, jsxDEV, jsxs } from \"../jsx-runtime.js\";",
+    `import type { AsyncJSXChildren, AsyncJSXElement, ${profileName} } from "../types.js";`,
+    "export namespace JSX {",
+    "  type Element = AsyncJSXElement;",
+    "  interface ElementChildrenAttribute {",
+    "    children: AsyncJSXChildren;",
+    "  }",
+    `  type IntrinsicElements = ${profileName};`,
+    "}",
+    ""
+  ].join("\n");
+}
+const jsxRuntimeProfileJsxRuntimeDtsOutput = jsxAutomaticRuntimeDtsOutput("runtime");
+const jsxRuntimeProfileJsxDevRuntimeDtsOutput = jsxAutomaticRuntimeDtsOutput("runtime");
+const jsxBuildtimeProfileJsxRuntimeDtsOutput = jsxAutomaticRuntimeDtsOutput("buildtime");
+const jsxBuildtimeProfileJsxDevRuntimeDtsOutput = jsxAutomaticRuntimeDtsOutput("buildtime");
 const viteDtsOutput = [
   "// Generated by scripts/build-framework-bundle.js. Do not edit by hand.",
   "// Type declarations for @async/framework/vite.",
@@ -1260,6 +1442,13 @@ const outputs = new Map([
   [outFiles.frameworkTs, frameworkTsOutput],
   [outFiles.frameworkDts, frameworkDtsOutput],
   [outFiles.jsxDts, jsxDtsOutput],
+  [outFiles.jsxProfileTypesDts, jsxProfileTypesOutput],
+  [outFiles.jsxRuntimeProfileDts, jsxRuntimeProfileDtsOutput],
+  [outFiles.jsxRuntimeProfileJsxRuntimeDts, jsxRuntimeProfileJsxRuntimeDtsOutput],
+  [outFiles.jsxRuntimeProfileJsxDevRuntimeDts, jsxRuntimeProfileJsxDevRuntimeDtsOutput],
+  [outFiles.jsxBuildtimeProfileDts, jsxBuildtimeProfileDtsOutput],
+  [outFiles.jsxBuildtimeProfileJsxRuntimeDts, jsxBuildtimeProfileJsxRuntimeDtsOutput],
+  [outFiles.jsxBuildtimeProfileJsxDevRuntimeDts, jsxBuildtimeProfileJsxDevRuntimeDtsOutput],
   [outFiles.viteDts, viteDtsOutput],
   [outFiles.runtimeDts, runtimeDtsOutput],
   [outFiles.runtimeSignalsDts, runtimeSignalsDtsOutput],

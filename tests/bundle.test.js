@@ -228,6 +228,10 @@ test("temporary project can import generated dist package subpaths", async () =>
       import * as browserPackage from "@async/framework/browser";
       import * as serverPackage from "@async/framework/server";
       import * as jsxPackage from "@async/framework/jsx";
+      import * as jsxRuntimeProfilePackage from "@async/framework/jsx/runtime";
+      import * as jsxBuildtimeProfilePackage from "@async/framework/jsx/buildtime";
+      import * as jsxRuntimeAutomaticPackage from "@async/framework/jsx/runtime/jsx-runtime";
+      import * as jsxBuildtimeAutomaticPackage from "@async/framework/jsx/buildtime/jsx-runtime";
       import * as vitePackage from "@async/framework/vite";
       import * as runtimePackage from "@async/framework/runtime";
       import * as runtimeSignalsPackage from "@async/framework/runtime/signals";
@@ -244,6 +248,10 @@ test("temporary project can import generated dist package subpaths", async () =>
         serverRequestContextStore: typeof serverPackage.createRequestContextStore,
         jsxSignal: typeof jsxPackage.signal,
         jsxComponent: typeof jsxPackage.component,
+        jsxRuntimeProfileSignal: typeof jsxRuntimeProfilePackage.signal,
+        jsxBuildtimeProfileSignal: typeof jsxBuildtimeProfilePackage.signal,
+        jsxRuntimeAutomatic: typeof jsxRuntimeAutomaticPackage.jsx,
+        jsxBuildtimeAutomatic: typeof jsxBuildtimeAutomaticPackage.jsx,
         vitePlugin: typeof vitePackage.asyncFramework,
         runtimeStart: typeof runtimePackage.start,
         runtimeSignalsStart: typeof runtimeSignalsPackage.startSignals,
@@ -276,6 +284,10 @@ test("temporary project can import generated dist package subpaths", async () =>
       serverRequestContextStore: "function",
       jsxSignal: "function",
       jsxComponent: "function",
+      jsxRuntimeProfileSignal: "function",
+      jsxBuildtimeProfileSignal: "function",
+      jsxRuntimeAutomatic: "function",
+      jsxBuildtimeAutomatic: "function",
       vitePlugin: "function",
       runtimeStart: "function",
       runtimeSignalsStart: "function",
@@ -321,6 +333,12 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       import * as browserPackage from "@async/framework/browser";
       import * as serverPackage from "@async/framework/server";
       import * as jsxPackage from "@async/framework/jsx";
+      import * as jsxRuntimeProfilePackage from "@async/framework/jsx/runtime";
+      import * as jsxBuildtimeProfilePackage from "@async/framework/jsx/buildtime";
+      import * as jsxRuntimeAutomaticPackage from "@async/framework/jsx/runtime/jsx-runtime";
+      import * as jsxRuntimeDevAutomaticPackage from "@async/framework/jsx/runtime/jsx-dev-runtime";
+      import * as jsxBuildtimeAutomaticPackage from "@async/framework/jsx/buildtime/jsx-runtime";
+      import * as jsxBuildtimeDevAutomaticPackage from "@async/framework/jsx/buildtime/jsx-dev-runtime";
       import * as vitePackage from "@async/framework/vite";
       import * as runtimePackage from "@async/framework/runtime";
       import * as runtimeSignalsPackage from "@async/framework/runtime/signals";
@@ -337,6 +355,12 @@ test("packed package can be installed and resolves browser/server entrypoints", 
         serverRequestContextStore: typeof serverPackage.createRequestContextStore,
         jsxSignal: typeof jsxPackage.signal,
         jsxComponent: typeof jsxPackage.component,
+        jsxRuntimeProfileSignal: typeof jsxRuntimeProfilePackage.signal,
+        jsxBuildtimeProfileSignal: typeof jsxBuildtimeProfilePackage.signal,
+        jsxRuntimeAutomatic: typeof jsxRuntimeAutomaticPackage.jsx,
+        jsxRuntimeDevAutomatic: typeof jsxRuntimeDevAutomaticPackage.jsxDEV,
+        jsxBuildtimeAutomatic: typeof jsxBuildtimeAutomaticPackage.jsx,
+        jsxBuildtimeDevAutomatic: typeof jsxBuildtimeDevAutomaticPackage.jsxDEV,
         vitePlugin: typeof vitePackage.asyncFramework,
         runtimeStart: typeof runtimePackage.start,
         runtimeSignalsStart: typeof runtimeSignalsPackage.startSignals,
@@ -377,6 +401,12 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       serverRequestContextStore: "function",
       jsxSignal: "function",
       jsxComponent: "function",
+      jsxRuntimeProfileSignal: "function",
+      jsxBuildtimeProfileSignal: "function",
+      jsxRuntimeAutomatic: "function",
+      jsxRuntimeDevAutomatic: "function",
+      jsxBuildtimeAutomatic: "function",
+      jsxBuildtimeDevAutomatic: "function",
       vitePlugin: "function",
       runtimeStart: "function",
       runtimeSignalsStart: "function",
@@ -528,6 +558,12 @@ test("source package metadata owns the minimal public export spec", () => {
     "./browser",
     "./server",
     "./jsx",
+    "./jsx/runtime",
+    "./jsx/runtime/jsx-runtime",
+    "./jsx/runtime/jsx-dev-runtime",
+    "./jsx/buildtime",
+    "./jsx/buildtime/jsx-runtime",
+    "./jsx/buildtime/jsx-dev-runtime",
     "./vite",
     "./runtime",
     "./runtime/signals",
@@ -535,6 +571,7 @@ test("source package metadata owns the minimal public export spec", () => {
     "./package.json"
   ]);
   assert.equal(manifest.devDependencies.terser, "5.48.0");
+  assert.equal(manifest.devDependencies.typescript, "5.9.3");
 });
 
 test("publish staging metadata keeps package artifacts at the tarball root", () => {
@@ -543,6 +580,12 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
     "./browser",
     "./server",
     "./jsx",
+    "./jsx/runtime",
+    "./jsx/runtime/jsx-runtime",
+    "./jsx/runtime/jsx-dev-runtime",
+    "./jsx/buildtime",
+    "./jsx/buildtime/jsx-runtime",
+    "./jsx/buildtime/jsx-dev-runtime",
     "./vite",
     "./runtime",
     "./runtime/signals",
@@ -562,6 +605,12 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
   assert.equal(publishManifest.exports["./browser"].import, "./browser.js");
   assert.equal(publishManifest.exports["./server"].import, "./server.js");
   assert.equal(publishManifest.exports["./jsx"].import, "./jsx.js");
+  assert.equal(publishManifest.exports["./jsx/runtime"].import, "./jsx/runtime.js");
+  assert.equal(publishManifest.exports["./jsx/runtime/jsx-runtime"].import, "./jsx/runtime/jsx-runtime.js");
+  assert.equal(publishManifest.exports["./jsx/runtime/jsx-dev-runtime"].import, "./jsx/runtime/jsx-dev-runtime.js");
+  assert.equal(publishManifest.exports["./jsx/buildtime"].import, "./jsx/buildtime.js");
+  assert.equal(publishManifest.exports["./jsx/buildtime/jsx-runtime"].import, "./jsx/buildtime/jsx-runtime.js");
+  assert.equal(publishManifest.exports["./jsx/buildtime/jsx-dev-runtime"].import, "./jsx/buildtime/jsx-dev-runtime.js");
   assert.equal(publishManifest.exports["./vite"].import, "./vite.js");
   assert.equal(publishManifest.exports["./runtime"].import, "./runtime.js");
   assert.equal(publishManifest.exports["./runtime/signals"].import, "./runtime/signals.js");
@@ -593,6 +642,20 @@ test("package file list only publishes generated framework artifacts", () => {
   assert.ok(publishManifest.files.includes("framework.d.ts"));
   assert.ok(publishManifest.files.includes("jsx.js"));
   assert.ok(publishManifest.files.includes("jsx.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/types.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/runtime/jsx-runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/runtime/jsx-runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/runtime/jsx-dev-runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/runtime/jsx-dev-runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/buildtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/buildtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/buildtime/jsx-runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/buildtime/jsx-runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/buildtime/jsx-dev-runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/buildtime/jsx-dev-runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/jsx-runtime.js"));
   assert.ok(publishManifest.files.includes("vite.js"));
   assert.ok(publishManifest.files.includes("vite.d.ts"));
   assert.ok(publishManifest.files.includes("build-profile.js"));
