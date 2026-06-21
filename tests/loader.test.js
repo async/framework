@@ -3,11 +3,14 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   Loader,
+  component,
   createHandlerRegistry,
+  createComponentRegistry,
   createServerRegistry,
   createSignalRegistry,
   defineAttributeConfig,
   delay,
+  html,
   signal
 } from "../src/index.js";
 
@@ -140,6 +143,107 @@ test("Loader supports configured data attribute prefixes", async () => {
   assert.equal(document.querySelector("p").textContent, "sku-1");
 
   loader.destroy();
+});
+
+test("Loader captures explicit template children for component hosts", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main>
+      <section async:component="Card">
+        <p id="implicit">Do not capture</p>
+        <template async:children>
+          <p id="captured">Captured</p>
+        </template>
+      </section>
+      <section async:component="EmptyCard">
+        <template async:children>
+          <p id="unused">Unused</p>
+        </template>
+      </section>
+    </main>
+  `;
+
+  const Card = component(function Card({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const EmptyCard = component(function EmptyCard() {
+    return html`<aside>Empty</aside>`;
+  });
+  const components = createComponentRegistry({ Card, EmptyCard });
+
+  const loader = Loader({ root: document.body, components }).start();
+
+  assert.equal(document.querySelector("#captured").textContent, "Captured");
+  assert.equal(document.querySelector("article").contains(document.querySelector("#captured")), true);
+  assert.equal(document.querySelector("#implicit"), null);
+  assert.equal(document.querySelector("#unused"), null);
+  assert.equal(document.querySelector("aside").textContent, "Empty");
+  loader.destroy();
+});
+
+test("Loader scans protocol attributes inserted from captured component children", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main async:component="Card">
+      <template async:children>
+        <button id="increment" type="button" on:click="increment">+</button>
+        <output id="count" signal:text="count"></output>
+      </template>
+    </main>
+  `;
+
+  const signals = createSignalRegistry({
+    count: signal(0)
+  });
+  const handlers = createHandlerRegistry({
+    increment() {
+      this.signals.update("count", (count) => count + 1);
+    }
+  });
+  const Card = component(function Card({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const components = createComponentRegistry({ Card });
+
+  const loader = Loader({ root: document.body, components, handlers, signals }).start();
+
+  document.querySelector("#increment").click();
+  await delay(0);
+
+  assert.equal(document.querySelector("#count").textContent, "1");
+  loader.destroy();
+});
+
+test("Loader rejects invalid component children templates", () => {
+  const window = new Window();
+  const { document } = window;
+  const Card = component(function Card({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const components = createComponentRegistry({ Card });
+
+  document.body.innerHTML = `
+    <main async:component="Card">
+      <div async:children>Invalid</div>
+    </main>
+  `;
+  assert.throws(
+    () => Loader({ root: document.body, components }).start(),
+    /async:children must be placed on a direct child <template>/
+  );
+
+  document.body.innerHTML = `
+    <main async:component="Card">
+      <template async:children><p>One</p></template>
+      <template async:children><p>Two</p></template>
+    </main>
+  `;
+  assert.throws(
+    () => Loader({ root: document.body, components }).start(),
+    /can have only one direct child <template async:children>/
+  );
 });
 
 test("Loader renders async boundaries through loading, ready, and error templates", async () => {

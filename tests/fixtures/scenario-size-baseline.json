@@ -23,7 +23,7 @@
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 29500
+        "maxGzipBytes": 29600
       }
     },
     {
@@ -47,7 +47,7 @@
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 29500
+        "maxGzipBytes": 29600
       }
     },
     {
@@ -71,7 +71,7 @@
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 29500
+        "maxGzipBytes": 29600
       }
     },
     {
@@ -246,7 +246,7 @@
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 29600
+        "maxGzipBytes": 29700
       }
     },
     {
@@ -294,7 +294,7 @@
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 29500
+        "maxGzipBytes": 29700
       }
     }
   ]

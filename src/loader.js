@@ -1,5 +1,6 @@
 import { renderComponent } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
+import { childrenFragment, rawHtml } from "./html.js";
 import { createScheduler } from "./scheduler.js";
 import { createSignalRegistry, isSignalRef } from "./signals.js";
 import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attributes.js";
@@ -389,9 +390,10 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       if (!Component) {
         throw new Error(`Component "${id}" was not found.`);
       }
+      const props = componentHostProps(element, attributeConfig);
       componentBindings.add(element);
       try {
-        api.mount(element, Component);
+        api.mount(element, Component, props);
       } catch (error) {
         componentBindings.delete(element);
         throw error;
@@ -966,6 +968,30 @@ function updateAttribute(element, attr, value) {
   if (attr in element) {
     element[attr] = value;
   }
+}
+
+function componentHostProps(element, attributeConfig) {
+  const childrenTemplates = [];
+  for (const child of [...element.children]) {
+    const isChildren = readAttribute(child, attributeConfig, "async", "children") != null;
+    if (!isChildren) {
+      continue;
+    }
+    if (child.tagName !== "TEMPLATE") {
+      throw new Error("async:children must be placed on a direct child <template> of an async:component host.");
+    }
+    childrenTemplates.push(child);
+  }
+  if (childrenTemplates.length > 1) {
+    throw new Error("async:component hosts can have only one direct child <template async:children>.");
+  }
+  if (childrenTemplates.length === 0) {
+    return {};
+  }
+  const html = childrenTemplates[0].innerHTML;
+  return {
+    children: childrenFragment(() => rawHtml(html))
+  };
 }
 
 function updateProperty(element, prop, value) {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.25 - 2026-06-21
+
+- Added explicit `<template async:children>` capture for registered
+  `async:component` hosts, passing captured content through the same scoped
+  default-children fragment contract as `this.render(...)`.
+- Added loader coverage proving explicit template children render only when
+  consumed, ordinary host content is not implicitly captured, inserted protocol
+  attributes are rescanned, and invalid or duplicate children templates fail.
+- Documented the no-build template children contract in the README, DOM
+  protocol spec, and component-system spec.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 231,217 B (231.2 KB / 0.231 MB), gzip 44,078 B (44.1 KB / 0.044 MB), br 36,392 B (36.4 KB / 0.036 MB) -> `browser.min.js` raw 98,972 B (99.0 KB / 0.099 MB), gzip 29,418 B (29.4 KB / 0.029 MB), br 25,930 B (25.9 KB / 0.026 MB); delta raw -132,245 B (-132.2 KB / -0.132 MB), gzip -14,660 B (-14.7 KB / -0.015 MB), br -10,462 B (-10.5 KB / -0.010 MB).
+
 ## 0.11.24 - 2026-06-21
 
 - Added scoped default children fragments for `this.render(Component, props,

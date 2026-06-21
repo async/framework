@@ -47,6 +47,11 @@ receives the normalized fragment as `props.children`. The child consumes the
 fragment by interpolating `children` in an `html` template; it does not call a
 children callback directly.
 
+Registered no-build component hosts may pass default children with a direct
+child `<template async:children>`. The loader captures that template before
+mounting the component and passes it through the same children fragment
+contract. Ordinary host inner HTML is never captured implicitly.
+
 Children fragments are lazy when supplied as factories, caller-lexical through
 closed-over values, single-consumption by default, escaped as text for strings,
 and cleaned up with the consuming component fragment. Supplying both
@@ -73,6 +78,8 @@ Components emit the same protocol as hand-authored HTML:
 - Default children interpolate through the same template renderer so escaping,
   nested component rendering, handler registration, signal bindings, and cleanup
   stay in one scoped path.
+- Captured `<template async:children>` content is inserted and scanned only when
+  the component interpolates `children`.
 - Slots mount a child component into an attached DOM target and may recompute
   props from signals without exposing loader mounting to application code.
 
@@ -112,6 +119,8 @@ Components must not be required to rerun to activate server-rendered DOM:
   argument fails before the child component renders.
 - Consuming the same children fragment twice fails instead of duplicating
   handler IDs or cleanup records.
+- Non-template direct `async:children` markers and multiple direct children
+  templates under one `async:component` host fail before mount.
 - Observer-less environments report unsupported intersection behavior through
   the defined fallback path.
 
@@ -130,6 +139,9 @@ Components must not be required to rerun to activate server-rendered DOM:
 - Static and lazy default children render through `this.render(...)`, preserve
   escaping, support nested component output, and clean up scoped child resources
   when the consuming fragment is destroyed.
+- Registered `async:component` hosts can pass explicit template children,
+  avoid treating ordinary host content as source children, and rescan inserted
+  child protocol attributes after interpolation.
 
 ## Open Or Deferred Decisions
 

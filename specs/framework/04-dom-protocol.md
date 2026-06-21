@@ -83,6 +83,9 @@ DOM resume means existing HTML becomes live by scanning:
 - Signal bindings update in place.
 - Boundary swaps clean old scoped resources and rescan new content.
 - `async:component` mounts a registered component into an element during scan.
+- A direct child `<template async:children>` under an `async:component` host is
+  captured as explicit source children before the component replaces the host
+  children. Ordinary host content is not captured implicitly.
 - Loader facade queues preserve operation order before bootstrap and flush into
   normal scan, swap, and mount behavior after root attachment.
 - Repeated scans are idempotent for already-bound event and signal attributes.
@@ -106,6 +109,10 @@ DOM resume means existing HTML becomes live by scanning:
   blocking later queued operations.
 - Invalid command chains fail before partially running unsupported commands.
 - Server commands reject raw DOM locals before transport.
+- `async:children` on a non-template direct child of an `async:component` host
+  throws before mounting the component.
+- Multiple direct child `<template async:children>` nodes under one
+  `async:component` host throw before choosing a source.
 - Destroyed loaders reject scanning and swapping.
 
 ## Acceptance Criteria

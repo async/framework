@@ -1230,6 +1230,22 @@ this.render(Card, { title: "Status" }, function children() {
 });
 ```
 
+No-build HTML component hosts use an explicit inert template for default
+children:
+
+```html
+<section async:component="Card">
+  <template async:children>
+    <p>Ready</p>
+  </template>
+</section>
+```
+
+The loader captures only a direct child `<template async:children>` before
+mounting the registered component. Ordinary host content is not implicitly
+captured, and the template content is inserted and scanned only if the
+component interpolates `children`.
+
 Do not pass `children` in the props object when also using the third argument.
 Default children are consumed once by interpolation; use `this.slot(...)` for
 post-mount replacement and use ordinary props when the child needs data from the
