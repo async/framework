@@ -7,7 +7,7 @@ import {
 } from "../src/build-optimizer.js";
 import fixture from "./fixtures/build-optimizer/signals.json" with { type: "json" };
 
-test("signal source classification splits writable, derived, and async sources", () => {
+test("signal source classification splits writable, computed, and asyncSignal sources", () => {
   const result = classifySignalSources(fixture.valid);
 
   assert.equal(hasOptimizerErrors(result.diagnostics), false);
@@ -18,12 +18,12 @@ test("signal source classification splits writable, derived, and async sources",
       initialValue: 0
     },
     {
-      kind: "derived",
+      kind: "computed",
       sourceId: "doubleCount",
       dependencies: [{ sourceId: "count" }]
     },
     {
-      kind: "async",
+      kind: "asyncSignal",
       sourceId: "user",
       dependencies: [{ sourceId: "userId" }],
       latest: true,

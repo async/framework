@@ -32,8 +32,8 @@ test("build profile report selects runtime slices without app hub fallback", () 
   assert.equal(profile.report.generatedLocatorCount, 5);
   assert.deepEqual(profile.report.signals.sources, {
     writable: 1,
-    derived: 1,
-    async: 1
+    computed: 1,
+    asyncSignal: 1
   });
   assert.deepEqual(profile.plan.signals.values, [["count", 0]]);
   assert.deepEqual(profile.plan.events.events, [[1, "click", [["handler", "increment"]]]]);

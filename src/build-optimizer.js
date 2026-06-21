@@ -404,7 +404,7 @@ export function classifySignalSources(signalFeatures = [], options = {}) {
     }
     if (sourceShape === "sync-function" || sourceShape === "derived" || sourceShape === "computed") {
       sources.push({
-        kind: "derived",
+        kind: "computed",
         sourceId,
         dependencies
       });
@@ -418,7 +418,7 @@ export function classifySignalSources(signalFeatures = [], options = {}) {
         });
       }
       sources.push({
-        kind: "async",
+        kind: "asyncSignal",
         sourceId,
         dependencies,
         latest: feature.latest !== false,
@@ -625,7 +625,7 @@ export function selectRuntimeSlices(featureArtifacts = {}, options = {}) {
   const diagnostics = getDiagnostics(options);
   const signalCounts = countBy(signalSources.sources, "kind");
   const hasSignals = signalSources.sources.length > 0;
-  const hasAsyncSignals = signalCounts.async > 0;
+  const hasAsyncSignals = signalCounts.asyncSignal > 0;
   const hasEvents = eventSymbols.events.length > 0;
   const hasStream = streamBoundaries.suspenseBoundaries.length > 0 || streamBoundaries.revealGroups.length > 0;
   const slices = [];
@@ -720,7 +720,7 @@ export function planHandlerEmission(handlers = [], options = {}) {
 }
 
 export function createOptimizerReport(artifacts) {
-  const signalSourceCounts = countBy(artifacts.signalSources.sources, "kind", ["writable", "derived", "async"]);
+  const signalSourceCounts = countBy(artifacts.signalSources.sources, "kind", ["writable", "computed", "asyncSignal"]);
   const signalOwnershipCounts = countBy(artifacts.signalOwnership.ownership, "owner", [
     "app",
     "shared-module",
@@ -728,12 +728,12 @@ export function createOptimizerReport(artifacts) {
     "owner-relative"
   ]);
   const asyncStatusCounts = {
-    latest: countWhere(artifacts.signalSources.sources, (source) => source.kind === "async" && source.latest),
-    pending: countWhere(artifacts.signalSources.sources, (source) => source.kind === "async" && source.pending),
-    error: countWhere(artifacts.signalSources.sources, (source) => source.kind === "async" && source.error),
-    versioned: countWhere(artifacts.signalSources.sources, (source) => source.kind === "async" && source.versioned),
-    streamDefault: countWhere(artifacts.signalSources.sources, (source) => source.kind === "async" && source.stream === "default"),
-    streamDefer: countWhere(artifacts.signalSources.sources, (source) => source.kind === "async" && source.stream === "defer")
+    latest: countWhere(artifacts.signalSources.sources, (source) => source.kind === "asyncSignal" && source.latest),
+    pending: countWhere(artifacts.signalSources.sources, (source) => source.kind === "asyncSignal" && source.pending),
+    error: countWhere(artifacts.signalSources.sources, (source) => source.kind === "asyncSignal" && source.error),
+    versioned: countWhere(artifacts.signalSources.sources, (source) => source.kind === "asyncSignal" && source.versioned),
+    streamDefault: countWhere(artifacts.signalSources.sources, (source) => source.kind === "asyncSignal" && source.stream === "default"),
+    streamDefer: countWhere(artifacts.signalSources.sources, (source) => source.kind === "asyncSignal" && source.stream === "defer")
   };
   const handlerEmissionCounts = countBy(artifacts.handlerEmission.handlers, "mode", [
     "inline",

@@ -23,8 +23,8 @@ test("runtime selection report names selected slices, omissions, and feature cou
   assert.deepEqual(result.report.runtime.fallbacks, []);
   assert.deepEqual(result.report.signals.sources, {
     writable: 1,
-    derived: 1,
-    async: 1
+    computed: 1,
+    asyncSignal: 1
   });
   assert.deepEqual(result.report.signals.ownership, {
     app: 1,

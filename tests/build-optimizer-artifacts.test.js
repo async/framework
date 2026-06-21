@@ -42,6 +42,9 @@ test("optimizer artifact set exposes every ADR 26 pass artifact and report", () 
   assert.ok(
     result.passes.indexOf("event-normalization") < result.passes.indexOf("signal-source-classification")
   );
+  assert.ok(
+    result.passes.indexOf("event-normalization") < result.passes.indexOf("runtime-slice-selection")
+  );
   assert.deepEqual(Object.keys(result.artifacts).sort(), [
     "buildEmit",
     "childrenFragments",
@@ -61,6 +64,11 @@ test("optimizer artifact set exposes every ADR 26 pass artifact and report", () 
     event.protocolProp
   ]), [
     ["onClick", "on:click"]
+  ]);
+  assert.deepEqual(result.artifacts.signalSources.sources.map((source) => source.kind), [
+    "writable",
+    "computed",
+    "asyncSignal"
   ]);
   assert.deepEqual(result.report.children.fragments, { empty: 0, static: 0, lazy: 0 });
   assert.equal(hasOptimizerErrors(result.diagnostics), false);
