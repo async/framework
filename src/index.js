@@ -7,7 +7,7 @@ export { component, createComponentRegistry, defineComponent } from "./component
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
 export { createHandlerRegistry } from "./handlers.js";
-export { html } from "./html.js";
+export { childrenFragment, html, isChildrenFragment } from "./html.js";
 export { createLazyRegistry, defineRegistrySnapshot } from "./lazy-registry.js";
 export { Loader, AsyncLoader } from "./loader.js";
 export { createPartialRegistry } from "./partials.js";

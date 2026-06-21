@@ -1147,7 +1147,7 @@ Component helpers:
 | `this.effect(fn)` | Scoped effect with cleanup |
 | `this.handler(name, fn)` | Scoped named handler registry entry |
 | `this.handler(fn)` | Generated scoped handler registry entry |
-| `this.render(Component, props)` | Child fragment rendering |
+| `this.render(Component, props, children?)` | Child fragment rendering with optional default children |
 | `this.slot(Component, propsOrFn)` | Child component outlet using an `on:attach` target |
 | `this.suspense(signalRef, views)` | Async boundary template helper |
 | `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
@@ -1195,6 +1195,45 @@ this.suspense(product, (product) => html`
 
 `this.suspense(...)` is not React Suspense. It does not throw promises,
 hydrate, diff, rerender a component tree, or emit a wrapper element.
+
+Default children are a scoped fragment owned by the framework. Pass them as the
+third `this.render(...)` argument, then interpolate `children` in the child
+component:
+
+```js
+const Card = component(function Card({ title, children }) {
+  return html`
+    <article>
+      <h2>${title}</h2>
+      ${children}
+    </article>
+  `;
+});
+
+const Page = component(function Page() {
+  return html`
+    ${this.render(Card, { title: "Status" }, html`
+      <p>Ready</p>
+    `)}
+  `;
+});
+```
+
+Children can also be lazy when the caller supplies a factory. The factory runs
+only if the child component interpolates `children`, and any nested components
+or handlers created while rendering the fragment are cleaned up with the
+consuming component fragment:
+
+```js
+this.render(Card, { title: "Status" }, function children() {
+  return html`<p>${this.render(Badge, { label: "Live" })}</p>`;
+});
+```
+
+Do not pass `children` in the props object when also using the third argument.
+Default children are consumed once by interpolation; use `this.slot(...)` for
+post-mount replacement and use ordinary props when the child needs data from the
+caller.
 
 Component-scoped signals and handlers are unregistered when the mounted
 fragment is destroyed. `loader.swap(...)` cleans up old DOM bindings and mounted

@@ -576,6 +576,173 @@ test("component child render attach hooks do not dedupe each other", async () =>
   loader.destroy();
 });
 
+test("component render passes static children as a scoped fragment", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const Card = component(function Card({ title, children }) {
+    return html`
+      <article>
+        <h2>${title}</h2>
+        ${children}
+      </article>
+    `;
+  });
+
+  const App = component(function App() {
+    return html`${this.render(Card, { title: "Status" }, html`<p>Ready</p>`)}`;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("#app"), App);
+
+  assert.equal(document.querySelector("h2").textContent, "Status");
+  assert.equal(document.querySelector("p").textContent, "Ready");
+  loader.destroy();
+});
+
+test("component children factories are lazy and can render nested components", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  let evaluated = 0;
+  const Badge = component(function Badge({ label }) {
+    return html`<strong>${label}</strong>`;
+  });
+  const Card = component(function Card({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const EmptyCard = component(function EmptyCard() {
+    return html`<article>empty</article>`;
+  });
+  const App = component(function App() {
+    const lazyChildren = function children() {
+      evaluated += 1;
+      return html`<p>${this.render(Badge, { label: "Live" })}</p>`;
+    };
+    return html`
+      ${this.render(EmptyCard, {}, lazyChildren)}
+      ${this.render(Card, {}, lazyChildren)}
+    `;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("#app"), App);
+
+  assert.equal(evaluated, 1);
+  assert.equal(document.querySelector("strong").textContent, "Live");
+  loader.destroy();
+});
+
+test("component children escape strings by default", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const Card = component(function Card({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const App = component(function App() {
+    return html`${this.render(Card, {}, `<script>alert("x")</script>`)}`;
+  });
+
+  const loader = Loader({ root: document });
+  loader.mount(document.querySelector("#app"), App);
+
+  assert.equal(document.querySelector("article").textContent, `<script>alert("x")</script>`);
+  assert.equal(document.querySelector("script"), null);
+  loader.destroy();
+});
+
+test("component render rejects duplicate children sources and double consumption", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+
+  const SingleConsumeCard = component(function SingleConsumeCard({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const DuplicateSources = component(function DuplicateSources() {
+    return html`${this.render(SingleConsumeCard, { children: html`<p>prop</p>` }, html`<p>argument</p>`)}`;
+  });
+  const DoubleConsume = component(function DoubleConsume() {
+    return html`${this.render(DoubleConsumeCard, {}, html`<p>once</p>`)}`;
+  });
+  const DoubleConsumeCard = component(function DoubleConsumeCard({ children }) {
+    return html`<article>${children}${children}</article>`;
+  });
+
+  const loader = Loader({ root: document });
+  assert.throws(
+    () => loader.mount(document.querySelector("#app"), DuplicateSources),
+    /cannot receive both props\.children and a children argument/
+  );
+  assert.throws(
+    () => loader.mount(document.querySelector("#app"), DoubleConsume),
+    /children fragments can only be consumed once/
+  );
+  loader.destroy();
+});
+
+test("component children cleanup releases nested scoped handlers and signals", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <main>
+      <section async:boundary="route">
+        <div id="slot"></div>
+      </section>
+    </main>
+  `;
+
+  let clicks = 0;
+  let handlerId;
+  let signalId;
+  const Action = component(function Action() {
+    const selected = this.signal(false);
+    signalId = selected.id;
+    handlerId = this.handler(function () {
+      clicks += 1;
+      selected.set(true);
+    });
+    return html`<button id="action" type="button" on:click="${handlerId}" class:selected="${selected}">Action</button>`;
+  });
+  const Card = component(function Card({ children }) {
+    return html`<article>${children}</article>`;
+  });
+  const App = component(function App() {
+    return html`${this.render(Card, {}, function children() {
+      return html`${this.render(Action)}`;
+    })}`;
+  });
+
+  const loader = Loader({ root: document.body }).start();
+  loader.mount(document.querySelector("#slot"), App);
+  await delay(0);
+
+  const action = document.querySelector("#action");
+  assert.equal(typeof loader.handlers.resolve(handlerId), "function");
+  assert.equal(loader.signals.has(signalId), true);
+
+  action.click();
+  await delay(0);
+  assert.equal(clicks, 1);
+  assert.equal(action.classList.contains("selected"), true);
+
+  loader.swap("route", `<p id="next-route">Next</p>`);
+
+  assert.equal(loader.handlers.resolve(handlerId), undefined);
+  assert.equal(loader.signals.has(signalId), false);
+  assert.equal(document.querySelector("#next-route").textContent, "Next");
+
+  action.click();
+  await delay(0);
+  assert.equal(clicks, 1);
+  loader.destroy();
+});
+
 test("Loader mounts registered components from async:component attributes", async () => {
   const window = new Window();
   const { document } = window;

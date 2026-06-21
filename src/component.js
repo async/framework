@@ -1,5 +1,5 @@
 import { attributeName } from "./attributes.js";
-import { escapeHtml, rawHtml, renderTemplate } from "./html.js";
+import { childrenFragment, escapeHtml, rawHtml, renderTemplate } from "./html.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
@@ -136,6 +136,7 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
     destroyHooks,
     renderScopedTemplate
   });
+  templateOptions.fragmentContext = context;
 
   const output = Component.call(context, props);
   if (output && typeof output.then === "function") {
@@ -307,8 +308,8 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
       return registerScopedHandler(name, fn);
     },
 
-    render(Child, childProps = {}) {
-      const child = renderComponent(Child, childProps, runtime, scope);
+    render(Child, childProps = {}, childrenInput) {
+      const child = renderComponent(Child, normalizeRenderProps(childProps, childrenInput), runtime, scope);
       cleanups.push(child.cleanup);
       attachHooks.push((target) => child.attach(target));
       visibleHooks.push((target) => child.visible(target, loader._observeVisible));
@@ -430,6 +431,25 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     cleanups.push(() => handlers.unregister?.(id));
     return id;
   }
+}
+
+function normalizeRenderProps(props, childrenInput) {
+  const normalizedProps = props == null ? {} : props;
+  if (typeof normalizedProps !== "object" || Array.isArray(normalizedProps)) {
+    throw new TypeError("this.render(Component, props, children) props must be an object.");
+  }
+  const hasPropsChildren = Object.hasOwn(normalizedProps, "children") && normalizedProps.children !== undefined;
+  const hasThirdArgumentChildren = childrenInput !== undefined;
+  if (hasPropsChildren && hasThirdArgumentChildren) {
+    throw new TypeError("this.render(Component, props, children) cannot receive both props.children and a children argument.");
+  }
+  if (!hasPropsChildren && !hasThirdArgumentChildren) {
+    return normalizedProps;
+  }
+  return {
+    ...normalizedProps,
+    children: childrenFragment(hasThirdArgumentChildren ? childrenInput : normalizedProps.children)
+  };
 }
 
 function normalizeOptionsCallback(label, optionsOrFn, maybeFn) {

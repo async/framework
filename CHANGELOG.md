@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.24 - 2026-06-21
+
+- Added scoped default children fragments for `this.render(Component, props,
+  children)`, including lazy children factories, single-consumption checks, and
+  duplicate source validation.
+- Added component tests proving static children, lazy nested component children,
+  escaped string children, duplicate children errors, and cleanup for handlers
+  and signals created while rendering children.
+- Updated framework declarations and type fixtures so components can type
+  optional `Children` props while callers use the third render argument instead
+  of authoring `props.children`.
+- Documented the released default-children contract in the component README and
+  component-system spec while keeping slots as the post-mount replacement
+  primitive.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 230,250 B (230.3 KB / 0.230 MB), gzip 43,813 B (43.8 KB / 0.044 MB), br 36,215 B (36.2 KB / 0.036 MB) -> `browser.min.js` raw 98,493 B (98.5 KB / 0.098 MB), gzip 29,286 B (29.3 KB / 0.029 MB), br 25,793 B (25.8 KB / 0.026 MB); delta raw -131,757 B (-131.8 KB / -0.132 MB), gzip -14,527 B (-14.5 KB / -0.015 MB), br -10,422 B (-10.4 KB / -0.010 MB).
+
 ## 0.11.23 - 2026-06-21
 
 - Added first-class JSX type profiles for runtime/no-build and

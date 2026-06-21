@@ -30,7 +30,7 @@ Component helpers include:
 - `this.asyncSignal(name, fn)`.
 - `this.effect(fn)`.
 - `this.handler(name, fn)` and `this.handler(fn)`.
-- `this.render(Component, props)`.
+- `this.render(Component, props, children?)`.
 - `this.slot(Component, propsOrFn)`.
 - `this.suspense(signalRef, views)`.
 - `this.on(event, fn)` with `attach`, `visible`, `intersect`, and `destroy`
@@ -40,6 +40,17 @@ Component helpers include:
 
 Components return HTML-compatible values. Promise-returning components are not
 part of the synchronous component contract.
+
+Default children are framework-owned scoped fragments. The canonical no-build
+form is `this.render(Component, props, children)`, and the child component
+receives the normalized fragment as `props.children`. The child consumes the
+fragment by interpolating `children` in an `html` template; it does not call a
+children callback directly.
+
+Children fragments are lazy when supplied as factories, caller-lexical through
+closed-over values, single-consumption by default, escaped as text for strings,
+and cleaned up with the consuming component fragment. Supplying both
+`props.children` and the third `this.render(...)` argument is invalid.
 
 ## Subsystem Boundaries
 
@@ -59,6 +70,9 @@ Components emit the same protocol as hand-authored HTML:
 - Local signals become scoped signal IDs referenced by `signal:*` or `class:*`.
 - Suspense helpers emit boundary templates and do not own wrapper elements.
 - Child rendering returns fragment output that remains scannable by the loader.
+- Default children interpolate through the same template renderer so escaping,
+  nested component rendering, handler registration, signal bindings, and cleanup
+  stay in one scoped path.
 - Slots mount a child component into an attached DOM target and may recompute
   props from signals without exposing loader mounting to application code.
 
@@ -77,6 +91,10 @@ Components must not be required to rerun to activate server-rendered DOM:
 
 - Components are scoped fragments, not virtual nodes.
 - Component output does not cause a component rerender loop.
+- Default children do not create a parent rerender path or runtime JSX node
+  array.
+- Default children and slots are separate primitives: children are mount-time
+  projection; slots are explicit attached child replacement.
 - Slot updates are explicit child component replacement, not parent rerendering.
 - Component-local state and handlers are unregistered on fragment cleanup.
 - `on:visible` is a one-shot visibility lifecycle hook.
@@ -90,6 +108,10 @@ Components must not be required to rerun to activate server-rendered DOM:
 - Lazy component descriptors that resolve asynchronously are not valid for
   synchronous render paths unless a future async component contract defines it.
 - Invalid suspense inputs fail before emitting ambiguous boundary markup.
+- Supplying children through both `props.children` and the third render
+  argument fails before the child component renders.
+- Consuming the same children fragment twice fails instead of duplicating
+  handler IDs or cleanup records.
 - Observer-less environments report unsupported intersection behavior through
   the defined fallback path.
 
@@ -105,6 +127,9 @@ Components must not be required to rerun to activate server-rendered DOM:
   signal without creating a wrapper element.
 - Multiple child components with identical hook bodies do not dedupe each
   other incorrectly.
+- Static and lazy default children render through `this.render(...)`, preserve
+  escaping, support nested component output, and clean up scoped child resources
+  when the consuming fragment is destroyed.
 
 ## Open Or Deferred Decisions
 

@@ -3,6 +3,7 @@ import { attributeName, matchAttribute, normalizeAttributeConfig } from "./attri
 
 const templateKind = Symbol.for("@async/framework.template");
 const rawKind = Symbol.for("@async/framework.rawHtml");
+const childrenKind = Symbol.for("@async/framework.children");
 
 export function html(strings, ...values) {
   return {
@@ -21,6 +22,31 @@ export function rawHtml(value) {
     [rawKind]: true,
     html: String(value ?? "")
   };
+}
+
+export function childrenFragment(source) {
+  if (isChildrenFragment(source)) {
+    return source;
+  }
+  let consumed = false;
+  const fragment = {
+    [childrenKind]: true,
+    consume(context = createRenderContext()) {
+      if (consumed) {
+        throw new Error("Async children fragments can only be consumed once.");
+      }
+      consumed = true;
+      const value = typeof source === "function"
+        ? source.call(context.fragmentContext ?? undefined)
+        : source;
+      return renderTemplate(value, context);
+    }
+  };
+  return Object.freeze(fragment);
+}
+
+export function isChildrenFragment(value) {
+  return Boolean(value?.[childrenKind]);
 }
 
 export function renderTemplate(value, options = {}) {
@@ -42,6 +68,9 @@ export function renderTemplate(value, options = {}) {
 }
 
 function renderValue(value, context = createRenderContext()) {
+  if (isChildrenFragment(value)) {
+    return value.consume(context);
+  }
   if (value?.[rawKind]) {
     return value.html;
   }

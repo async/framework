@@ -246,7 +246,7 @@
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 29500
+        "maxGzipBytes": 29600
       }
     },
     {
