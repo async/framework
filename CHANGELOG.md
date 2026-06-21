@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.28 - 2026-06-21
+
+- Added a profile-aware event normalization artifact before signal
+  classification so JSX-native event props and protocol event props lower to
+  canonical `on:` event records.
+- Preserved source event prop spelling in optimizer diagnostics while accepting
+  protocol event props only for runtime or compatibility profiles.
+- Added duplicate canonical event diagnostics so mixed `onClick` and `on:click`
+  declarations cannot silently overwrite each other.
+- Kept handler emission independent from source prop spelling by feeding
+  canonical protocol records into the handler planning pass.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 231,217 B (231.2 KB / 0.231 MB), gzip 44,078 B (44.1 KB / 0.044 MB), br 36,392 B (36.4 KB / 0.036 MB) -> `browser.min.js` raw 98,972 B (99.0 KB / 0.099 MB), gzip 29,418 B (29.4 KB / 0.029 MB), br 25,930 B (25.9 KB / 0.026 MB); delta raw -132,245 B (-132.2 KB / -0.132 MB), gzip -14,660 B (-14.7 KB / -0.015 MB), br -10,462 B (-10.5 KB / -0.010 MB).
+
 ## 0.11.27 - 2026-06-21
 
 - Added the composition pattern catalog covering default children, named
