@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.1 - 2026-06-23
+
+- Scoped lifecycle fallback hooks for components rendered through
+  `this.render(...)` so `this.onMount(...)`, `this.onVisible(...)`, and
+  `this.on("intersect", ...)` target the child component's rendered root
+  instead of the ancestor mount root.
+- Preserved direct `loader.mount(target, Component)` fallback behavior, where
+  rootless and multi-root top-level components still receive the mount target.
+- Updated the bundled Flow bridge to `@async/flow@0.5.0`, using async signal
+  detection while preserving existing async signal metadata and refresh paths.
+- Migration note: code that intentionally used nested fallback hooks to mutate
+  the ancestor mount root should move that behavior to the ancestor component or
+  bind a specific element with `on:attach`.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 327,212 B (327.2 KB / 0.327 MB), gzip 61,393 B (61.4 KB / 0.061 MB), br 50,139 B (50.1 KB / 0.050 MB) -> `browser.min.js` raw 138,257 B (138.3 KB / 0.138 MB), gzip 40,337 B (40.3 KB / 0.040 MB), br 35,071 B (35.1 KB / 0.035 MB); delta raw -188,955 B (-189.0 KB / -0.189 MB), gzip -21,056 B (-21.1 KB / -0.021 MB), br -15,068 B (-15.1 KB / -0.015 MB).
+
 ## 0.12.0 - 2026-06-23
 
 - Scoped lifecycle fallback hooks for components rendered through
