@@ -27,7 +27,7 @@ Routing primitives include:
 - `defineRoute(partial, options?)` and `route(...)` compatibility alias.
 - `createRouteRegistry(initialMap?)`.
 - `createPartialRegistry(initialMap?)`.
-- `createRouter({ mode, root, boundary, routes, partials, loader })`.
+- `createRouter({ mode, urlMode, root, boundary, routes, partials, loader })`.
 
 Router modes:
 
@@ -37,6 +37,12 @@ Router modes:
   local.
 - `ssr`: the document is server-rendered and browser navigation stays native.
 - `mpa`: any document source and browser navigation stays native.
+
+Router URL modes:
+
+- `path`: default. Route matching uses the browser path and query string.
+- `hash`: route matching uses `#/path?query` while preserving ordinary section
+  anchors such as `#quickstart` as native page jumps.
 
 ## Subsystem Boundaries
 
@@ -54,6 +60,7 @@ Routing protocol includes:
 - Route patterns as stable strings.
 - Partial IDs as registry references.
 - Route boundary ID, usually `route`.
+- Router URL mode, either `path` or `hash`.
 - Router signals: `router.url`, `router.path`, `router.params`,
   `router.query`, `router.route`, `router.pending`, and `router.error`.
 - Partial results that may include HTML and server-result-like side effects.
@@ -75,6 +82,7 @@ Routing resume behavior:
 ## Invariants
 
 - Route matching ranks specific routes ahead of wildcard fallbacks.
+- Hash URL mode matches `#/path?query` as `/path?query`.
 - Malformed encoded params are handled without crashing the router.
 - Prefetch does not mutate router state, history, or DOM.
 - Navigation errors update route error state without corrupting the active
@@ -92,6 +100,7 @@ Routing resume behavior:
 ## Acceptance Criteria
 
 - CSR startup renders the current route partial into an empty route boundary.
+- Hash URL mode supports static-host URLs such as `#/docs/getting-started`.
 - SPA navigation swaps a route boundary and rescans inserted handlers.
 - Wildcard fallback routes handle unmatched paths.
 - SSR and MPA modes do not intercept link clicks.

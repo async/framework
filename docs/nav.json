@@ -1,0 +1,59 @@
+{
+  "title": "@async/framework",
+  "description": "No-build Async runtime docs for signals, HTML protocol, route partials, server calls, and streaming boundaries.",
+  "defaultRoute": "/docs/getting-started",
+  "topNav": [
+    { "label": "Docs", "href": "#/docs/getting-started" },
+    { "label": "Examples", "href": "#/reference/examples" },
+    { "label": "Changelog", "href": "#/changelog" },
+    { "label": "API Reference", "href": "https://www.jsdocs.io/package/@async/framework", "external": true },
+    { "label": "GitHub", "href": "https://github.com/async/framework", "external": true }
+  ],
+  "sidebar": [
+    {
+      "title": "Start",
+      "pages": [
+        { "title": "Getting Started", "route": "/docs/getting-started", "source": "start/getting-started.md" },
+        { "title": "Why Async", "route": "/docs/why-async", "source": "start/why-async.md" },
+        { "title": "Core Concepts", "route": "/docs/core-concepts", "source": "start/core-concepts.md" }
+      ]
+    },
+    {
+      "title": "Runtime",
+      "pages": [
+        { "title": "Overview", "route": "/runtime/overview", "source": "runtime/overview.md" },
+        { "title": "HTML Protocol", "route": "/runtime/html-protocol", "source": "runtime/html-protocol.md" },
+        { "title": "Signals", "route": "/runtime/signals", "source": "runtime/signals.md" },
+        { "title": "Components", "route": "/runtime/components", "source": "runtime/components.md" }
+      ]
+    },
+    {
+      "title": "Router & Partials",
+      "pages": [
+        { "title": "Router & Partials", "route": "/runtime/router-partials", "source": "runtime/router-partials.md" }
+      ]
+    },
+    {
+      "title": "Server & Streaming",
+      "pages": [
+        { "title": "Server & Streaming", "route": "/runtime/server-streaming", "source": "runtime/server-streaming.md" }
+      ]
+    },
+    {
+      "title": "Build Profile",
+      "pages": [
+        { "title": "Build Profile", "route": "/build/profile", "source": "build/profile.md" }
+      ]
+    },
+    {
+      "title": "Reference",
+      "pages": [
+        { "title": "API Reference", "route": "/reference/api", "source": "reference/api.md" },
+        { "title": "Examples", "route": "/reference/examples", "source": "reference/examples.md" }
+      ]
+    }
+  ],
+  "extraPages": [
+    { "title": "Changelog", "route": "/changelog", "source": "reference/changelog.md", "group": "Reference" }
+  ]
+}

@@ -545,6 +545,7 @@ test("source package metadata owns the minimal public export spec", () => {
     "module",
     "browser",
     "types",
+    "source",
     "files"
   ]) {
     assert.equal(field in manifest, false, `source package.json should not define ${field}`);
@@ -595,7 +596,8 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
   assert.equal("main" in publishManifest, false);
   assert.equal("module" in publishManifest, false);
   assert.equal("browser" in publishManifest, false);
-  assert.equal("types" in publishManifest, false);
+  assert.equal(publishManifest.types, "./framework.d.ts");
+  assert.equal(publishManifest.source, "./framework.ts");
   assert.equal(publishManifest.unpkg, "./browser.umd.min.js");
   assert.equal(publishManifest.jsdelivr, "./browser.umd.min.js");
   assert.equal(resolvePackageTarget(publishManifest.exports["."], ["browser", "import", "default"]), "./browser.min.js");

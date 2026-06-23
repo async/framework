@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@async/flow':
+        specifier: link:../flow
+        version: link:../flow
       '@async/pipeline':
         specifier: 0.9.25
         version: 0.9.25

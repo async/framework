@@ -1,6 +1,6 @@
 import { publicRegistryValue } from "./lazy-registry.js";
 
-const declarationTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal"]);
+const declarationTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal", "flow"]);
 const cacheTypes = new Set(["cache.browser", "cache.server"]);
 const cacheEntryTypes = new Set(["cache.browser.entries", "cache.server.entries"]);
 const allTypes = new Set([...declarationTypes, ...cacheTypes, ...cacheEntryTypes]);
@@ -93,6 +93,7 @@ export function createRegistryStore(initial = {}, options = {}) {
         route: snapshotPlain(backing.route),
         component: snapshotDescriptors(backing.component),
         asyncSignal: snapshotDescriptors(backing.asyncSignal),
+        flow: snapshotDescriptors(backing.flow),
         cache: {
           browser: snapshotPlain(backing.cache.browser),
           server: snapshotPlain(backing.cache.server)
@@ -113,6 +114,7 @@ export function createRegistryStore(initial = {}, options = {}) {
         route: Object.fromEntries(backing.route),
         component: Object.fromEntries(backing.component),
         asyncSignal: Object.fromEntries(backing.asyncSignal),
+        flow: Object.fromEntries(backing.flow),
         cache: {
           browser: Object.fromEntries(backing.cache.browser),
           server: Object.fromEntries(backing.cache.server)
@@ -173,6 +175,7 @@ function createBacking() {
     route: new Map(),
     component: new Map(),
     asyncSignal: new Map(),
+    flow: new Map(),
     cache: {
       browser: new Map(),
       server: new Map()
@@ -192,6 +195,7 @@ function applyInitial(registry, initial = {}) {
   registry.registerMany("route", initial.route);
   registry.registerMany("component", initial.component);
   registry.registerMany("asyncSignal", initial.asyncSignal);
+  registry.registerMany("flow", initial.flow);
   registry.registerMany("cache.browser", initial.cache?.browser);
   registry.registerMany("cache.server", initial.cache?.server);
 

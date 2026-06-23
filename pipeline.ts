@@ -51,6 +51,7 @@ export default definePipeline({
       "src/**/*.js",
       "tests/**/*.js",
       "examples/**/*",
+      "docs/**/*",
       "README.md",
       "CHANGELOG.md",
       "package.json",
@@ -62,7 +63,7 @@ export default definePipeline({
   tasks: {
     "docs.site": task({
       description: "Build the standardized GitHub Pages documentation site.",
-      inputs: ["README.md", "CHANGELOG.md", "scripts/build-pages.js"],
+      inputs: ["docs/**/*", "src/**/*.js", "package.json", "scripts/build-framework-bundle.js", "scripts/build-pages.js"],
       outputs: [".async/pages/**"],
       cache: true,
       run: sh`pnpm run docs:build`

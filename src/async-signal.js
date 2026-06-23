@@ -1,6 +1,12 @@
+import { defineAsyncSignal } from "@async/flow/define";
+
 const asyncSignalKind = Symbol.for("@async/framework.asyncSignal");
 
 export function asyncSignal(id, fn) {
+  if (typeof id === "function" && fn === undefined) {
+    return defineAsyncSignal(id);
+  }
+
   if (typeof id !== "string" || id.length === 0) {
     throw new TypeError("asyncSignal(id, fn) requires a non-empty string id.");
   }

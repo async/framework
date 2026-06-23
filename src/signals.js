@@ -93,6 +93,8 @@ export function computed(fn) {
       return backing.snapshot();
     },
 
+    _flowCompute: fn,
+
     _cloneSignalDeclaration() {
       return computed(fn);
     },

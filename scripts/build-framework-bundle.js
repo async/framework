@@ -228,12 +228,14 @@ const browserDtsOutput = [
   "",
   "export type RuntimeTarget = \"browser\" | \"server\";",
   "export type RouterMode = \"csr\" | \"spa\" | \"ssr\" | \"mpa\";",
+  "export type RouterUrlMode = \"path\" | \"hash\";",
   "export type AsyncSignalStatus = \"idle\" | \"loading\" | \"ready\" | \"error\";",
   "export type MaybePromise<T> = T | Promise<T>;",
   "export type Cleanup = () => void;",
   "export type RegistryType =",
   "  | \"signal\"",
   "  | \"handler\"",
+  "  | \"flow\"",
   "  | \"server\"",
   "  | \"partial\"",
   "  | \"route\"",
@@ -455,6 +457,39 @@ const browserDtsOutput = [
   "",
   "export type HandlerFunction = (this: HandlerContext, context: HandlerContext) => MaybePromise<unknown>;",
   "",
+  "export interface FlowRuntimeRef<T = unknown> {",
+  "  readonly kind: string;",
+  "  value: T;",
+  "  get(): T;",
+  "  set?(value: T): T;",
+  "  update?(fn: (value: T) => T): T;",
+  "  subscribe(fn: (value: T) => void): Cleanup;",
+  "  snapshot(): T;",
+  "}",
+  "export interface FlowInstance {",
+  "  store: Record<string, unknown>;",
+  "  refs: Record<string, FlowRuntimeRef>;",
+  "  handlers: Record<string, (input?: unknown) => MaybePromise<unknown>>;",
+  "  get<T = unknown>(name: string): T;",
+  "  set<T = unknown>(name: string, value: T): T;",
+  "  update<T = unknown>(name: string, fn: (current: T) => T): T;",
+  "  run(name: string, input?: unknown): MaybePromise<unknown>;",
+  "  snapshot(): Record<string, unknown>;",
+  "  restore(snapshot: Record<string, unknown>): void;",
+  "  destroy(): void;",
+  "}",
+  "export type FlowStep = (store: Record<string, unknown>, input?: unknown) => MaybePromise<unknown>;",
+  "export type FlowPredicate = (store: Record<string, unknown>, input?: unknown) => boolean;",
+  "export type FlowSignalDeclaration<T = unknown> = T | { readonly kind: string; [key: string]: unknown } | FlowStep;",
+  "export interface FlowConfig {",
+  "  store?: Record<string, FlowSignalDeclaration>;",
+  "  on?: Record<string, FlowStep>;",
+  "}",
+  "export interface FlowDefinition {",
+  "  readonly kind: \"flow\";",
+  "  readonly definition: unknown;",
+  "}",
+  "",
   "export interface HandlerRegistry extends RegistryInspection<HandlerFunction> {",
   "  register(id: string, fn: HandlerFunction | LazyDescriptor): string;",
   "  registerMany(map?: Record<string, HandlerFunction | LazyDescriptor>): this;",
@@ -602,6 +637,7 @@ const browserDtsOutput = [
   "",
   "export interface RouterOptions {",
   "  mode?: RouterMode;",
+  "  urlMode?: RouterUrlMode;",
   "  root?: Document | Element;",
   "  boundary?: string;",
   "  routes?: RouteRegistry;",
@@ -617,6 +653,7 @@ const browserDtsOutput = [
   "",
   "export interface Router {",
   "  mode: RouterMode;",
+  "  urlMode: RouterUrlMode;",
   "  root: Document | Element;",
   "  boundary: string;",
   "  routes: RouteRegistry;",
@@ -869,6 +906,7 @@ const browserDtsOutput = [
   "  route: Record<string, RouteDefinition>;",
   "  component: Record<string, { id?: string } | LazyDescriptor>;",
   "  asyncSignal: Record<string, { id?: string } | LazyDescriptor>;",
+  "  flow: Record<string, FlowDefinition | LazyDescriptor>;",
   "  cache: { browser: Record<string, CacheDefinition>; server: Record<string, CacheDefinition> };",
   "  entries: { browser: Record<string, unknown>; server: Record<string, unknown> };",
   "}",
@@ -881,6 +919,7 @@ const browserDtsOutput = [
   "  route?: Record<string, RouteDefinition | string>;",
   "  component?: Record<string, ComponentFunction | LazyDescriptor>;",
   "  asyncSignal?: Record<string, AsyncSignalFunction | LazyDescriptor>;",
+  "  flow?: Record<string, FlowDefinition>;",
   "  cache?: {",
   "    browser?: Record<string, CacheDefinition | CacheDefinitionOptions>;",
   "    server?: Record<string, CacheDefinition | CacheDefinitionOptions>;",
@@ -917,6 +956,7 @@ const browserDtsOutput = [
   "  use(type: \"route\", entries: Record<string, RouteDefinition | string>): this;",
   "  use(type: \"component\", entries: Record<string, ComponentFunction | LazyDescriptor>): this;",
   "  use(type: \"asyncSignal\", entries: Record<string, AsyncSignalFunction | LazyDescriptor>): this;",
+  "  use(type: \"flow\", entries: Record<string, FlowDefinition>): this;",
   "  use(moduleObject: AppDefinition): this;",
   "  snapshot(): AppDefinition;",
   "  start(options?: CreateAppOptions): AppRuntime;",
@@ -983,6 +1023,16 @@ const browserDtsOutput = [
   "export interface AsyncNamespace extends AppHub {",
   "  Async: AsyncNamespace;",
   "  asyncSignal: typeof asyncSignal;",
+  "  flow: typeof flow;",
+  "  flowSignal: typeof flowSignal;",
+  "  flowComputed: typeof flowComputed;",
+  "  flowAsyncSignal: typeof flowAsyncSignal;",
+  "  defineFrameworkFlow: typeof defineFrameworkFlow;",
+  "  isFrameworkFlowDefinition: typeof isFrameworkFlowDefinition;",
+  "  set: typeof set;",
+  "  update: typeof update;",
+  "  when: typeof when;",
+  "  onError: typeof onError;",
   "  createApp: typeof createApp;",
   "  defineApp: typeof defineApp;",
   "  readSnapshot: typeof readSnapshot;",
@@ -1027,8 +1077,18 @@ const browserDtsOutput = [
   "  signal: typeof signal;",
   "}",
   "",
-  "export declare function asyncSignal<T = unknown>(id: string, fn: AsyncSignalFunction<T>): AsyncSignal<T>;",
+  "export declare function asyncSignal<T = unknown>(loaderOrId: string | FlowStep, fnOrOptions?: AsyncSignalFunction<T> | Record<string, unknown>): AsyncSignal<T> | FlowSignalDeclaration<T>;",
   "export declare const Async: AppHub;",
+  "export declare function defineFrameworkFlow(config?: FlowConfig): FlowDefinition;",
+  "export declare const flow: typeof defineFrameworkFlow;",
+  "export declare function flowSignal<T = unknown>(initial: T): FlowSignalDeclaration<T>;",
+  "export declare function flowComputed<T = unknown>(compute: FlowStep): FlowSignalDeclaration<T>;",
+  "export declare function flowAsyncSignal<T = unknown>(loader: FlowStep, options?: Record<string, unknown>): FlowSignalDeclaration<T>;",
+  "export declare function isFrameworkFlowDefinition(value: unknown): value is FlowDefinition;",
+  "export declare function set(nameOrUpdates: string | Record<string, unknown>, value?: unknown): FlowStep;",
+  "export declare function update(name: string, fn: (current: unknown, store: Record<string, unknown>, input?: unknown) => unknown): FlowStep;",
+  "export declare function when(predicate: FlowPredicate): FlowStep;",
+  "export declare function onError(handle: (error: unknown, store: Record<string, unknown>, input?: unknown) => unknown, handler: FlowStep): FlowStep;",
   "export declare function createApp(appOrDefinition?: AppHub | AppDefinition, options?: CreateAppOptions): AppRuntime;",
   "export declare function defineApp(initial?: AppDefinition): AppHub;",
   "export declare function readSnapshot(root?: Document | Element, options?: { attributes?: AttributeConfig }): RegistryRuntimeSnapshot;",
@@ -1495,6 +1555,8 @@ if (check) {
 function createPublishManifest(manifest) {
   const publishManifest = JSON.parse(JSON.stringify(manifest));
   publishManifest.files = publishFiles;
+  publishManifest.types = `./${frameworkDts}`;
+  publishManifest.source = `./${frameworkTs}`;
   delete publishManifest.private;
   delete publishManifest.packageManager;
   delete publishManifest.scripts;
@@ -1671,7 +1733,13 @@ function parseExports(source) {
   for (const match of source.matchAll(/export\s+const\s+([A-Za-z_$][\w$]*)/g)) {
     names.add(match[1]);
   }
+  for (const match of source.matchAll(/export\s+let\s+([A-Za-z_$][\w$]*)/g)) {
+    names.add(match[1]);
+  }
   for (const match of source.matchAll(/export\s+{([\s\S]*?)};/g)) {
+    if (/\}\s+from\s+"/.test(match[0])) {
+      continue;
+    }
     for (const specifier of parseSpecifiers(match[1])) {
       names.add(specifier.local);
     }
@@ -1702,11 +1770,20 @@ function stripExports(source) {
     .replace(/export\s+async\s+function\s+/g, "async function ")
     .replace(/export\s+function\s+/g, "function ")
     .replace(/export\s+const\s+/g, "const ")
+    .replace(/export\s+let\s+/g, "let ")
     .replace(/export\s+{[\s\S]*?}\s+from\s+"[^"]+";\n?/g, "")
     .replace(/export\s+{[\s\S]*?};\n?/g, "");
 }
 
 function resolveSpecifier(file, specifier) {
+  const localFlowSource = resolveLocalFlowSource(specifier);
+  if (localFlowSource) {
+    return {
+      source: localFlowSource,
+      external: false
+    };
+  }
+
   if (!specifier.startsWith(".")) {
     return { source: specifier, external: true };
   }
@@ -1718,14 +1795,30 @@ function resolveSpecifier(file, specifier) {
 
 function normalizeModule(file) {
   const normalized = normalize(file).replaceAll("\\", "/");
+  if (normalized.startsWith("../")) {
+    return normalized;
+  }
   return normalized.startsWith("src/") ? normalized : `src/${normalized}`;
 }
 
 function moduleVariable(file) {
-  const name = basename(file, ".js")
+  const name = file
+    .replace(/\.js$/, "")
     .replace(/[^A-Za-z0-9]+(.)/g, (_match, char) => char.toUpperCase())
     .replace(/^[^A-Za-z_$]+/, "");
   return `__${name}Module`;
+}
+
+function resolveLocalFlowSource(specifier) {
+  const flowSources = {
+    "@async/flow/define": "../flow/src/define.js",
+    "@async/flow/runtime": "../flow/src/runtime.js",
+    "@async/flow/helpers": "../flow/src/helpers.js",
+    "@async/flow/run": "../flow/src/run.js",
+    "@async/flow/scheduler": "../flow/src/scheduler.js"
+  };
+
+  return flowSources[specifier];
 }
 
 function externalVariable(specifier) {

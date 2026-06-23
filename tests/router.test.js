@@ -567,6 +567,166 @@ test("SPA router ignores same-document hash links", async () => {
   router.destroy();
 });
 
+test("CSR hash router renders the current hash route into an empty boundary", async () => {
+  const window = new Window({ url: "http://app.test/framework/#/docs/getting-started?ref=nav" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  const signals = createSignalRegistry();
+  const docsRoute = route("docs.page");
+  const router = createRouter({
+    mode: "csr",
+    urlMode: "hash",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/docs/:slug": docsRoute
+    }),
+    signals,
+    partials: createPartialRegistry({
+      "docs.page"({ slug }) {
+        return `<h1 id="route-title">${slug}</h1>`;
+      }
+    })
+  }).start();
+
+  assert.equal(router.urlMode, "hash");
+  assert.equal(signals.get("router.pending"), true);
+  assert.equal(signals.get("router.path"), "/docs/getting-started");
+  assert.deepEqual(signals.get("router.params"), { slug: "getting-started" });
+  assert.deepEqual(signals.get("router.query"), { ref: "nav" });
+  assert.equal(signals.get("router.route"), docsRoute);
+
+  await delay(0);
+
+  assert.equal(document.querySelector("#route-title").textContent, "getting-started");
+  assert.equal(window.location.href, "http://app.test/framework/#/docs/getting-started?ref=nav");
+
+  router.destroy();
+});
+
+test("SPA hash router intercepts hash routes and preserves section anchors", async () => {
+  const window = new Window({ url: "http://app.test/framework/#/docs/start" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <a id="section" href="#quickstart">Quickstart</a>
+    <a id="route" href="#/docs/router?tab=api">Router</a>
+    <section async:boundary="route"><h1 id="route-title">Start</h1></section>
+  `;
+
+  const signals = createSignalRegistry();
+  const router = createRouter({
+    mode: "spa",
+    urlMode: "hash",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/docs/:page": route("docs.page")
+    }),
+    signals,
+    partials: createPartialRegistry({
+      "docs.page"({ page }) {
+        return `<h1 id="route-title">${page}</h1>`;
+      }
+    })
+  }).start();
+
+  const section = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#section").dispatchEvent(section);
+  await delay(0);
+
+  assert.equal(section.defaultPrevented, false);
+  assert.equal(document.querySelector("#route-title").textContent, "Start");
+
+  const routeClick = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#route").dispatchEvent(routeClick);
+  await delay(0);
+
+  assert.equal(routeClick.defaultPrevented, true);
+  assert.equal(document.querySelector("#route-title").textContent, "router");
+  assert.equal(signals.get("router.path"), "/docs/router");
+  assert.deepEqual(signals.get("router.query"), { tab: "api" });
+  assert.equal(window.location.href, "http://app.test/framework/#/docs/router?tab=api");
+
+  router.destroy();
+});
+
+test("SPA hash router navigate writes hash history for route paths", async () => {
+  const window = new Window({ url: "http://app.test/framework/#/docs/start" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Start</h1></section>`;
+
+  const signals = createSignalRegistry();
+  const router = createRouter({
+    mode: "spa",
+    urlMode: "hash",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/docs/:page": route("docs.page")
+    }),
+    signals,
+    partials: createPartialRegistry({
+      "docs.page"({ page }) {
+        return `<h1 id="route-title">${page}</h1>`;
+      }
+    })
+  }).start();
+
+  await router.navigate("/docs/signals?view=all");
+
+  assert.equal(document.querySelector("#route-title").textContent, "signals");
+  assert.equal(signals.get("router.path"), "/docs/signals");
+  assert.deepEqual(signals.get("router.query"), { view: "all" });
+  assert.equal(window.location.href, "http://app.test/framework/#/docs/signals?view=all");
+
+  router.destroy();
+});
+
+test("SPA hash router follows hashchange and popstate route updates", async () => {
+  const window = new Window({ url: "http://app.test/framework/#/docs/start" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Start</h1></section>`;
+
+  const signals = createSignalRegistry();
+  const router = createRouter({
+    mode: "spa",
+    urlMode: "hash",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/docs/:page": route("docs.page"),
+      "*": route("notFound.page")
+    }),
+    signals,
+    partials: createPartialRegistry({
+      "docs.page"({ page }) {
+        return `<h1 id="route-title">${page}</h1>`;
+      },
+      "notFound.page"() {
+        return `<h1 id="route-title">Not found</h1>`;
+      }
+    })
+  }).start();
+
+  window.location.hash = "#/docs/server";
+  window.dispatchEvent(new window.HashChangeEvent("hashchange"));
+  await delay(0);
+
+  assert.equal(document.querySelector("#route-title").textContent, "server");
+  assert.equal(signals.get("router.path"), "/docs/server");
+
+  window.history.pushState({}, "", "http://app.test/framework/#/missing");
+  window.dispatchEvent(new window.PopStateEvent("popstate"));
+  await delay(0);
+
+  assert.equal(document.querySelector("#route-title").textContent, "Not found");
+  assert.equal(signals.get("router.path"), "/missing");
+  assert.equal(signals.get("router.error"), null);
+
+  router.destroy();
+});
+
 test("SPA router prefetch executes partials without mutating route state, history, or DOM", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;

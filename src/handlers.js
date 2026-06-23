@@ -108,7 +108,13 @@ export function createHandlerRegistry(initialMap = {}, options = {}) {
         if (!handler) {
           throw new Error(`Handler "${step.id}" is not registered.`);
         }
-        const value = await handler.call(runContext, runContext);
+        const handlerContext = step.args
+          ? {
+              ...runContext,
+              ...resolveHandlerCommandInput(step.args, runContext)
+            }
+          : runContext;
+        const value = await handler.call(handlerContext, handlerContext);
         if (!(builtInTokens.has(step.id) && handler === builtInHandlers[step.id])) {
           results.push(value);
         }
@@ -171,9 +177,27 @@ function parseCommand(command) {
     return parseServerCommand(command);
   }
   if (command.includes("(") || command.includes(")")) {
-    throw new Error(`Command "${command}" is not supported.`);
+    return parseHandlerCommand(command);
   }
   return { type: "handler", id: command };
+}
+
+function parseHandlerCommand(command) {
+  const open = command.indexOf("(");
+  if (open === -1 || !command.endsWith(")")) {
+    throw new Error(`Command "${command}" is not supported.`);
+  }
+
+  const id = command.slice(0, open).trim();
+  if (!isHandlerCommandId(id)) {
+    throw new Error(`Command "${command}" has an invalid handler id.`);
+  }
+
+  return {
+    type: "handler",
+    id,
+    args: parseArguments(command.slice(open + 1, -1))
+  };
 }
 
 function parseServerCommand(command) {
@@ -218,4 +242,22 @@ function parseArgument(token) {
 
 function isServerCommandId(id) {
   return /^[^.\s();]+(?:\.[^.\s();]+)*$/.test(id);
+}
+
+function isHandlerCommandId(id) {
+  return /^[^.\s();]+(?:\.[^.\s();]+)*$/.test(id);
+}
+
+function resolveHandlerCommandInput(args, context) {
+  const resolved = resolveServerCommandArguments(args, {
+    ...context,
+    allowUnsafeLocals: true
+  });
+  const input = resolved.args.length === 1 ? resolved.args[0] : resolved.args;
+
+  return {
+    input,
+    signalPaths: resolved.signalPaths,
+    signalValues: resolved.signalValues
+  };
 }

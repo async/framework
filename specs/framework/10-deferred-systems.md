@@ -69,6 +69,11 @@ System 2 systems must lower into explicit protocol records:
   ownership.
 - Compiler output must be explainable as protocol artifacts that the lower
   runtime systems already understand.
+- Flow declarations lower into the normal `signal` and `handler` registries.
+  Flow signal refs, computed values, async-signal helper paths, and strict state
+  helpers remain ordinary signal entries; Flow `on` handlers remain ordinary
+  handler entries. The lower runtime must not require a separate Flow registry
+  path for binding, scheduling, snapshot restore, or browser protocol records.
 
 ## Resume Contract
 

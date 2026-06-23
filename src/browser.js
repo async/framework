@@ -6,6 +6,7 @@ export { createCacheRegistry, defineCache } from "./cache.js";
 export { component, createComponentRegistry, defineComponent } from "./component.js";
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
+export { asyncSignal as flowAsyncSignal, computed as flowComputed, defineFrameworkFlow, flow, signal as flowSignal, isFrameworkFlowDefinition, onError, set, update, when } from "./flow.js";
 export { createHandlerRegistry } from "./handlers.js";
 export { childrenFragment, html, isChildrenFragment } from "./html.js";
 export { createLazyRegistry, defineRegistrySnapshot } from "./lazy-registry.js";

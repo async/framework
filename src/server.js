@@ -62,7 +62,9 @@ export function resolveServerCommandArguments(args, context = {}) {
 
   for (const arg of args) {
     if (arg.type === "local") {
-      resolved.push(resolveLocal(arg.name, context, { forServer: true }));
+      resolved.push(resolveLocal(arg.name, context, {
+        forServer: !context.allowUnsafeLocals
+      }));
       continue;
     }
 

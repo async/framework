@@ -1,130 +1,278 @@
 #!/usr/bin/env node
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join, normalize } from "node:path";
 
-const site = {
-  title: "@async/framework",
-  repo: "framework",
-  stage: "Layer 1 + Layer 2",
-  description: "No-build Loader runtime with signals, app declarations, command events, server calls, route partials, cache split, and SSR activation.",
-  lead: "Plain HTML plus ESM for reactive islands, async loading state, route fragments, and out-of-order HTML swaps without a virtual DOM.",
-  quickstart: "pnpm add @async/framework\n\nimport { Async, createSignal } from '@async/framework';\n\nAsync.use({\n  signal: { count: createSignal(0) },\n  handler: {\n    increment() {\n      this.signals.update('count', (count) => count + 1);\n    }\n  }\n});\n\nAsync.start({ root: document });"
-};
+const root = process.cwd();
+const docsDir = join(root, "docs");
+const outDir = join(root, ".async/pages");
+const assetsDir = join(outDir, "assets");
+const navPath = join(docsDir, "nav.json");
 
-const outDir = ".async/pages";
-const asyncProjects = [
-  ["@async/db", "https://async.github.io/db/", "Data workflow"],
-  ["@async/json", "https://async.github.io/json/", "JSON database engine"],
-  ["@async/web", "https://async.github.io/web/", "Web runtime"],
-  ["@async/framework", "https://async.github.io/framework/", "Async app runtime"],
-  ["@async/pipeline", "https://async.github.io/pipeline/", "Pipeline workflows"],
-  ["@async/dispatch", "https://async.github.io/dispatch/", "Goal-first coordination"],
-  ["@async/auto-git", "https://async.github.io/auto-git/", "Git handoffs"],
-  ["@async/api-contract", "https://async.github.io/api-contract/", "API ledgers"],
-  ["@async/claims", "https://async.github.io/claims/", "Doc claim checks"]
-];
+const nav = JSON.parse(await readFile(navPath, "utf8"));
+const pages = [];
+const seenRoutes = new Set();
 
-await rm(outDir, { recursive: true, force: true });
-await mkdir(outDir, { recursive: true });
-
-const readme = await readFile("README.md", "utf8");
-const changelog = await readFile("CHANGELOG.md", "utf8");
-
-await writeFile(join(outDir, "index.html"), layout({
-  title: site.title,
-  body: home(readme),
-  rootPrefix: ""
-}));
-
-await writeFile(join(outDir, "changelog.html"), layout({
-  title: `${site.title} Changelog`,
-  body: `<div class="markdown">${renderMarkdown(changelog)}</div>`,
-  rootPrefix: ""
-}));
-
-function home(readme) {
-  const related = asyncProjects
-    .filter(([name]) => name !== site.title)
-    .map(([name, url, label]) => `<a class="related" href="${url}"><strong>${name}</strong><span>${label}</span></a>`)
-    .join("\n");
-  return `
-    <section class="hero">
-      <p class="eyebrow">${escapeHtml(site.stage)} / Async</p>
-      <h1>${escapeHtml(site.title)}</h1>
-      <p class="lead">${renderInline(site.description)}</p>
-      <p class="sublead">${renderInline(site.lead)}</p>
-      <div class="actions">
-        <a class="primary-link" href="https://github.com/async/${site.repo}">GitHub</a>
-        <a href="https://www.npmjs.com/package/${encodeURIComponent(site.title)}">npm</a>
-        <a href="changelog.html">Changelog</a>
-      </div>
-    </section>
-    <section>
-      <h2>Start</h2>
-      <pre><code>${escapeHtml(site.quickstart)}</code></pre>
-    </section>
-    <section>
-      <h2>Related Async Projects</h2>
-      <div class="related-grid">${related}</div>
-    </section>
-    <section>
-      <h2>README</h2>
-      <div class="markdown">${renderMarkdown(readme)}</div>
-    </section>
-  `;
+for (const group of nav.sidebar ?? []) {
+  for (const page of group.pages ?? []) {
+    pages.push(await readPage({ ...page, group: group.title }));
+  }
 }
 
-function layout({ title, body, rootPrefix }) {
-  const nav = asyncProjects.map(([name, url]) =>
-    `<a href="${url}"${name === site.title ? " aria-current=\"page\"" : ""}>${name.replace("@async/", "")}</a>`
-  ).join("\n");
+for (const page of nav.extraPages ?? []) {
+  pages.push(await readPage(page));
+}
+
+if (pages.length === 0) {
+  throw new Error("docs/nav.json must define at least one page.");
+}
+
+const defaultRoute = nav.defaultRoute ?? pages[0].route;
+const search = pages.map((page) => ({
+  title: page.title,
+  route: page.route,
+  group: page.group,
+  description: page.description,
+  text: page.searchText
+}));
+
+await rm(outDir, { recursive: true, force: true });
+await mkdir(assetsDir, { recursive: true });
+
+await copyFile(join(root, "dist/browser.js"), join(assetsDir, "async-framework.js"));
+await copyFile(join(docsDir, "assets/app.js"), join(assetsDir, "app.js"));
+await copyFile(join(docsDir, "assets/styles.css"), join(assetsDir, "styles.css"));
+
+await writeFile(join(assetsDir, "docs-data.js"), `export const docsData = ${JSON.stringify({
+  title: nav.title,
+  description: nav.description,
+  defaultRoute,
+  topNav: nav.topNav ?? [],
+  sidebar: nav.sidebar ?? [],
+  pages,
+  search
+}, null, 2)};\n`, "utf8");
+
+await writeFile(join(outDir, "index.html"), layout(nav), "utf8");
+
+function layout(site) {
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title>
+  <title>${escapeHtml(site.title)}</title>
   <meta name="description" content="${escapeHtml(site.description)}">
-  <style>
-    :root{color-scheme:dark;--bg:#15202b;--soft:#192734;--raised:#1f2f3d;--border:#38444d;--border2:#2f3c47;--text:#f7f9f9;--muted:#8b98a5;--body:#cfd9de;--blue:#1d9bf0;--green:#00ba7c;--code:#0f1720;--shadow:0 24px 80px rgba(2,6,23,.32)}
-    *{box-sizing:border-box}html{min-height:100%;background:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(180deg,#15202b 0%,#111923 100%);background-size:40px 40px,40px 40px,auto}body{margin:0;color:var(--body);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.65}a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}.container{width:min(100% - 32px,1080px);margin:48px auto 72px}.page{overflow:hidden;background:rgba(25,39,52,.94);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}.topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;padding:16px clamp(24px,4vw,56px);background:rgba(15,23,32,.72);border-bottom:1px solid var(--border)}.brand{display:inline-flex;align-items:center;gap:10px;color:var(--text);font-weight:850}.mark{display:grid;width:26px;height:26px;grid-template-columns:repeat(2,1fr);gap:4px}.mark span{border:1px solid var(--blue);border-radius:3px}.mark span:nth-child(2){border-color:var(--green)}.mark span:nth-child(3){border-color:#facc15}.mark span:nth-child(4){border-color:#7dd3fc}.nav{display:flex;flex-wrap:wrap;gap:14px;font-size:.92rem;font-weight:750}.nav a{color:var(--muted)}.nav a[aria-current=page]{color:var(--text)}main{padding:clamp(24px,4vw,56px)}.eyebrow{margin:0 0 12px;color:var(--blue);font-size:.78rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}h1,h2,h3{color:var(--text);line-height:1.2;letter-spacing:0}h1{max-width:860px;margin:0 0 16px;font-size:clamp(2.25rem,5vw,4.5rem);font-weight:850}h2{margin:48px 0 16px;padding-top:28px;border-top:1px solid var(--border);font-size:clamp(1.45rem,3vw,2rem)}h3{margin:28px 0 10px;font-size:1.14rem}.lead{max-width:860px;color:var(--text);font-size:clamp(1.18rem,2.4vw,1.45rem);line-height:1.45}.sublead{max-width:860px;color:var(--muted);font-size:1.05rem}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.actions a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 16px;color:var(--text);font-weight:800;background:rgba(15,23,32,.54);border:1px solid var(--border);border-radius:10px}.actions .primary-link{color:#06101f;background:var(--blue);border-color:var(--blue)}.related-grid{display:grid;gap:12px;margin-top:18px}@media (min-width:760px){.related-grid{grid-template-columns:repeat(2,1fr)}}.related{display:block;padding:16px 18px;background:rgba(15,23,32,.48);border:1px solid var(--border2);border-radius:12px}.related strong{display:block;color:var(--text);font-weight:800}.related span{display:block;margin-top:4px;color:var(--muted)}pre{overflow-x:auto;margin:1rem 0 1.5rem;padding:18px 20px;color:var(--body);background:linear-gradient(180deg,#101923 0%,#0d141d 100%);border:1px solid var(--border2);border-radius:12px}code{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:.92em}p code,li code{padding:.1rem .35rem;color:var(--text);background:rgba(15,23,32,.65);border:1px solid var(--border2);border-radius:6px}.markdown p{max-width:860px}.markdown table{display:block;max-width:100%;overflow:auto;border-collapse:collapse}.markdown th,.markdown td{padding:8px 10px;border:1px solid var(--border2)}.markdown blockquote{margin:18px 0;padding:2px 0 2px 18px;color:var(--muted);border-left:3px solid var(--blue)}footer{padding:20px clamp(24px,4vw,56px);color:var(--muted);border-top:1px solid var(--border)}
-  </style>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cpath d='M9 16h14M16 9v14' stroke='%23ffffff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./assets/styles.css">
 </head>
 <body>
-  <div class="container"><div class="page"><header class="topbar"><a class="brand" href="${rootPrefix}index.html"><span class="mark"><span></span><span></span><span></span><span></span></span><span>${escapeHtml(site.title)}</span></a><nav class="nav">${nav}</nav></header><main>${body}</main><footer>Built by <code>pnpm run pipeline:pages</code>. Workflow source: <code>pipeline.ts</code>.</footer></div></div>
+  <div class="docs-shell" async:container>
+    <header class="topbar">
+      <a class="brand" href="#${escapeHtml(defaultRoute)}" aria-label="${escapeHtml(site.title)} home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>${escapeHtml(site.title)}</span>
+      </a>
+      <nav class="topnav" aria-label="Primary navigation">
+        ${(site.topNav ?? []).map(renderTopNavItem).join("\n        ")}
+      </nav>
+      <label class="search-control" aria-label="Search docs">
+        <span aria-hidden="true">⌕</span>
+        <input id="docs-search" type="search" autocomplete="off" placeholder="Search docs">
+        <kbd>⌘ K</kbd>
+      </label>
+    </header>
+    <aside class="sidebar" aria-label="Documentation navigation">
+      ${renderSidebar(site.sidebar ?? [])}
+    </aside>
+    <main id="doc-content" class="content" async:boundary="route"></main>
+    <aside class="toc" aria-label="On this page">
+      <div class="toc-inner">
+        <p>On this page</p>
+        <nav id="page-toc"></nav>
+        <button id="copy-markdown" class="copy-markdown" type="button">Copy Markdown</button>
+      </div>
+    </aside>
+    <div id="search-panel" class="search-panel" hidden>
+      <div class="search-panel-header">
+        <strong>Search docs</strong>
+        <button id="search-close" type="button" aria-label="Close search">×</button>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </div>
+  </div>
+  <script type="module" src="./assets/app.js"></script>
 </body>
 </html>
 `;
 }
 
+function renderTopNavItem(item) {
+  const attrs = item.external ? ` target="_blank" rel="noreferrer"` : "";
+  return `<a href="${escapeHtml(item.href)}"${attrs}>${escapeHtml(item.label)}</a>`;
+}
+
+function renderSidebar(groups) {
+  return groups.map((group) => `
+    <section class="sidebar-group">
+      <h2>${escapeHtml(group.title)}</h2>
+      <ul>
+        ${(group.pages ?? []).map((page) => `<li><a data-route="${escapeHtml(page.route)}" href="#${escapeHtml(page.route)}">${escapeHtml(page.title)}</a></li>`).join("\n        ")}
+      </ul>
+    </section>
+  `).join("\n");
+}
+
+async function readPage(page) {
+  if (!page.route?.startsWith("/")) {
+    throw new Error(`Docs page "${page.title}" must use an absolute route.`);
+  }
+  if (seenRoutes.has(page.route)) {
+    throw new Error(`Duplicate docs route: ${page.route}`);
+  }
+  seenRoutes.add(page.route);
+
+  const sourcePath = resolveDocSource(page.source);
+  const markdown = await readFile(sourcePath, "utf8");
+  const rendered = renderMarkdown(markdown);
+  return {
+    id: page.id ?? routeId(page.route),
+    title: page.title,
+    group: page.group ?? "",
+    route: page.route,
+    source: normalize(page.source),
+    description: page.description ?? rendered.description,
+    markdown,
+    html: rendered.html,
+    toc: rendered.toc,
+    searchText: rendered.searchText
+  };
+}
+
+function resolveDocSource(source) {
+  if (!source || typeof source !== "string") {
+    throw new Error("Docs page source must be a string.");
+  }
+  return normalize(join(docsDir, source));
+}
+
 function renderMarkdown(source) {
   const lines = normalizeMarkdownLines(source);
   const html = [];
+  const toc = [];
+  const textParts = [];
   let list = "";
   let code = null;
   let table = [];
-  const closeList = () => { if (list) { html.push(`</${list}>`); list = ""; } };
-  const closeTable = () => { if (table.length) { html.push(renderTable(table)); table = []; } };
+  let description = "";
+
+  const closeList = () => {
+    if (list) {
+      html.push(`</${list}>`);
+      list = "";
+    }
+  };
+  const closeTable = () => {
+    if (table.length) {
+      html.push(renderTable(table));
+      table = [];
+    }
+  };
+
   for (const line of lines) {
     if (line.startsWith("```")) {
-      closeList(); closeTable();
-      if (code) { html.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`); code = null; } else { code = []; }
+      closeList();
+      closeTable();
+      if (code) {
+        html.push(`<pre><code>${escapeHtml(code.lines.join("\n"))}</code></pre>`);
+        code = null;
+      } else {
+        code = { lines: [], language: line.slice(3).trim() };
+      }
       continue;
     }
-    if (code) { code.push(line); continue; }
-    if (line.startsWith("|")) { closeList(); table.push(line); continue; }
+
+    if (code) {
+      code.lines.push(line);
+      continue;
+    }
+
+    if (line.startsWith("|")) {
+      closeList();
+      table.push(line);
+      continue;
+    }
     closeTable();
-    if (/^###\s+/.test(line)) { closeList(); html.push(`<h3 id="${slug(line.slice(4))}">${renderInline(line.slice(4))}</h3>`); continue; }
-    if (/^##\s+/.test(line)) { closeList(); html.push(`<h2 id="${slug(line.slice(3))}">${renderInline(line.slice(3))}</h2>`); continue; }
-    if (/^#\s+/.test(line)) { closeList(); html.push(`<h2 id="${slug(line.slice(2))}">${renderInline(line.slice(2))}</h2>`); continue; }
-    if (/^-\s+/.test(line)) { if (list !== "ul") { closeList(); list = "ul"; html.push("<ul>"); } html.push(`<li>${renderInline(line.slice(2))}</li>`); continue; }
-    if (/^\d+\.\s+/.test(line)) { if (list !== "ol") { closeList(); list = "ol"; html.push("<ol>"); } html.push(`<li>${renderInline(line.replace(/^\d+\.\s+/, ""))}</li>`); continue; }
-    if (/^>\s?/.test(line)) { closeList(); html.push(`<blockquote>${renderInline(line.replace(/^>\s?/, ""))}</blockquote>`); continue; }
-    if (!line.trim()) { closeList(); continue; }
-    closeList(); html.push(`<p>${renderInline(line.trim())}</p>`);
+
+    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      const label = stripInline(heading[2]);
+      const id = slug(label);
+      html.push(`<h${level} id="${id}">${renderInline(heading[2])}</h${level}>`);
+      textParts.push(label);
+      if (level === 2 || level === 3) {
+        toc.push({ id, title: label, level });
+      }
+      continue;
+    }
+
+    if (/^-\s+/.test(line)) {
+      if (list !== "ul") {
+        closeList();
+        list = "ul";
+        html.push("<ul>");
+      }
+      const value = line.slice(2);
+      html.push(`<li>${renderInline(value)}</li>`);
+      textParts.push(stripInline(value));
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(line)) {
+      if (list !== "ol") {
+        closeList();
+        list = "ol";
+        html.push("<ol>");
+      }
+      const value = line.replace(/^\d+\.\s+/, "");
+      html.push(`<li>${renderInline(value)}</li>`);
+      textParts.push(stripInline(value));
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      closeList();
+      const value = line.replace(/^>\s?/, "");
+      html.push(`<blockquote>${renderInline(value)}</blockquote>`);
+      textParts.push(stripInline(value));
+      continue;
+    }
+
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+
+    closeList();
+    const value = line.trim();
+    html.push(`<p>${renderInline(value)}</p>`);
+    const plain = stripInline(value);
+    textParts.push(plain);
+    if (!description) {
+      description = plain;
+    }
   }
-  closeList(); closeTable();
-  return html.join("\n");
+
+  closeList();
+  closeTable();
+
+  return {
+    html: html.join("\n"),
+    toc,
+    description,
+    searchText: textParts.join(" ").replace(/\s+/g, " ").trim()
+  };
 }
 
 function normalizeMarkdownLines(source) {
@@ -152,7 +300,6 @@ function normalizeMarkdownLines(source) {
       lines[lines.length - 1] = `${previous} ${line.trim()}`;
       continue;
     }
-
     lines.push(line);
   }
 
@@ -174,43 +321,55 @@ function isBlockStart(line) {
 
 function renderTable(lines) {
   const rows = lines.map((line) => line.trim().slice(1, -1).split("|").map((cell) => cell.trim()));
-  const body = rows.filter((row) => !row.every((cell) => /^:?-{3,}:?$/.test(cell))).map((row, index) => {
-    const tag = index === 0 ? "th" : "td";
-    return `<tr>${row.map((cell) => `<${tag}>${renderInline(cell)}</${tag}>`).join("")}</tr>`;
-  }).join("\n");
+  const body = rows
+    .filter((row) => !row.every((cell) => /^:?-{3,}:?$/.test(cell)))
+    .map((row, index) => {
+      const tag = index === 0 ? "th" : "td";
+      return `<tr>${row.map((cell) => `<${tag}>${renderInline(cell)}</${tag}>`).join("")}</tr>`;
+    })
+    .join("\n");
   return `<table>${body}</table>`;
 }
 
 function renderInline(value) {
-  return String(value).split(/(`[^`]+`)/g).map((segment) => {
+  return String(value).split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g).map((segment) => {
     if (segment.startsWith("`") && segment.endsWith("`")) {
       return `<code>${escapeHtml(segment.slice(1, -1))}</code>`;
     }
-    return renderTextLinks(segment);
+    if (segment.startsWith("**") && segment.endsWith("**")) {
+      return `<strong>${escapeHtml(segment.slice(2, -2))}</strong>`;
+    }
+    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(segment);
+    if (link) {
+      const href = link[2];
+      const attrs = /^https?:\/\//.test(href) ? ` target="_blank" rel="noreferrer"` : "";
+      return `<a href="${escapeHtml(href)}"${attrs}>${escapeHtml(link[1])}</a>`;
+    }
+    return escapeHtml(segment);
   }).join("");
 }
 
-function renderTextLinks(value) {
-  return String(value).split(/(\[[^\]]+\]\([^)]+\))/g).map((segment) => {
-    const match = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(segment);
-    if (match) return `<a href="${escapeHtml(match[2])}">${escapeHtml(match[1])}</a>`;
-    let html = escapeHtml(segment);
-    for (const [name, url] of asyncProjects) {
-      if (name === site.title) continue;
-      html = html.replace(new RegExp(escapeRegExp(name), "g"), `<a href="${url}">${name}</a>`);
-    }
-    return html;
-  }).join("");
+function stripInline(value) {
+  return String(value)
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
+function routeId(route) {
+  return route.replace(/^\//, "").replace(/[^a-z0-9]+/gi, ".").replace(/^\.+|\.+$/g, "") || "home";
 }
 
 function slug(value) {
-  return String(value).toLowerCase().replace(/<[^>]+>/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "section";
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "section";
 }
 
 function escapeHtml(value) {
-  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }

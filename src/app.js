@@ -6,12 +6,13 @@ import { createPartialRegistry } from "./partials.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createScheduler } from "./scheduler.js";
 import { createServerNamespace } from "./server.js";
+import { mountFlowRegistrations } from "./flow.js";
 import { cloneSignalDeclaration, createSignal, createSignalRegistry } from "./signals.js";
 import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
 import { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } from "./lazy-registry.js";
 
-const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal"]);
+const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal", "flow"]);
 
 export function defineApp(initial, options = {}) {
   const registry = createRegistryStore(undefined, { target: "browser" });
@@ -129,6 +130,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
   const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial", lazyRegistry });
   const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
   const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component", lazyRegistry });
+  const flows = new Map();
   const hasStartupRoot = options.loader || Object.hasOwn(options, "root");
   const startupRoot = hasStartupRoot ? options.root : null;
   let loader = options.loader;
@@ -153,6 +155,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     partials,
     routes,
     components,
+    flows,
     browser: {
       cache: browserCache
     },
@@ -356,6 +359,10 @@ export function createApp(appOrDefinition = Async, options = {}) {
       app.loader._clearCurrent([...destroyedLoaders, loader]);
       app.loader._rejectPending(new Error("Async loader queue was cleared because the runtime was destroyed."));
       signals.destroy?.();
+      for (const mounted of flows.values()) {
+        mounted.instance.destroy?.();
+      }
+      flows.clear();
       if (ownsScheduler) {
         scheduler.destroy();
       }
@@ -384,6 +391,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
   server.cache = serverCache;
   runtime.server.cache = serverCache;
+  mountFlowRegistrations(runtime, registry.rawSnapshot().flow);
   runtime.applySnapshot(initialSnapshot, { strict: options.strictSnapshots ?? true });
   detach = app._attach(runtime);
 
@@ -595,6 +603,8 @@ export function readSnapshot(root = globalThis.document, { attributes } = {}) {
 }
 
 function applyUseToRuntime(runtime, normalized) {
+  applyRegistryStoreUse(runtime.registry, "flow", normalized.flow);
+  mountFlowRegistrations(runtime, normalized.flow);
   applyRegistryUse(runtime.signals, runtime.registry, normalized.signal);
   applyRegistryUse(runtime.handlers, runtime.registry, normalized.handler);
   applyRegistryUse(runtime.server, runtime.registry, normalized.server);
@@ -653,6 +663,7 @@ function emptyDeclarations() {
     route: {},
     component: {},
     asyncSignal: {},
+    flow: {},
     cache: {
       browser: {},
       server: {}
@@ -750,6 +761,7 @@ function applySnapshotToRuntime(runtime, snapshot = {}, options = {}) {
   mergeRegistryEntries(runtime, "partial", normalized.partial, runtime.partials, options);
   mergeRegistryEntries(runtime, "route", normalized.route, runtime.routes, options);
   mergeRegistryEntries(runtime, "component", normalized.component, runtime.components, options);
+  mergeRegistryEntries(runtime, "flow", normalized.flow, null, options);
   return runtime;
 }
 
@@ -758,7 +770,7 @@ function appendSnapshotDeclarations(registry, snapshot = {}, options = {}) {
   for (const [id, value] of Object.entries(normalized.signal)) {
     registerSnapshotEntry(registry, "signal", id, createSignal(value), options);
   }
-  for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal"]) {
+  for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal", "flow"]) {
     for (const [id, value] of Object.entries(normalized[type])) {
       registerSnapshotEntry(registry, type, id, value, options);
     }
@@ -812,6 +824,9 @@ function normalizeSnapshot(snapshot = {}) {
       }
     }
   };
+  if (Object.hasOwn(snapshot, "flow")) {
+    normalized.flow = { ...(snapshot.flow ?? {}) };
+  }
   return normalized;
 }
 
@@ -829,9 +844,12 @@ function mergeSnapshot(target, source, options = {}) {
       ...normalized.cache.browser
     }
   };
-  for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal"]) {
+  for (const type of ["handler", "server", "partial", "route", "component", "asyncSignal", "flow"]) {
+    if (type === "flow" && !Object.hasOwn(normalized, "flow") && !Object.hasOwn(target, "flow")) {
+      continue;
+    }
     target[type] = target[type] ?? {};
-    for (const [id, value] of Object.entries(normalized[type])) {
+    for (const [id, value] of Object.entries(normalized[type] ?? {})) {
       if (Object.hasOwn(target[type], id)) {
         if (sameRegistryValue(target[type][id], value) || sameSnapshotValue(target[type][id], value)) {
           continue;
@@ -861,7 +879,7 @@ function sameSnapshotValue(left, right) {
 function restoreSignalEntry(signals, id, value) {
   if (signals.has?.(id)) {
     const entry = signals._entry?.(id);
-    if (typeof entry?._restore === "function" && isAsyncSignalSnapshot(value)) {
+    if (typeof entry?._restore === "function") {
       entry._restore(value);
       return;
     }

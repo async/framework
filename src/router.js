@@ -16,6 +16,7 @@ export function defineRoute(partial, options = {}) {
 export const route = defineRoute;
 
 const routerModes = new Set(["csr", "spa", "ssr", "mpa"]);
+const routerUrlModes = new Set(["path", "hash"]);
 
 export function createRouteRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
@@ -117,6 +118,7 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
 
 export function createRouter({
   mode = "ssr",
+  urlMode = "path",
   root,
   boundary = "route",
   routes = createRouteRegistry(),
@@ -130,6 +132,7 @@ export function createRouter({
   scheduler
 } = {}) {
   assertRouterMode(mode);
+  assertRouterUrlMode(urlMode);
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? loader?.signals ?? createSignalRegistry();
@@ -153,9 +156,11 @@ export function createRouter({
   let destroyed = false;
   let navigationVersion = 0;
   let activeNavigation;
+  let observedHistoryHref = "";
 
   const api = {
     mode,
+    urlMode,
     root: rootNode,
     boundary,
     routes,
@@ -175,6 +180,7 @@ export function createRouter({
       if (ownsLoader) {
         loaderInstance.start();
       }
+      syncObservedHistory(currentUrl());
       if (mode === "mpa" || mode === "ssr") {
         updateStateFromLocation();
         return api;
@@ -213,12 +219,12 @@ export function createRouter({
 
     async navigate(url, options = {}) {
       assertActive();
+      const target = resolveUrl(url);
       if (mode === "mpa" || mode === "ssr") {
-        documentRef.defaultView?.location?.assign?.(url);
+        documentRef.defaultView?.location?.assign?.(browserUrlForRoute(target).href);
         return null;
       }
 
-      const target = resolveUrl(url);
       return renderLocalRoutePartial(target, options);
     },
 
@@ -257,14 +263,27 @@ export function createRouter({
       event.preventDefault();
       handleNavigation(api.navigate(formActionUrl(form)));
     };
-    const popstate = () => handleNavigation(api.navigate(currentUrl(), { history: false }));
+    const history = () => {
+      const target = currentUrl();
+      if (target.href === observedHistoryHref) {
+        return;
+      }
+      syncObservedHistory(target);
+      handleNavigation(api.navigate(target, { history: false }));
+    };
 
     rootNode.addEventListener?.("click", click);
     rootNode.addEventListener?.("submit", submit);
-    documentRef.defaultView?.addEventListener?.("popstate", popstate);
+    documentRef.defaultView?.addEventListener?.("popstate", history);
+    if (urlMode === "hash") {
+      documentRef.defaultView?.addEventListener?.("hashchange", history);
+    }
     cleanups.add(() => rootNode.removeEventListener?.("click", click));
     cleanups.add(() => rootNode.removeEventListener?.("submit", submit));
-    cleanups.add(() => documentRef.defaultView?.removeEventListener?.("popstate", popstate));
+    cleanups.add(() => documentRef.defaultView?.removeEventListener?.("popstate", history));
+    if (urlMode === "hash") {
+      cleanups.add(() => documentRef.defaultView?.removeEventListener?.("hashchange", history));
+    }
   }
 
   async function renderLocalRoutePartial(target, options = {}) {
@@ -327,13 +346,17 @@ export function createRouter({
       await schedulerInstance.flush();
     }
     if (result?.redirect || options.history === false) {
+      syncObservedHistory(target);
       return;
     }
+    const historyUrl = browserUrlForRoute(target).href;
     if (options.replace) {
-      documentRef.defaultView?.history?.replaceState?.({}, "", target.href);
+      documentRef.defaultView?.history?.replaceState?.({}, "", historyUrl);
+      syncObservedHistory(target);
       return;
     }
-    documentRef.defaultView?.history?.pushState?.({}, "", target.href);
+    documentRef.defaultView?.history?.pushState?.({}, "", historyUrl);
+    syncObservedHistory(target);
   }
 
   function contextFor(matched, navigation) {
@@ -416,14 +439,51 @@ export function createRouter({
   }
 
   function currentUrl() {
-    return resolveUrl(documentRef.defaultView?.location?.href ?? "http://localhost/");
+    return resolveUrl(currentBrowserUrl());
   }
 
   function resolveUrl(url) {
-    if (url instanceof URL) {
-      return url;
+    const parsed = url instanceof URL
+      ? new URL(url.href)
+      : new URL(String(url), documentRef.defaultView?.location?.href ?? "http://localhost/");
+    if (urlMode === "hash") {
+      return routeUrlForHashMode(parsed);
     }
-    return new URL(String(url), documentRef.defaultView?.location?.href ?? "http://localhost/");
+    return parsed;
+  }
+
+  function currentBrowserUrl() {
+    return new URL(documentRef.defaultView?.location?.href ?? "http://localhost/");
+  }
+
+  function routeUrlForHashMode(url) {
+    if (isHashRoute(url.hash)) {
+      return routeUrlFromHash(url);
+    }
+    return new URL(`${url.pathname}${url.search}`, routeBaseUrl());
+  }
+
+  function routeUrlFromHash(url) {
+    const routeReference = url.hash.slice(1) || "/";
+    return new URL(routeReference, routeBaseUrl());
+  }
+
+  function routeBaseUrl() {
+    const current = currentBrowserUrl();
+    return `${current.origin}/`;
+  }
+
+  function browserUrlForRoute(routeUrl) {
+    if (urlMode !== "hash") {
+      return routeUrl;
+    }
+    const browserUrl = currentBrowserUrl();
+    browserUrl.hash = `${routeUrl.pathname}${routeUrl.search}`;
+    return browserUrl;
+  }
+
+  function syncObservedHistory(url) {
+    observedHistoryHref = url.href;
   }
 
   function assertActive() {
@@ -439,11 +499,16 @@ export function createRouter({
     if (anchor.target || anchor.hasAttribute("download")) {
       return true;
     }
-    const target = resolveUrl(anchor.href);
-    const current = currentUrl();
-    if (target.origin !== current.origin) {
+    const browserTarget = new URL(anchor.href, documentRef.defaultView?.location?.href ?? "http://localhost/");
+    const browserCurrent = currentBrowserUrl();
+    if (browserTarget.origin !== browserCurrent.origin) {
       return true;
     }
+    if (urlMode === "hash") {
+      return isPlainHashNavigation(browserTarget, browserCurrent, anchor);
+    }
+    const target = resolveUrl(anchor.href);
+    const current = currentUrl();
     return isHashOnlyNavigation(target, current, anchor);
   }
 
@@ -525,9 +590,30 @@ function isHashOnlyNavigation(target, current, anchor) {
   return target.hash !== current.hash || anchor.getAttribute?.("href")?.startsWith("#") === true;
 }
 
+function isHashRoute(hash) {
+  return typeof hash === "string" && hash.startsWith("#/");
+}
+
+function isPlainHashNavigation(target, current, anchor) {
+  const href = anchor.getAttribute?.("href") ?? "";
+  if (href.startsWith("#/") || isHashRoute(target.hash)) {
+    return false;
+  }
+  if (!href.startsWith("#") && target.pathname !== current.pathname) {
+    return false;
+  }
+  return Boolean(target.hash) && !isHashRoute(target.hash);
+}
+
 function assertRouterMode(mode) {
   if (!routerModes.has(mode)) {
     throw new TypeError(`Unknown router mode "${mode}".`);
+  }
+}
+
+function assertRouterUrlMode(mode) {
+  if (!routerUrlModes.has(mode)) {
+    throw new TypeError(`Unknown router URL mode "${mode}".`);
   }
 }
 

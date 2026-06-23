@@ -130,7 +130,7 @@
     "bundle:clean": "node scripts/build-framework-bundle.js --clean",
     "bundle:size": "pnpm run bundle && node scripts/bundle-size.js",
     "bundle:size:check": "pnpm run bundle && node scripts/bundle-size.js --check",
-    "docs:build": "node scripts/build-pages.js",
+    "docs:build": "pnpm run bundle && node scripts/build-pages.js",
     "examples": "node --test tests/examples.test.js",
     "examples:check": "node --test tests/examples.test.js",
     "pack:check": "pnpm run bundle:check && npm pack ./dist --dry-run --json --ignore-scripts",
@@ -159,6 +159,7 @@
     "test": "pnpm run bundle && node --test tests/*.test.js"
   },
   "devDependencies": {
+    "@async/flow": "link:../flow",
     "@async/pipeline": "0.9.25",
     "happy-dom": "20.10.5",
     "terser": "5.48.0",
