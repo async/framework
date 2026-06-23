@@ -1,7 +1,26 @@
 # Changelog
 
+## 0.12.0 - 2026-06-23
+
+- Scoped lifecycle fallback hooks for components rendered through
+  `this.render(...)` so `this.onMount(...)`, `this.onVisible(...)`, and
+  `this.on("intersect", ...)` target the child component's rendered root
+  instead of the ancestor mount root.
+- Preserved direct `loader.mount(target, Component)` fallback behavior, where
+  rootless and multi-root top-level components still receive the mount target.
+- Migration note: code that intentionally used nested fallback hooks to mutate
+  the ancestor mount root should move that behavior to the ancestor component or
+  bind a specific element with `on:attach`.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 326,961 B (327.0 KB / 0.327 MB), gzip 61,366 B (61.4 KB / 0.061 MB), br 50,134 B (50.1 KB / 0.050 MB) -> `browser.min.js` raw 138,254 B (138.3 KB / 0.138 MB), gzip 40,338 B (40.3 KB / 0.040 MB), br 35,040 B (35.0 KB / 0.035 MB); delta raw -188,707 B (-188.7 KB / -0.189 MB), gzip -21,028 B (-21.0 KB / -0.021 MB), br -15,094 B (-15.1 KB / -0.015 MB).
+
 ## 0.11.29 - 2026-06-21
 
+- Added the Markdown-backed GitHub Pages docs app with hash routes, command
+  search, grouped navigation, article content, and an on-page heading rail.
+- Added `createRouter({ urlMode: "hash" })` for static-host routes such as
+  `#/docs/getting-started` while preserving ordinary section anchors.
+- Added publish-package `types` and `source` metadata for API indexers while
+  preserving the existing export-map declarations.
 - Renamed build optimizer signal source output from `derived` and `async` to
   the public-facing `computed` and `asyncSignal` intent names.
 - Kept event normalization ahead of signal classification and runtime-slice
@@ -10,7 +29,7 @@
   classification tests to prove computed and async signal reporting, ownership
   diagnostics, maybe-promise rejection, runtime slice selection, and bootstrap
   report parity.
-- Bundle size from bundled TypeScript source: `browser.ts` raw 231,217 B (231.2 KB / 0.231 MB), gzip 44,078 B (44.1 KB / 0.044 MB), br 36,392 B (36.4 KB / 0.036 MB) -> `browser.min.js` raw 98,972 B (99.0 KB / 0.099 MB), gzip 29,418 B (29.4 KB / 0.029 MB), br 25,930 B (25.9 KB / 0.026 MB); delta raw -132,245 B (-132.2 KB / -0.132 MB), gzip -14,660 B (-14.7 KB / -0.015 MB), br -10,462 B (-10.5 KB / -0.010 MB).
+- Bundle size from bundled TypeScript source: `browser.ts` raw 274,307 B (274.3 KB / 0.274 MB), gzip 52,238 B (52.2 KB / 0.052 MB), br 42,841 B (42.8 KB / 0.043 MB) -> `browser.min.js` raw 116,507 B (116.5 KB / 0.117 MB), gzip 34,553 B (34.6 KB / 0.035 MB), br 30,179 B (30.2 KB / 0.030 MB); delta raw -157,800 B (-157.8 KB / -0.158 MB), gzip -17,685 B (-17.7 KB / -0.018 MB), br -12,662 B (-12.7 KB / -0.013 MB).
 
 ## 0.11.28 - 2026-06-21
 
