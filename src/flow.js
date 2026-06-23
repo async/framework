@@ -4,7 +4,7 @@ import {
   defineFlow,
   defineSignal,
   isFlowDefinition,
-  isResource
+  isAsyncSignal
 } from "@async/flow/define";
 import { createFlow } from "@async/flow/runtime";
 import {
@@ -91,9 +91,9 @@ function mountFlowRegistration(runtime, namespace, declaration) {
       path,
       writable: isWritableFlowRef(instance, name)
     }));
-    if (isFlowResourceRef(ref)) {
-      registerFlowResourceMetadata(runtime, namespace, name, ref);
-      registerFlowResourceRefreshHandler(runtime, namespace, name, ref);
+    if (isFlowAsyncSignalRef(ref)) {
+      registerFlowAsyncSignalMetadata(runtime, namespace, name, ref);
+      registerFlowAsyncSignalRefreshHandler(runtime, namespace, name, ref);
     }
   }
 
@@ -244,7 +244,7 @@ function createFrameworkFlowScheduler(scheduler) {
   };
 }
 
-function registerFlowResourceMetadata(runtime, namespace, name, ref) {
+function registerFlowAsyncSignalMetadata(runtime, namespace, name, ref) {
   for (const [metadata, read] of Object.entries({
     loading: () => ref.loading ?? false,
     error: () => ref.error ?? null,
@@ -260,12 +260,12 @@ function registerFlowResourceMetadata(runtime, namespace, name, ref) {
   }
 }
 
-function registerFlowResourceRefreshHandler(runtime, namespace, name, ref) {
+function registerFlowAsyncSignalRefreshHandler(runtime, namespace, name, ref) {
   const path = `${namespace}.refresh${capitalizeIdentifier(name)}`;
   if (runtime.handlers.resolve(path)) {
     throw new Error(`Handler "${path}" is already registered.`);
   }
-  runtime.handlers.register(path, function refreshMountedFlowResource(context = {}) {
+  runtime.handlers.register(path, function refreshMountedFlowAsyncSignal(context = {}) {
     const input = Array.isArray(context.input) ? context.input : [context.input];
     return ref.reload?.(...input) ?? ref.load?.(...input);
   });
@@ -368,8 +368,8 @@ function isWritableFlowRef(instance, name) {
   return Boolean(descriptor?.writable?.includes(name));
 }
 
-function isFlowResourceRef(ref) {
-  return isResource(ref) || ref?.kind === "asyncSignal";
+function isFlowAsyncSignalRef(ref) {
+  return isAsyncSignal(ref) || ref?.kind === "asyncSignal";
 }
 
 function capitalizeIdentifier(value) {
