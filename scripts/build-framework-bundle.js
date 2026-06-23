@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { basename, dirname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { minify } from "terser";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
 const srcRoot = join(root, "src");
 const distRoot = join(root, "dist");
 const browserEntry = "src/browser.js";
@@ -1795,7 +1798,7 @@ function resolveSpecifier(file, specifier) {
 
 function normalizeModule(file) {
   const normalized = normalize(file).replaceAll("\\", "/");
-  if (normalized.startsWith("../")) {
+  if (normalized.startsWith("../") || normalized.startsWith("node_modules/")) {
     return normalized;
   }
   return normalized.startsWith("src/") ? normalized : `src/${normalized}`;
@@ -1811,14 +1814,28 @@ function moduleVariable(file) {
 
 function resolveLocalFlowSource(specifier) {
   const flowSources = {
-    "@async/flow/define": "../flow/src/define.js",
-    "@async/flow/runtime": "../flow/src/runtime.js",
-    "@async/flow/helpers": "../flow/src/helpers.js",
-    "@async/flow/run": "../flow/src/run.js",
-    "@async/flow/scheduler": "../flow/src/scheduler.js"
+    "@async/flow/define": "src/define.js",
+    "@async/flow/runtime": "src/runtime.js",
+    "@async/flow/helpers": "src/helpers.js",
+    "@async/flow/run": "src/run.js",
+    "@async/flow/scheduler": "src/scheduler.js"
   };
+  const fallback = flowSources[specifier];
+  if (!fallback) {
+    return null;
+  }
 
-  return flowSources[specifier];
+  const packageSource = normalize(join("node_modules", "@async", "flow", fallback)).replaceAll("\\", "/");
+  if (existsSync(join(root, packageSource))) {
+    return packageSource;
+  }
+
+  try {
+    return normalize(relative(root, require.resolve(specifier))).replaceAll("\\", "/");
+  } catch {
+    const localSource = normalize(join("..", "flow", fallback)).replaceAll("\\", "/");
+    return existsSync(join(root, localSource)) ? localSource : null;
+  }
 }
 
 function externalVariable(specifier) {

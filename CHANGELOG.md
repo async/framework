@@ -11,7 +11,7 @@
 - Migration note: code that intentionally used nested fallback hooks to mutate
   the ancestor mount root should move that behavior to the ancestor component or
   bind a specific element with `on:attach`.
-- Bundle size from bundled TypeScript source: `browser.ts` raw 326,961 B (327.0 KB / 0.327 MB), gzip 61,366 B (61.4 KB / 0.061 MB), br 50,134 B (50.1 KB / 0.050 MB) -> `browser.min.js` raw 138,254 B (138.3 KB / 0.138 MB), gzip 40,338 B (40.3 KB / 0.040 MB), br 35,040 B (35.0 KB / 0.035 MB); delta raw -188,707 B (-188.7 KB / -0.189 MB), gzip -21,028 B (-21.0 KB / -0.021 MB), br -15,094 B (-15.1 KB / -0.015 MB).
+- Bundle size from bundled TypeScript source: `browser.ts` raw 318,101 B (318.1 KB / 0.318 MB), gzip 60,118 B (60.1 KB / 0.060 MB), br 49,063 B (49.1 KB / 0.049 MB) -> `browser.min.js` raw 134,700 B (134.7 KB / 0.135 MB), gzip 39,509 B (39.5 KB / 0.040 MB), br 34,383 B (34.4 KB / 0.034 MB); delta raw -183,401 B (-183.4 KB / -0.183 MB), gzip -20,609 B (-20.6 KB / -0.021 MB), br -14,680 B (-14.7 KB / -0.015 MB).
 
 ## 0.11.29 - 2026-06-21
 

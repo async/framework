@@ -13,6 +13,7 @@ import {
   defineApp,
   delay,
   flow,
+  flowComputed,
   signal
 } from "../src/index.js";
 
@@ -28,9 +29,9 @@ test("app.use(\"flow\", entries) mounts Flow signals and handlers into normal re
   const cart = flow({
     store: {
       items: signal([]),
-      get count() {
-        return this.items.length;
-      }
+      count: flowComputed({ arguments: (store) => [store.items] }, function countItems(items) {
+        return items.length;
+      })
     },
     on: {
       add(store, input) {
@@ -77,9 +78,9 @@ test("Async.use module shape and framework writes bridge to writable Flow refs",
       cart: flow({
         store: {
           items: [],
-          get count() {
-            return this.items.length;
-          }
+          count: flowComputed({ arguments: (store) => [store.items] }, function countItems(items) {
+            return items.length;
+          })
         }
       })
     }
@@ -140,9 +141,9 @@ test("snapshot restore writes Flow writable refs and recomputes computed refs", 
       cart: flow({
         store: {
           items: [],
-          get count() {
-            return this.items.length;
-          }
+          count: flowComputed({ arguments: (store) => [store.items] }, function countItems(items) {
+            return items.length;
+          })
         }
       })
     }
