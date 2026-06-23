@@ -116,6 +116,10 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       return observeIntersection(target, fn, options);
     },
 
+    _resolveFragmentTarget(target, marker) {
+      return resolveFragmentTarget(target, marker);
+    },
+
     _registerBinding(value) {
       const id = `${inlineBindingPrefix}${++inlineBindingCounter}`;
       inlineBindings.set(id, value);
@@ -719,6 +723,92 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       boundingClientRect: rect,
       intersectionRect: rect
     };
+  }
+
+  function resolveFragmentTarget(target, marker) {
+    if (!target || typeof marker !== "string" || marker.length === 0) {
+      return target;
+    }
+    const bounds = findFragmentBounds(target, marker);
+    if (!bounds || bounds.start.parentNode !== bounds.end.parentNode) {
+      return target;
+    }
+    return singleElementRootBetween(bounds.start, bounds.end)
+      ?? containingElementFor(bounds.start)
+      ?? target;
+  }
+
+  function findFragmentBounds(target, marker) {
+    const startData = `async:${marker}:start`;
+    const endData = `async:${marker}:end`;
+    let start = null;
+    const comments = commentNodesIn(target);
+    for (const comment of comments) {
+      if (!start) {
+        if (comment.data === startData) {
+          start = comment;
+        }
+        continue;
+      }
+      if (comment.data === endData) {
+        return { start, end: comment };
+      }
+    }
+    return null;
+  }
+
+  function commentNodesIn(target) {
+    const comments = [];
+    if (target.nodeType === 8) {
+      comments.push(target);
+    }
+    const walker = documentRef.createTreeWalker?.(target, 128);
+    if (walker) {
+      let current = walker.nextNode();
+      while (current) {
+        comments.push(current);
+        current = walker.nextNode();
+      }
+      return comments;
+    }
+    collectCommentNodes(target, comments);
+    return comments;
+  }
+
+  function collectCommentNodes(node, comments) {
+    for (const child of node.childNodes ?? []) {
+      if (child.nodeType === 8) {
+        comments.push(child);
+      }
+      collectCommentNodes(child, comments);
+    }
+  }
+
+  function singleElementRootBetween(start, end) {
+    let root = null;
+    for (let node = start.nextSibling; node && node !== end; node = node.nextSibling) {
+      if (node.nodeType === 1) {
+        if (root) {
+          return null;
+        }
+        root = node;
+        continue;
+      }
+      if (node.nodeType === 3 && node.textContent.trim().length > 0) {
+        return null;
+      }
+      if (node.nodeType !== 3 && node.nodeType !== 8) {
+        return null;
+      }
+    }
+    return root;
+  }
+
+  function containingElementFor(node) {
+    if (node.parentElement) {
+      return node.parentElement;
+    }
+    return node.parentNode?.nodeType === 1 ? node.parentNode : null;
   }
 
   function isElement(value, ownerWindow = globalThis) {

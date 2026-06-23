@@ -106,7 +106,9 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
     throw new TypeError("renderComponent(Component) requires a component function.");
   }
 
-  const scope = `${parentScope}.${componentName(Component)}.${++componentCounter}`;
+  const instanceId = ++componentCounter;
+  const scope = `${parentScope}.${componentName(Component)}.${instanceId}`;
+  const lifecycleMarker = `component:${instanceId}`;
   const cleanups = [];
   const attachHooks = [];
   const visibleHooks = [];
@@ -146,6 +148,22 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
 
   return {
     html,
+    lifecycleMarker,
+    get hasAttachHooks() {
+      return attachHooks.length > 0;
+    },
+    get hasVisibleHooks() {
+      return visibleHooks.length > 0;
+    },
+    get hasIntersectionHooks() {
+      return intersectionHooks.length > 0;
+    },
+    get hasLifecycleHooks() {
+      return attachHooks.length > 0 || visibleHooks.length > 0 || intersectionHooks.length > 0;
+    },
+    scopedHtml() {
+      return `<!--async:${lifecycleMarker}:start-->${html}<!--async:${lifecycleMarker}:end-->`;
+    },
     attach(target) {
       for (let index = 0; index < attachHooks.length; index += 1) {
         const hook = attachHooks[index];
@@ -311,10 +329,22 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
     render(Child, childProps = {}, childrenInput) {
       const child = renderComponent(Child, normalizeRenderProps(childProps, childrenInput), runtime, scope);
       cleanups.push(child.cleanup);
-      attachHooks.push((target) => child.attach(target));
-      visibleHooks.push((target) => child.visible(target, loader._observeVisible));
-      intersectionHooks.push((target) => child.intersection(target, loader._observeIntersection));
-      return rawHtml(child.html);
+      const childTarget = (target) => {
+        if (!child.hasLifecycleHooks) {
+          return target;
+        }
+        return loader?._resolveFragmentTarget?.(target, child.lifecycleMarker) ?? target;
+      };
+      if (child.hasAttachHooks) {
+        attachHooks.push((target) => child.attach(childTarget(target)));
+      }
+      if (child.hasVisibleHooks) {
+        attachHooks.push((target) => child.visible(childTarget(target), loader._observeVisible));
+      }
+      if (child.hasIntersectionHooks) {
+        intersectionHooks.push((target) => child.intersection(childTarget(target), loader._observeIntersection));
+      }
+      return rawHtml(child.hasLifecycleHooks ? child.scopedHtml() : child.html);
     },
 
     slot(Child, propsOrFn = {}) {

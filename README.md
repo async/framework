@@ -1255,6 +1255,13 @@ Component-scoped signals and handlers are unregistered when the mounted
 fragment is destroyed. `loader.swap(...)` cleans up old DOM bindings and mounted
 component fragments under the swapped boundary before inserting the new HTML.
 
+Lifecycle fallbacks are scoped to the component fragment that registered them.
+A component mounted directly with `loader.mount(target, Component)` receives the
+mount target. A child rendered through `this.render(Child)` receives its own
+single element root when one exists. If the child returns text or multiple root
+nodes, the fallback target is the nearest containing element. `this.onVisible`
+and `this.on("intersect", ...)` observe the same scoped target.
+
 Put component lifecycle on the component root element when there is one:
 
 ```js

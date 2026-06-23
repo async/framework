@@ -57,6 +57,14 @@ closed-over values, single-consumption by default, escaped as text for strings,
 and cleaned up with the consuming component fragment. Supplying both
 `props.children` and the third `this.render(...)` argument is invalid.
 
+Lifecycle fallback hooks are scoped to the component fragment that registered
+them. A component mounted directly with `loader.mount(target, Component)`
+receives the mount target. A child rendered through `this.render(Child)`
+receives its own single element root when one exists. If the child returns text
+or multiple root nodes, the fallback target is the nearest containing element.
+`this.onVisible(...)` and `this.on("intersect", ...)` observe the same scoped
+target.
+
 ## Subsystem Boundaries
 
 - Components create scoped declarations; registries own their storage and

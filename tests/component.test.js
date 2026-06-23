@@ -148,6 +148,22 @@ function installMockIntersectionObserver(window) {
   return observers;
 }
 
+function targetLabel(target) {
+  if (!target) {
+    return "none";
+  }
+  if (target.matches?.("[data-page-root]")) {
+    return "page";
+  }
+  if (target.matches?.("[data-child-root]")) {
+    return "child";
+  }
+  if (target.matches?.("[data-grandchild-root]")) {
+    return "grandchild";
+  }
+  return target.id || target.tagName.toLowerCase();
+}
+
 test("component this.on supports rootless fragment lifecycle fallback", async () => {
   const window = new Window();
   const { document } = window;
@@ -574,6 +590,226 @@ test("component child render attach hooks do not dedupe each other", async () =>
 
   assert.deepEqual(events, ["child", "child"]);
   loader.destroy();
+});
+
+test("nested component onMount targets the child render root", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+
+  let mountedTarget;
+  const Child = component(function Child() {
+    this.onMount((target) => {
+      mountedTarget = target;
+      target.classList.add("child-mounted-on");
+    });
+    return html`<div data-child-root>child</div>`;
+  });
+
+  const Parent = component(function Parent() {
+    return html`
+      <section data-parent-root>
+        ${this.render(Child)}
+      </section>
+    `;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  try {
+    const app = document.querySelector("#app");
+    loader.mount(app, Parent);
+    await scheduler.flush();
+
+    const childRoot = document.querySelector("[data-child-root]");
+    assert.equal(targetLabel(mountedTarget), "child");
+    assert.equal(childRoot.classList.contains("child-mounted-on"), true);
+    assert.equal(app.classList.contains("child-mounted-on"), false);
+  } finally {
+    loader.destroy();
+  }
+});
+
+test("deeply nested render lifecycle hooks resolve each component root", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+
+  const Grandchild = component(function Grandchild() {
+    this.onMount((target) => {
+      events.push(targetLabel(target));
+    });
+    return html`<em data-grandchild-root>grandchild</em>`;
+  });
+
+  const Child = component(function Child() {
+    this.onMount((target) => {
+      events.push(targetLabel(target));
+    });
+    return html`
+      <section data-child-root>
+        ${this.render(Grandchild)}
+      </section>
+    `;
+  });
+
+  const Page = component(function Page() {
+    this.onMount((target) => {
+      events.push(targetLabel(target));
+    });
+    return html`
+      <article data-page-root>
+        ${this.render(Child)}
+      </article>
+    `;
+  });
+
+  const App = component(function App() {
+    return html`<div data-app-root>${this.render(Page)}</div>`;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  try {
+    loader.mount(document.querySelector("#app"), App);
+    await scheduler.flush();
+
+    assert.deepEqual(events, ["page", "child", "grandchild"]);
+  } finally {
+    loader.destroy();
+  }
+});
+
+test("nested visible and intersect hooks observe the child render root", async () => {
+  const window = new Window();
+  const { document } = window;
+  const observers = installMockIntersectionObserver(window);
+  document.body.innerHTML = `<main id="app"></main>`;
+  const visibleTargets = [];
+  const intersectTargets = [];
+
+  const Child = component(function Child() {
+    this.onVisible((target) => {
+      visibleTargets.push(target);
+    });
+    this.on("intersect", { threshold: 0.5 }, (event) => {
+      intersectTargets.push(event.target);
+    });
+    return html`<section data-child-root>child</section>`;
+  });
+
+  const Parent = component(function Parent() {
+    return html`<article data-parent-root>${this.render(Child)}</article>`;
+  });
+
+  const loader = Loader({ root: document });
+  try {
+    loader.mount(document.querySelector("#app"), Parent);
+    await delay(0);
+
+    const childRoot = document.querySelector("[data-child-root]");
+    assert.equal(observers.length, 2);
+    assert.deepEqual(observers.map((observer) => targetLabel(observer.observed[0])), ["child", "child"]);
+
+    observers[0].trigger({ target: childRoot, isIntersecting: true, intersectionRatio: 1 });
+    observers[1].trigger({ target: childRoot, isIntersecting: true, intersectionRatio: 0.75 });
+    await delay(0);
+
+    assert.deepEqual(visibleTargets.map(targetLabel), ["child"]);
+    assert.deepEqual(intersectTargets.map(targetLabel), ["child"]);
+  } finally {
+    loader.destroy();
+  }
+});
+
+test("nested rootless and multi-root lifecycle hooks target the containing element", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+  const events = [];
+
+  const Rootless = component(function Rootless() {
+    this.onMount((target) => {
+      events.push(`rootless:${target.id}`);
+    });
+    return html`label <span data-rootless>rootless</span>`;
+  });
+
+  const MultiRoot = component(function MultiRoot() {
+    this.onMount((target) => {
+      events.push(`multi:${target.id}`);
+    });
+    return html`<span data-first>first</span><span data-second>second</span>`;
+  });
+
+  const Parent = component(function Parent() {
+    return html`
+      <section id="container">
+        ${this.render(Rootless)}
+        ${this.render(MultiRoot)}
+      </section>
+    `;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  try {
+    loader.mount(document.querySelector("#app"), Parent);
+    await scheduler.flush();
+
+    assert.deepEqual(events, ["rootless:container", "multi:container"]);
+  } finally {
+    loader.destroy();
+  }
+});
+
+test("nested onMount scroll wrappers do not mutate ancestor async boundaries", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const scheduler = createScheduler({ strategy: "manual" });
+
+  const HorizontalScrollChrome = component(function HorizontalScrollChrome({ children }) {
+    this.onMount((target) => {
+      const scroller = target?.lastElementChild;
+      const host = scroller?.parentElement;
+      const startFade = host?.children[0];
+      startFade?.classList.add("hidden", "opacity-0");
+    });
+
+    return html`
+      <div data-scroll-chrome>
+        <span data-scroll-fade="start"></span>
+        <div data-horizontal-scroll>${children}</div>
+      </div>
+    `;
+  });
+
+  const App = component(function App() {
+    return html`
+      <div async:boundary="app-shell">
+        <main>
+          ${this.render(HorizontalScrollChrome, {}, html`<p>rows</p>`)}
+        </main>
+      </div>
+    `;
+  });
+
+  const loader = Loader({ root: document, scheduler });
+  try {
+    loader.mount(document.querySelector("#app"), App);
+    await scheduler.flush();
+
+    const appShell = document.querySelector("[async\\:boundary='app-shell']");
+    const startFade = document.querySelector("[data-scroll-fade='start']");
+    assert.equal(appShell.classList.contains("hidden"), false);
+    assert.equal(appShell.classList.contains("opacity-0"), false);
+    assert.equal(startFade.classList.contains("hidden"), true);
+    assert.equal(startFade.classList.contains("opacity-0"), true);
+  } finally {
+    loader.destroy();
+  }
 });
 
 test("component render passes static children as a scoped fragment", () => {
