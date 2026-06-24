@@ -493,6 +493,14 @@ function createLoaderFacade() {
       return enqueue("swap", [boundaryId, fragmentOrTemplate, options]);
     },
 
+    defineRefreshPlan(plan) {
+      return enqueue("defineRefreshPlan", [plan]);
+    },
+
+    refresh(scope, updates, options) {
+      return enqueue("refresh", [scope, updates, options]);
+    },
+
     mount(target, Component, props) {
       return enqueue("mount", [target, Component, props]);
     },

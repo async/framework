@@ -47,12 +47,21 @@ until a later explicit scan.
 Config-first `loader.swap(...)` supports `type: "ifChanged"` to skip unchanged
 serialized HTML, `type: "many"` to apply multiple boundary updates before
 scanning, and `type: "bind"` to track signal reads made while rendering.
-`type: "many"` supports `scan: "once"` as a batched auto-scan mode. Protocol
-bindings inserted by a bound swap still update in place and do not become
-refresh dependencies unless the render function reads the signal itself.
+`type: "many"` supports `scan: "once"` as a batched auto-scan mode and
+`ifChanged: true` to skip per-boundary replacement when each entry's serialized
+HTML is unchanged. `type: "many"` updates may be plain HTML or per-entry objects
+with `{ html, strategy, attach }`. `type: "bind"` accepts an explicit `deps`
+array of signal paths so render-time reads do not expand refresh dependencies.
+`strategy: "morph"` accepts `attach: "preserve"` (default) or `attach: "rebind"`
+to control whether preserved `on:attach` nodes rerun attach handlers after morph.
+`loader.defineRefreshPlan(...)` maps logical refresh scopes to boundary groups,
+and `loader.refresh(scope)` applies a batched `many` swap with unchanged-aware
+defaults. Protocol bindings inserted by a bound swap still update in place and
+do not become refresh dependencies unless the render function reads the signal
+itself or the path is listed in `deps`.
 
-`Async.loader.scan(...)`, `Async.loader.swap(...)`, and
-`Async.loader.mount(...)` are promise-returning app-level facade methods. They
+`Async.loader.scan(...)`, `Async.loader.swap(...)`, `Async.loader.refresh(...)`,
+and `Async.loader.mount(...)` are promise-returning app-level facade methods. They
 queue until a concrete runtime loader exists, then delegate to the same
 synchronous loader operations.
 
@@ -96,6 +105,9 @@ DOM resume means existing HTML becomes live by scanning:
   unless the caller explicitly disables scanning.
 - Morph boundary swaps preserve matching nodes, clean removed or replaced
   scoped resources, and scan changed or inserted roots by default.
+- Preserved `on:attach` nodes skip re-attach unless the swap uses
+  `attach: "rebind"`. The loader warns in development when morph preserves an
+  `on:attach` node but removes listener-bearing descendants.
 - `async:component` mounts a registered component into an element during scan.
 - A direct child `<template async:children>` under an `async:component` host is
   captured as explicit source children before the component replaces the host

@@ -214,6 +214,52 @@ For high-frequency dashboard updates, bind or swap smaller nested boundaries
 for filters, timelines, details, and modals. Reserve a full shell swap for rare
 chrome-level changes.
 
+Hash SPAs with nested `async:boundary` regions can register refresh scopes once
+and batch same-tick updates:
+
+```js
+router.loader.defineRefreshPlan({
+  chrome: {
+    boundaries: ["app-chrome", "view-filters"],
+    render({ signals }) {
+      return {
+        "app-chrome": { html: renderChrome(signals), strategy: "morph" },
+        "view-filters": { html: renderFilters(signals), strategy: "morph" }
+      };
+    }
+  },
+  timeline: {
+    boundaries: ["view-timeline"],
+    render({ signals }) {
+      return {
+        "view-timeline": {
+          html: renderTimeline(signals),
+          strategy: "morph",
+          attach: "rebind"
+        }
+      };
+    }
+  },
+  content: {
+    boundaries: ["view-detail", "view-page"],
+    render({ signals }) {
+      return {
+        "view-detail": renderDetail(signals),
+        "view-page": renderPage(signals)
+      };
+    }
+  }
+});
+
+router.loader.refresh("timeline");
+router.loader.refresh("content");
+```
+
+Use `loader.swap({ type: "many", ifChanged: true, scan: "once", updates })`
+when a single event should refresh several boundaries but skip unchanged HTML
+snapshots. Use `loader.swap({ type: "bind", deps: [...] })` when only specific
+signal paths should trigger a bound region refresh.
+
 ## Hash Routing
 
 Static hosts can use hash routes so every route loads through one `index.html`.

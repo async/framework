@@ -888,6 +888,315 @@ test("boundary swap bind config does not treat inserted signal bindings as reren
   loader.destroy();
 });
 
+test("boundary swap many ifChanged skips unchanged boundaries", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="filters"></section>
+    <section async:boundary="timeline"></section>
+  `;
+
+  const events = [];
+  const signals = createSignalRegistry({
+    title: signal("Roadmap"),
+    count: signal(0)
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      attach({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push(`cleanup:${element.id}`);
+      }
+    })
+  }).start();
+
+  const renderTimeline = () => `<h2 id="timeline-title" on:attach="attach">${signals.get("title")}</h2>`;
+  const renderFilters = () => `<button id="filter">${signals.get("count")}</button>`;
+
+  loader.swap({
+    type: "many",
+    ifChanged: true,
+    updates: {
+      filters: renderFilters,
+      timeline: renderTimeline
+    },
+    scan: "once"
+  });
+  await delay(0);
+  const timelineTitle = document.querySelector("#timeline-title");
+  const filter = document.querySelector("#filter");
+  assert.deepEqual(events, ["attach:timeline-title"]);
+
+  loader.swap({
+    type: "many",
+    ifChanged: true,
+    updates: {
+      filters: renderFilters,
+      timeline: renderTimeline
+    },
+    scan: "once"
+  });
+  await delay(0);
+  assert.equal(document.querySelector("#timeline-title"), timelineTitle);
+  assert.equal(document.querySelector("#filter"), filter);
+  assert.deepEqual(events, ["attach:timeline-title"]);
+
+  signals.set("title", "Milestones");
+  loader.swap({
+    type: "many",
+    ifChanged: true,
+    updates: {
+      filters: renderFilters,
+      timeline: renderTimeline
+    },
+    scan: "once"
+  });
+  await delay(0);
+  assert.notEqual(document.querySelector("#timeline-title"), timelineTitle);
+  assert.equal(document.querySelector("#filter"), filter);
+  assert.equal(document.querySelector("#timeline-title").textContent, "Milestones");
+  assert.deepEqual(events, ["attach:timeline-title", "cleanup:timeline-title", "attach:timeline-title"]);
+
+  loader.destroy();
+});
+
+test("boundary swap many ifChanged all unchanged skips scan", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="timeline"></section>`;
+
+  const events = [];
+  const loader = Loader({
+    root: document.body,
+    handlers: createHandlerRegistry({
+      attach({ element }) {
+        events.push(`attach:${element.id}`);
+      }
+    })
+  }).start();
+
+  const htmlContent = `<div id="track" on:attach="attach">Track</div>`;
+  loader.swap({ type: "many", ifChanged: true, updates: { timeline: htmlContent }, scan: "once" });
+  await delay(0);
+  loader.swap({ type: "many", ifChanged: true, updates: { timeline: htmlContent }, scan: "once" });
+  await delay(0);
+
+  assert.deepEqual(events, ["attach:track"]);
+  loader.destroy();
+});
+
+test("defineRefreshPlan resolves scopes and refresh applies batched swaps", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="view-timeline"></section>
+    <section async:boundary="view-detail"></section>
+    <section async:boundary="app-chrome"></section>
+  `;
+
+  const signals = createSignalRegistry({
+    title: signal("Lake Powell"),
+    detail: signal("North")
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+
+  loader.defineRefreshPlan({
+    timeline: {
+      boundaries: ["view-timeline"],
+      render() {
+        return {
+          "view-timeline": `<h2 id="timeline-title">${signals.get("title")}</h2>`
+        };
+      }
+    },
+    chrome: ["app-chrome"]
+  });
+
+  const swapped = loader.refresh("timeline");
+  assert.equal(swapped.length, 1);
+  assert.equal(document.querySelector("#timeline-title").textContent, "Lake Powell");
+
+  signals.set("title", "Antelope");
+  loader.refresh("timeline");
+  assert.equal(document.querySelector("#timeline-title").textContent, "Antelope");
+
+  loader.refresh("chrome", {
+    "app-chrome": `<header id="chrome">Chrome</header>`
+  });
+  assert.equal(document.querySelector("#chrome").textContent, "Chrome");
+
+  assert.throws(
+    () => loader.refresh("missing"),
+    /Refresh scope "missing" was not defined/
+  );
+  assert.throws(
+    () => loader.refresh("chrome"),
+    /loader\.refresh\("chrome"\) requires updates when the scope plan has no render function/
+  );
+
+  loader.destroy();
+});
+
+test("boundary swap bind config respects explicit deps list", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="detail"></section>`;
+
+  const signals = createSignalRegistry({
+    "demoState.settings.rangeMode": signal("week"),
+    title: signal("Overview"),
+    count: signal(0)
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+  let renders = 0;
+
+  loader.swap({
+    type: "bind",
+    boundary: "detail",
+    deps: ["demoState.settings.rangeMode"],
+    render({ signals }) {
+      renders += 1;
+      return `<p id="detail">${signals.get("demoState.settings.rangeMode")}:${signals.get("title")}:${signals.get("count")}</p>`;
+    }
+  });
+
+  assert.equal(document.querySelector("#detail").textContent, "week:Overview:0");
+  assert.equal(renders, 1);
+
+  signals.set("title", "Changed");
+  await delay(0);
+  assert.equal(document.querySelector("#detail").textContent, "week:Overview:0");
+  assert.equal(renders, 1);
+
+  signals.set("demoState.settings.rangeMode", "month");
+  await delay(0);
+  assert.equal(document.querySelector("#detail").textContent, "month:Changed:0");
+  assert.equal(renders, 2);
+
+  loader.destroy();
+});
+
+test("boundary swap many config supports per-entry strategy", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="app-chrome">
+      <header id="shell-header">Chrome</header>
+      <aside id="old-filter">Old</aside>
+    </section>
+    <section async:boundary="view-timeline">
+      <h2 id="timeline-title">Old timeline</h2>
+    </section>
+  `;
+
+  const signals = createSignalRegistry({
+    title: signal("FY26")
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+
+  const header = document.querySelector("#shell-header");
+  loader.swap({
+    type: "many",
+    scan: "once",
+    updates: {
+      "app-chrome": {
+        html: `
+          <header id="shell-header">Chrome</header>
+          <main id="page"><h1 signal:text="title"></h1></main>
+        `,
+        strategy: "morph"
+      },
+      "view-timeline": {
+        html: `<h2 id="timeline-title">New timeline</h2>`,
+        strategy: "replace"
+      }
+    }
+  });
+
+  assert.equal(document.querySelector("#shell-header"), header);
+  assert.equal(document.querySelector("#old-filter"), null);
+  assert.equal(document.querySelector("h1").textContent, "FY26");
+  assert.notEqual(document.querySelector("#timeline-title").textContent, "Old timeline");
+  assert.equal(document.querySelector("#timeline-title").textContent, "New timeline");
+
+  loader.destroy();
+});
+
+test("boundary swap morph attach matrix preserves or rebinds attach handlers", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="timeline">
+      <div id="chrome" on:attach="trackChrome">
+        <button id="scroll" on:click="scroll">Scroll</button>
+        <aside id="popover" on:attach="trackPopover">Popover</aside>
+      </div>
+    </section>
+  `;
+
+  const events = [];
+  const signals = createSignalRegistry({
+    label: signal("A")
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      trackChrome({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push(`cleanup:${element.id}`);
+      },
+      trackPopover({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push(`cleanup:${element.id}`);
+      },
+      scroll() {
+        signals.set("label", "B");
+      }
+    })
+  }).start();
+  await delay(0);
+  assert.deepEqual(events, ["attach:chrome", "attach:popover"]);
+
+  loader.swap({
+    boundary: "timeline",
+    html: `
+      <div id="chrome" on:attach="trackChrome">
+        <button id="scroll" on:click="scroll">Scroll</button>
+        <p id="label" signal:text="label"></p>
+      </div>
+    `,
+    strategy: "morph",
+    attach: "preserve"
+  });
+  await delay(0);
+  assert.deepEqual(events, ["attach:chrome", "attach:popover", "cleanup:popover"]);
+
+  loader.swap({
+    boundary: "timeline",
+    html: `
+      <div id="chrome" on:attach="trackChrome">
+        <button id="scroll" on:click="scroll">Scroll</button>
+        <p id="label" signal:text="label">B</p>
+      </div>
+    `,
+    strategy: "morph",
+    attach: "rebind"
+  });
+  await delay(0);
+  assert.deepEqual(events, [
+    "attach:chrome",
+    "attach:popover",
+    "cleanup:popover",
+    "cleanup:chrome",
+    "attach:chrome"
+  ]);
+
+  loader.destroy();
+});
+
 test("boundary swap rejects invalid scan options", () => {
   const window = new Window();
   const { document } = window;

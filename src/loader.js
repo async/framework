@@ -23,6 +23,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   const intersectionBindings = new WeakMap();
   const boundaryState = new WeakMap();
   const swapSnapshots = new WeakMap();
+  const refreshPlans = new Map();
   const renderingBoundaries = new WeakSet();
   const componentBindings = new WeakSet();
   const inlineBindings = new Map();
@@ -66,6 +67,37 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       return boundary;
     },
 
+    defineRefreshPlan(plan) {
+      assertActive();
+      if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+        throw new TypeError("loader.defineRefreshPlan(plan) requires an object.");
+      }
+      for (const [scope, entry] of Object.entries(plan)) {
+        refreshPlans.set(scope, normalizeRefreshPlanEntry(scope, entry));
+      }
+      return api;
+    },
+
+    refresh(scope, updates, options = {}) {
+      assertActive();
+      const plan = refreshPlans.get(scope);
+      if (!plan) {
+        throw new Error(`Refresh scope "${scope}" was not defined.`);
+      }
+      let resolvedUpdates = updates;
+      if (resolvedUpdates == null) {
+        if (typeof plan.render !== "function") {
+          throw new TypeError(`loader.refresh("${scope}") requires updates when the scope plan has no render function.`);
+        }
+        resolvedUpdates = plan.render.call(api, boundaryRenderContext(scope, rootNode));
+      }
+      return applyManySwap(resolvedUpdates, {
+        ifChanged: options.ifChanged ?? plan.ifChanged,
+        scan: options.scan ?? plan.scan,
+        strategy: options.strategy
+      });
+    },
+
     mount(target, Component, props = {}) {
       assertActive();
       const rendered = renderComponent(Component, props, {
@@ -94,6 +126,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
         return;
       }
       destroyed = true;
+      refreshPlans.clear();
       markDestroyedScopes(rootNode);
       for (const cleanup of [...cleanups]) {
         runCleanup(cleanup);
@@ -184,23 +217,53 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   function applyManySwap(updates, options) {
     const swapOptions = normalizeSwapManyOptions(options);
     const results = [];
-    for (const [boundaryId, fragmentOrTemplate] of normalizeSwapManyEntries(updates)) {
+    for (const [boundaryId, entry] of normalizeSwapManyEntries(updates)) {
       const boundary = requireBoundary(boundaryId);
-      const snapshot = snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
-      const scanRoots = applyBoundarySwap(boundary, fragmentOrTemplate, {
+      const resolved = resolveManySwapEntry(entry, boundaryId, boundary);
+      const entryStrategy = resolved.strategy ?? swapOptions.strategy;
+      const entryAttach = resolved.attach ?? swapOptions.attach ?? "preserve";
+      if (swapOptions.ifChanged && resolved.snapshot != null && swapSnapshots.get(boundary) === resolved.snapshot) {
+        continue;
+      }
+      const scanRoots = applyBoundarySwap(boundary, resolved.fragmentOrTemplate, {
         ...swapOptions,
+        strategy: entryStrategy,
+        attach: entryAttach,
         scan: "none"
       }, {
-        snapshot
+        snapshot: resolved.snapshot
       });
       results.push({
         boundary,
-        strategy: swapOptions.strategy,
+        strategy: entryStrategy,
         scanRoots
       });
     }
-    scanSwapResults(results, swapOptions.scan === "once" ? "auto" : swapOptions.scan);
+    if (results.length > 0) {
+      scanSwapResults(results, swapOptions.scan === "once" ? "auto" : swapOptions.scan);
+    }
     return results.map((result) => result.boundary);
+  }
+
+  function resolveManySwapEntry(entry, boundaryId, boundary) {
+    let fragmentOrTemplate = entry;
+    let strategy;
+    let attach;
+    if (entry && typeof entry === "object" && !Array.isArray(entry) && Object.hasOwn(entry, "html")) {
+      fragmentOrTemplate = entry.html;
+      strategy = entry.strategy;
+      attach = entry.attach;
+    }
+    if (typeof fragmentOrTemplate === "function") {
+      fragmentOrTemplate = fragmentOrTemplate.call(api, boundaryRenderContext(boundaryId, boundary));
+    }
+    const snapshot = snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
+    return {
+      fragmentOrTemplate,
+      strategy,
+      attach,
+      snapshot
+    };
   }
 
   function bindSwapBoundary(boundaryId, renderFn, options) {
@@ -232,15 +295,24 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
         return;
       }
       cleanupDependencies();
-      const outcome = signalRegistry._collectDependencies(() => {
-        const fragmentOrTemplate = renderFn.call(api, boundaryRenderContext(boundaryId, boundary));
-        return {
-          fragmentOrTemplate,
-          snapshot: snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions())
-        };
-      });
-      dependencyCleanups = outcome.dependencies.map((dependency) => signalRegistry.subscribe(dependency, scheduleRun));
-      const { fragmentOrTemplate, snapshot } = outcome.value;
+      let fragmentOrTemplate;
+      let snapshot;
+      if (Array.isArray(options.deps)) {
+        validateBindDeps(options.deps);
+        fragmentOrTemplate = renderFn.call(api, boundaryRenderContext(boundaryId, boundary));
+        snapshot = snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
+        dependencyCleanups = options.deps.map((path) => signalRegistry.subscribe(path, scheduleRun));
+      } else {
+        const outcome = signalRegistry._collectDependencies(() => {
+          const rendered = renderFn.call(api, boundaryRenderContext(boundaryId, boundary));
+          return {
+            fragmentOrTemplate: rendered,
+            snapshot: snapshotSwapValue(rendered, documentRef, templateRenderOptions())
+          };
+        });
+        dependencyCleanups = outcome.dependencies.map((dependency) => signalRegistry.subscribe(dependency, scheduleRun));
+        ({ fragmentOrTemplate, snapshot } = outcome.value);
+      }
       if (snapshot != null && swapSnapshots.get(boundary) === snapshot) {
         return;
       }
@@ -259,8 +331,11 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     const snapshot = Object.hasOwn(metadata, "snapshot")
       ? metadata.snapshot
       : snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
+    const morphOptions = {
+      attach: swapOptions.attach ?? "preserve"
+    };
     const scanRoots = swapOptions.strategy === "morph"
-      ? morphChildren(boundary, toFragment(fragmentOrTemplate, documentRef, templateRenderOptions()))
+      ? morphChildren(boundary, toFragment(fragmentOrTemplate, documentRef, templateRenderOptions()), morphOptions)
       : replaceBoundaryChildren(boundary, fragmentOrTemplate);
     if (snapshot != null) {
       swapSnapshots.set(boundary, snapshot);
@@ -608,13 +683,28 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     return [];
   }
 
-  function morphChildren(boundary, fragment) {
+  function morphChildren(boundary, fragment, morphOptions = {}) {
+    const morphContext = {
+      attach: morphOptions.attach ?? "preserve",
+      preservedAttachRoot: null,
+      removedListenerNodes: false,
+      rebindRoots: null
+    };
     const scanRoots = new Set();
-    morphChildList(boundary, [...fragment.childNodes], scanRoots);
+    morphChildList(boundary, [...fragment.childNodes], scanRoots, morphContext);
+    if (morphContext.removedListenerNodes && morphContext.preservedAttachRoot) {
+      warnMorphAttachDescendantsRemoved();
+    }
+    if (morphContext.attach === "rebind" && morphContext.rebindRoots) {
+      for (const root of morphContext.rebindRoots) {
+        rebindAttachElement(root);
+        addScanRoot(scanRoots, root);
+      }
+    }
     return [...scanRoots].filter((node) => node.isConnected !== false);
   }
 
-  function morphChildList(parent, nextNodes, scanRoots) {
+  function morphChildList(parent, nextNodes, scanRoots, morphContext) {
     let current = parent.firstChild;
     const keyedChildren = collectKeyedChildren(parent);
     const used = new WeakSet();
@@ -627,7 +717,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
 
       const oldNode = keyed ?? current;
       if (oldNode && canMorphNode(oldNode, nextNode)) {
-        morphNode(oldNode, nextNode, scanRoots);
+        morphNode(oldNode, nextNode, scanRoots, morphContext);
         used.add(oldNode);
         current = oldNode.nextSibling;
         continue;
@@ -638,8 +728,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       if (current) {
         const removed = current;
         current = current.nextSibling;
-        cleanupNode(removed);
-        removed.remove();
+        removeMorphNode(removed, morphContext);
       } else {
         current = nextNode.nextSibling;
       }
@@ -648,12 +737,19 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     while (current) {
       const removed = current;
       current = current.nextSibling;
-      cleanupNode(removed);
-      removed.remove();
+      removeMorphNode(removed, morphContext);
     }
   }
 
-  function morphNode(current, next, scanRoots) {
+  function removeMorphNode(node, morphContext) {
+    if (morphContext?.preservedAttachRoot && nodeHadEventBindings(node)) {
+      morphContext.removedListenerNodes = true;
+    }
+    cleanupNode(node);
+    node.remove();
+  }
+
+  function morphNode(current, next, scanRoots, morphContext) {
     if (current.nodeType === 3 || current.nodeType === 8) {
       if (current.nodeValue !== next.nodeValue) {
         current.nodeValue = next.nodeValue;
@@ -673,7 +769,67 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       return;
     }
 
-    morphChildList(current, [...next.childNodes], scanRoots);
+    const hasAttach = elementHasAttachPseudo(current);
+    const previousAttachRoot = morphContext.preservedAttachRoot;
+    if (hasAttach) {
+      morphContext.preservedAttachRoot = current;
+    }
+    if (morphContext.attach === "rebind" && hasAttach) {
+      morphContext.rebindRoots ??= new Set();
+      morphContext.rebindRoots.add(current);
+    }
+
+    morphChildList(current, [...next.childNodes], scanRoots, morphContext);
+
+    morphContext.preservedAttachRoot = previousAttachRoot;
+  }
+
+  function elementHasAttachPseudo(element) {
+    return readPseudoRefs(element, ["attach", "mount"]).length > 0;
+  }
+
+  function nodeHadEventBindings(node) {
+    if (node?.nodeType !== 1) {
+      return false;
+    }
+    if (eventBindings.has(node) && eventBindings.get(node).size > 0) {
+      return true;
+    }
+    for (const element of elementsIn(node)) {
+      if (eventBindings.has(element) && eventBindings.get(element).size > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function rebindAttachElement(element) {
+    if (!elementHasAttachPseudo(element)) {
+      return;
+    }
+    runScopedCleanups(element, "self");
+    mountedElements.delete(element);
+  }
+
+  let morphAttachDescendantsWarned = false;
+
+  function warnMorphAttachDescendantsRemoved() {
+    if (morphAttachDescendantsWarned) {
+      return;
+    }
+    morphAttachDescendantsWarned = true;
+    console.warn?.("[async/loader] morph preserved on:attach node but removed listener-bearing descendants; listeners on removed nodes were cleaned up.");
+  }
+
+  function validateBindDeps(deps) {
+    if (!Array.isArray(deps) || deps.length === 0) {
+      throw new TypeError('loader.swap({ type: "bind", deps }) requires a non-empty array of signal paths.');
+    }
+    for (const path of deps) {
+      if (typeof path !== "string" || path.length === 0) {
+        throw new TypeError('loader.swap({ type: "bind", deps }) entries must be non-empty signal path strings.');
+      }
+    }
   }
 
   function syncElementAttributes(current, next) {
@@ -1582,6 +1738,16 @@ function serializeNode(node) {
   return null;
 }
 
+function normalizeSwapAttach(value) {
+  if (value == null) {
+    return "preserve";
+  }
+  if (value !== "preserve" && value !== "rebind") {
+    throw new TypeError('Loader swap attach option must be "preserve" or "rebind".');
+  }
+  return value;
+}
+
 function normalizeSwapOptions(options = {}) {
   const normalized = options ?? {};
   if (typeof normalized !== "object" || Array.isArray(normalized)) {
@@ -1597,7 +1763,8 @@ function normalizeSwapOptions(options = {}) {
   }
   return {
     scan,
-    strategy
+    strategy,
+    attach: normalizeSwapAttach(normalized.attach)
   };
 }
 
@@ -1616,8 +1783,41 @@ function normalizeSwapManyOptions(options = {}) {
   }
   return {
     scan,
-    strategy
+    strategy,
+    ifChanged: Boolean(normalized.ifChanged),
+    attach: normalizeSwapAttach(normalized.attach)
   };
+}
+
+function normalizeRefreshPlanEntry(scope, entry) {
+  if (Array.isArray(entry)) {
+    return {
+      boundaries: entry,
+      render: null,
+      ifChanged: true,
+      scan: "once"
+    };
+  }
+  if (entry && typeof entry === "object") {
+    const boundaries = entry.boundaries;
+    if (!Array.isArray(boundaries) || boundaries.length === 0) {
+      throw new TypeError(`loader.defineRefreshPlan({ ${scope} }) requires a non-empty boundaries array.`);
+    }
+    if (entry.render != null && typeof entry.render !== "function") {
+      throw new TypeError(`loader.defineRefreshPlan({ ${scope}.render }) requires a function.`);
+    }
+    const scan = entry.scan ?? "once";
+    if (scan !== "auto" && scan !== "full" && scan !== "none" && scan !== "once") {
+      throw new TypeError(`loader.defineRefreshPlan({ ${scope}.scan }) must be "auto", "full", "none", or "once".`);
+    }
+    return {
+      boundaries: boundaries,
+      render: entry.render ?? null,
+      ifChanged: entry.ifChanged ?? true,
+      scan
+    };
+  }
+  throw new TypeError(`loader.defineRefreshPlan({ ${scope} }) must be a boundary array or plan object.`);
 }
 
 function normalizeSwapManyEntries(updates) {

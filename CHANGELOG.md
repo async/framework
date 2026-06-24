@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Added `loader.swap({ type: "many", ifChanged: true })` to skip unchanged
+  per-boundary replacement inside batched swaps.
+- Added `loader.defineRefreshPlan(...)` and `loader.refresh(scope)` for
+  declarative scope-to-boundary refresh orchestration in signal-router SPAs.
+- Added `loader.swap({ type: "bind", deps: [...] })` for explicit signal-path
+  refresh dependencies instead of implicit render-time collection.
+- Added per-entry `{ html, strategy, attach }` objects in `type: "many"`
+  updates for mixed morph/replace batches.
+- Added morph `attach: "preserve"` (default) and `attach: "rebind"` options,
+  plus a development warning when morph preserves an `on:attach` node but removes
+  listener-bearing descendants.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 356,171 B (356.2 KB / 0.356 MB), gzip 66,646 B (66.6 KB / 0.067 MB), br 54,356 B (54.4 KB / 0.054 MB) -> `browser.min.js` raw 149,871 B (149.9 KB / 0.150 MB), gzip 43,590 B (43.6 KB / 0.044 MB), br 37,839 B (37.8 KB / 0.038 MB); delta raw -206,300 B (-206.3 KB / -0.206 MB), gzip -23,056 B (-23.1 KB / -0.023 MB), br -16,517 B (-16.5 KB / -0.017 MB).
+
 ## 0.12.3 - 2026-06-24
 
 - Treat route partials that return `status: 204`, no `html` key, bare `null`,

@@ -1462,6 +1462,7 @@ Use config-first `swap(...)` for the advanced variants:
 loader.swap({ boundary: "view", html });
 loader.swap({ type: "ifChanged", boundary: "view", html: renderView });
 loader.swap({ type: "many", updates: { filters, timeline }, scan: "once" });
+loader.swap({ type: "many", ifChanged: true, updates, scan: "once" });
 ```
 
 `type: "ifChanged"` skips cleanup, DOM replacement, and rescanning when the
@@ -1471,18 +1472,42 @@ server, router, cache, scheduler }`.
 
 `type: "many"` applies several boundary replacements before activation.
 `updates` can be an object, `Map`, or iterable of `[boundaryId, html]` entries.
-`scan: "once"` defers scanning until every update has been inserted, which
+Each entry may also be `{ html, strategy, attach }` for per-boundary morph or
+attach behavior. Pass `ifChanged: true` to skip unchanged entries inside the
+batch. `scan: "once"` defers scanning until every update has been inserted, which
 avoids interleaving cleanup/scan work across multiple same-tick refreshes.
+
+Use `loader.defineRefreshPlan(...)` and `loader.refresh(scope)` for declarative
+scope-to-boundary orchestration in signal-router dashboards:
+
+```js
+loader.defineRefreshPlan({
+  timeline: {
+    boundaries: ["view-timeline"],
+    render({ signals }) {
+      return {
+        "view-timeline": { html: buildTimeline(signals), strategy: "morph" }
+      };
+    }
+  },
+  chrome: ["app-chrome", "view-filters"]
+});
+
+loader.refresh("timeline");
+loader.refresh("chrome", { "app-chrome": chromeHtml, "view-filters": filtersHtml });
+```
 
 Use `type: "bind"` when local signal state owns a large region. The render
 function runs once, tracks signal reads made while rendering, and schedules one
-unchanged-aware refresh for same-tick signal changes. It returns a cleanup
-function.
+unchanged-aware refresh for same-tick signal changes. Pass `deps: [...]` to
+subscribe only to explicit signal paths instead of every read inside `render`.
+It returns a cleanup function.
 
 ```js
 const stopTimeline = loader.swap({
   type: "bind",
   boundary: "view-timeline",
+  deps: ["demoState.settings.rangeMode"],
   render({ signals }) {
     const view = buildTimelineView(signals.get("timeline.filters"));
     return html`<section>${view.items.map(renderTimelineItem)}</section>`;
@@ -1497,6 +1522,13 @@ The `strategy` option controls how the boundary changes:
 | --- | --- |
 | `replace` | Default. Clean up all existing children, replace them, and activate the inserted subtree. |
 | `morph` | Reconcile matching children by tag and stable identity, preserving unchanged nodes and cleaning up removed or replaced nodes. |
+
+The `attach` option applies to morph swaps:
+
+| Option | Behavior |
+| --- | --- |
+| `preserve` | Default. Preserved `on:attach` nodes keep their attach handlers across morph. |
+| `rebind` | Preserved `on:attach` nodes rerun attach handlers after morph. |
 
 Morph matching uses `async:key`, `data-key`, or `id` when present. Without a
 stable identity it falls back to sibling order and tag name.
