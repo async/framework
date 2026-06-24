@@ -166,7 +166,7 @@ async function resolveHandler(id, handlers, options) {
     return descriptor;
   }
   assertStrictDescriptor(id, descriptor);
-  const importModule = options.importModule ?? ((specifier) => import(specifier));
+  const importModule = options.importModule ?? ((specifier) => import(/* @vite-ignore */ specifier));
   if (!options.moduleCache.has(descriptor.browserImport)) {
     options.moduleCache.set(descriptor.browserImport, importModule(descriptor.browserImport));
   }

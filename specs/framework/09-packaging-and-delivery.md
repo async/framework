@@ -34,6 +34,10 @@ Package surfaces include:
 - `@async/framework/jsx` for the current build-required JSX authoring helpers.
 - `@async/framework/vite` for the current Vite 8+ with Rolldown build-required
   plugin.
+- The Vite entry can also compose a Hono-backed dev server when
+  `asyncFramework({ server })` is enabled. Hono remains app-owned and optional;
+  production hosts such as Vercel run the app's default Hono export instead of
+  a framework-owned server target.
 - `@async/framework/runtime` and `@async/framework/runtime/*` for optimized
   built-mode runtime slices defined by
   [11-runtime-slice-entrypoints.md](./11-runtime-slice-entrypoints.md).
@@ -68,6 +72,9 @@ Delivery must preserve the protocol:
 - Build-required examples should demonstrate Vite setup through the public
   `./vite`, `./jsx`, and runtime slice subpaths without requiring the no-build
   `Async` global once source-derived profile generation is available.
+- Hono dev-server composition must keep client-side reload behavior local to
+  Vite development and must not introduce server streaming, SSR, or implicit
+  browser fetch transport.
 - Future no-bundler delivery must still preserve explicit protocol records,
   module identity, and cache ownership instead of hiding code loading behind an
   opaque app bundle.

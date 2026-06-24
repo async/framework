@@ -32,6 +32,18 @@
   "license": "MIT",
   "unpkg": "./browser.umd.min.js",
   "jsdelivr": "./browser.umd.min.js",
+  "peerDependencies": {
+    "@hono/vite-dev-server": ">=0.26.0",
+    "hono": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "@hono/vite-dev-server": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
+  },
   "exports": {
     ".": {
       "browser": {

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Async Vite JSX Streaming</title>
+  </head>
+  <body>
+    <main data-async-id="dashboard">
+      <h1>JSX Streaming Plan</h1>
+      <button type="button" data-async-id="increment">Select sample</button>
+      <strong data-async-id="count">0</strong>
+      <section data-async-id="profile" async:boundary="profile">
+        <p>Profile fallback</p>
+      </section>
+      <section data-async-id="timeline" async:boundary="timeline">
+        <p>Timeline fallback</p>
+      </section>
+      <pre data-async-id="optimizer-report"></pre>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

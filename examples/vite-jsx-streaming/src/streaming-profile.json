@@ -1,0 +1,147 @@
+{
+  "mode": "development",
+  "sourceInventory": {
+    "entries": [
+      {
+        "id": "src/Dashboard.jsx",
+        "target": "browser",
+        "imports": ["@async/framework/jsx"]
+      }
+    ],
+    "frameworkImports": [
+      {
+        "sourceId": "src/Dashboard.jsx",
+        "module": "@async/framework/jsx",
+        "names": ["component", "signal", "Suspense", "Reveal"],
+        "supported": true
+      }
+    ],
+    "jsxModules": [
+      {
+        "id": "src/Dashboard.jsx"
+      }
+    ],
+    "serverModules": [
+      {
+        "id": "src/server/profile.js"
+      }
+    ],
+    "config": {
+      "host": {
+        "name": "vite",
+        "version": "8.0.0",
+        "engine": "rolldown"
+      }
+    }
+  },
+  "semanticGraph": {
+    "components": [
+      {
+        "id": "Dashboard",
+        "locators": [
+          "[data-async-id='dashboard']",
+          "[data-async-id='increment']",
+          "[data-async-id='count']",
+          "[data-async-id='profile']",
+          "[data-async-id='timeline']"
+        ]
+      }
+    ],
+    "signals": [
+      {
+        "sourceId": "count",
+        "sourceShape": "value",
+        "initialValue": 0,
+        "owner": "app"
+      },
+      {
+        "sourceId": "profile",
+        "sourceShape": "async-function",
+        "reads": ["profileId"],
+        "owner": "shared-module",
+        "latest": true,
+        "pending": true,
+        "error": true,
+        "stream": "default"
+      },
+      {
+        "sourceId": "timeline",
+        "sourceShape": "async-function",
+        "reads": ["profileId"],
+        "owner": "shared-module",
+        "latest": true,
+        "pending": true,
+        "error": true,
+        "stream": "default"
+      }
+    ],
+    "eventProps": [
+      {
+        "eventId": "click:sample",
+        "elementId": "[data-async-id='increment']",
+        "propName": "onClick",
+        "handler": "selectSample",
+        "commands": [
+          ["setSignal", "count", ["constant", 1]]
+        ],
+        "emissionMode": "inline"
+      }
+    ],
+    "suspense": [
+      {
+        "boundaryId": "profile",
+        "sourceOrder": 0,
+        "fallbackId": "profile:fallback",
+        "finalId": "profile:content",
+        "asyncSourceIds": ["profile"]
+      },
+      {
+        "boundaryId": "timeline",
+        "sourceOrder": 1,
+        "fallbackId": "timeline:fallback",
+        "finalId": "timeline:content",
+        "asyncSourceIds": ["timeline"]
+      }
+    ],
+    "revealPolicies": [
+      {
+        "groupId": "dashboard:reveal",
+        "order": "forwards",
+        "tail": "collapsed",
+        "boundaryIds": ["profile", "timeline"],
+        "arrivalOrder": ["timeline", "profile"]
+      }
+    ],
+    "serverCalls": [],
+    "routes": [],
+    "locators": [
+      "[data-async-id='dashboard']",
+      "[data-async-id='increment']",
+      "[data-async-id='count']",
+      "[data-async-id='profile']",
+      "[data-async-id='timeline']"
+    ]
+  },
+  "runtimePlan": {
+    "version": 1,
+    "elements": [
+      "[data-async-id='dashboard']",
+      "[data-async-id='increment']",
+      "[data-async-id='count']",
+      "[data-async-id='profile']",
+      "[data-async-id='timeline']"
+    ],
+    "signals": {
+      "version": 1,
+      "values": [["count", 0]],
+      "bindings": [[2, "text", "count"]]
+    },
+    "events": {
+      "version": 1,
+      "events": [
+        [1, "click", [["setSignal", "count", ["constant", 1]]]]
+      ],
+      "handlers": {}
+    }
+  }
+}

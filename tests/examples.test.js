@@ -4,12 +4,16 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { Window } from "happy-dom";
+import { createBuildProfileReport } from "../src/build-profile.js";
 import { delay } from "../src/index.js";
+import { asyncFramework } from "../src/vite.js";
+import streamingProfile from "../examples/vite-jsx-streaming/src/streaming-profile.json" with { type: "json" };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const examplesRoot = resolve(root, "examples");
 const staticExamples = ["counter", "product", "components", "streaming", "server-call", "router", "partials", "cache", "ssr"];
-const topLevelExamples = [...staticExamples, "size"];
+const viteExamples = ["vite-hono", "vite-jsx-streaming"];
+const topLevelExamples = [...staticExamples, ...viteExamples, "size"];
 
 test("examples index links every top-level example directory", () => {
   const readme = readFileSync(resolve(examplesRoot, "README.md"), "utf8");
@@ -32,6 +36,56 @@ test("size scenario examples have README files", () => {
   for (const name of scenarios) {
     assert.equal(existsSync(resolve(sizeRoot, name, "README.md")), true, `${name} README missing`);
   }
+});
+
+test("Vite examples include package, config, and source entrypoints", () => {
+  for (const name of viteExamples) {
+    const dir = resolve(examplesRoot, name);
+    assert.equal(existsSync(resolve(dir, "README.md")), true, `${name} README missing`);
+    assert.equal(existsSync(resolve(dir, "package.json")), true, `${name} package missing`);
+    assert.equal(existsSync(resolve(dir, "vite.config.js")), true, `${name} config missing`);
+    assert.equal(existsSync(resolve(dir, "src")), true, `${name} source directory missing`);
+  }
+});
+
+test("Vite Hono example uses default server and client plugin setup", () => {
+  const config = readFileSync(resolve(examplesRoot, "vite-hono", "vite.config.js"), "utf8");
+  const server = readFileSync(resolve(examplesRoot, "vite-hono", "src", "server.js"), "utf8");
+  const client = readFileSync(resolve(examplesRoot, "vite-hono", "src", "client.js"), "utf8");
+
+  assert.match(config, /asyncFramework\(\{/);
+  assert.match(config, /layer:\s*1/);
+  assert.match(config, /server:\s*\{/);
+  assert.match(config, /entry:\s*"src\/server\.js"/);
+  assert.match(config, /client:\s*\{/);
+  assert.match(config, /outDir:\s*"public\/static"/);
+  assert.match(server, /export default app/);
+  assert.match(server, /new Hono\(\)/);
+  assert.match(server, /import\.meta\.env\?\.DEV/);
+  assert.match(client, /Async\.start\(\{ root: document, router: false \}\)/);
+});
+
+test("Vite JSX streaming example selects stream runtime through optimizer profile", () => {
+  const profile = createBuildProfileReport(streamingProfile);
+  const sourcePath = resolve(examplesRoot, "vite-jsx-streaming", "src", "Dashboard.jsx");
+  const jsxSource = readFileSync(sourcePath, "utf8");
+  const plugin = asyncFramework({
+    fixture: streamingProfile,
+    layer: 1.5
+  });
+  const transformed = plugin.transform(jsxSource, sourcePath);
+
+  assert.deepEqual(profile.report.runtime.slices.map((slice) => slice.name), [
+    "signals",
+    "events",
+    "async-signals",
+    "stream"
+  ]);
+  assert.equal(profile.report.stream.suspenseBoundaryCount, 2);
+  assert.equal(profile.report.stream.reveal.byOrder.forwards, 1);
+  assert.match(transformed.code, /startAsyncFramework/);
+  assert.match(transformed.code, /virtual:async-framework\/generated-plan/);
+  assert.doesNotMatch(transformed.code, /@async\/framework\/jsx/);
 });
 
 for (const name of staticExamples) {
