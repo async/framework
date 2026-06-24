@@ -103,16 +103,19 @@ pnpm run pipeline:github:check
 - For public API or export-map changes, update the relevant source exports,
   docs/specs, and tests together.
 - Cover root imports, `@async/framework/browser`, `@async/framework/server`,
-  generated declarations, browser/server bundle separation, and packed package
-  resolution when the public surface changes.
+  generated declarations, and browser/server bundle separation when the public
+  surface changes.
+- Do not run local package verification commands such as `pnpm run pack:check`,
+  `npm pack`, or local publish dry runs by default. Leave package verification
+  to the release workflow unless the user explicitly asks for a local package
+  check.
 - Keep browser bundles free of server-only registry internals and implicit
   global fetch behavior.
 
 ## Verification
 
 - Focused behavior check: `node --test tests/<area>.test.js`.
-- Runtime/package checks: `pnpm test`, `pnpm run bundle:check`, and
-  `pnpm run pack:check`.
+- Runtime checks: `pnpm test` and `pnpm run bundle:check`.
 - Registry/docs/workflow checks: `pnpm run registry:lint`,
   `pnpm run pipeline:pages`, and `pnpm run release:check`.
 - Documentation-only changes can use `git diff --check` when package behavior,
