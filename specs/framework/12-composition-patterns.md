@@ -1,19 +1,21 @@
 # Composition Patterns
 
-Async composition keeps ownership explicit. Default children, named regions,
-scoped templates, presenter components, local outlets, and boundaries solve
-different problems and should not collapse into one `children` escape hatch.
+Async composition keeps ownership explicit. Default children, component-valued
+props, slots, and boundaries solve different problems and should not collapse
+into one `children` escape hatch.
 
 ## Pattern Map
 
 | Pattern | Use When | Avoid When |
 | --- | --- | --- |
 | Default children | The caller supplies content and the callee places it once. | The callee must pass row, state, or option data into the content. |
-| Named regions | The caller fills fixed areas such as header, footer, actions, empty, or fallback. | The region needs callee-owned context values. |
-| Scoped content templates | The callee owns context values and the caller owns markup. | Static placement or a reusable component prop is clearer. |
-| Presenter component props | The caller chooses a reusable component that the callee renders with explicit props. | The callsite wants small inline markup. |
-| Dynamic outlets | A local child component changes after mount and old child cleanup must run. | The content is static mount-time projection. |
+| Component-valued props | The caller chooses reusable markup and the callee renders it with explicit props. | The callsite wants one-off static projection. |
+| Slots | A local child component changes after mount and old child cleanup must run. | The content is static mount-time projection. |
 | Partials and boundaries | Server, route, stream, or async work owns replacement. | Local component composition is enough. |
+
+Named regions, scoped templates, and source-level outlets are not current
+framework primitives. Current specs should keep those exact API shapes outside
+the current contract.
 
 ## Default Children
 
@@ -38,18 +40,7 @@ No-build component hosts can pass default children with an explicit template:
 </section>
 ```
 
-### L2
-
-Nested JSX children lowering is represented in optimizer artifacts. Full source
-emission is planned:
-
-```tsx
-<Card title="Status">
-  <p>Ready</p>
-</Card>
-```
-
-### Advanced OOS
+### L1.5
 
 Default children stream with the boundary that contains them. Give the content
 its own `async:boundary` only when it needs independent server, route, stream,
@@ -58,91 +49,11 @@ same-boundary patches stay sequence-ordered. Streamed HTML is rescanned after
 insertion, so `on:`, `signal:`, `class:`, `intersect:`, and component protocol
 attributes activate normally.
 
-## Named Regions
+## Component-Valued Props
 
-Named regions are fixed caller-owned fragments such as header, actions, empty,
-fallback, media, sidebar, or toolbar. Region helper APIs are planned.
-
-### L1
-
-Planned:
-
-```js
-this.render(
-  Card,
-  {
-    header: this.region(html`<h2>Status</h2>`),
-    actions: this.region(html`<button type="button">Retry</button>`)
-  },
-  html`<p>Ready</p>`
-);
-```
-
-### L2
-
-Planned:
-
-```tsx
-<Card>
-  <Card.Header>Status</Card.Header>
-  <p>Ready</p>
-  <Card.Actions>
-    <button type="button">Retry</button>
-  </Card.Actions>
-</Card>
-```
-
-### Advanced OOS
-
-A named region does not become an independent stream target by itself. It
-commits with the owning component unless the region content contains its own
-`async:boundary`. Separate region boundaries may commit independently; repeated
-patches for the same boundary remain sequence-ordered and are rescanned after
-HTML insertion.
-
-## Scoped Content Templates
-
-Scoped content templates handle caller-owned markup that needs callee-owned
-context, such as `{ row, index }` for a list. Template helper APIs are planned.
-
-### L1
-
-Planned:
-
-```js
-this.render(List, {
-  rows,
-  item: this.template(({ row, index }) => html`
-    <li>${index + 1}. ${row.label}</li>
-  `)
-});
-```
-
-### L2
-
-Planned:
-
-```tsx
-<List rows={rows}>
-  <List.Item let:row let:index>
-    <li>{index + 1}. {row.label}</li>
-  </List.Item>
-</List>
-```
-
-### Advanced OOS
-
-The template creates fragments; boundaries own out-of-order commit behavior. If
-rows can stream independently, each rendered row needs a stable
-`async:boundary`, such as `row:${row.id}`. Independent row boundaries may commit
-out of source order, same-row patches stay sequence-ordered, and inserted row
-HTML is rescanned for protocol attributes.
-
-## Presenter Component Props
-
-Presenter component props let the caller choose a component that the callee
-renders with explicit props. This is useful for reusable rows, icons, empty
-views, panels, or editors.
+Component-valued props let the caller choose a component that the callee renders
+with explicit props. This is useful for reusable rows, icons, empty views,
+panels, or editors.
 
 ### L1
 
@@ -160,15 +71,10 @@ const List = component(function List({ rows, Item }) {
 this.render(List, { rows, Item: ProductRow });
 ```
 
-### L2
+The callee owns when each child component is rendered. The caller owns the
+component implementation and receives explicit props from the callee.
 
-Component-valued prop source checks and lazy presenter policies are planned:
-
-```tsx
-<List rows={rows} Item={ProductRow} />
-```
-
-### Advanced OOS
+### L1.5
 
 The presenter prop chooses a component; it does not choose stream order. The
 callee can wrap presenter instances in `async:boundary` elements when each item
@@ -177,14 +83,14 @@ source order; patches for the same presenter boundary remain sequence-ordered.
 Boundary swaps clean removed scopes before inserted presenter HTML is rescanned
 for protocol attributes.
 
-## Dynamic Outlets And Boundaries
+## Slots And Boundaries
 
-Use outlets for local post-mount child replacement. Use partials and
+Use `this.slot(...)` for local post-mount child replacement. Use partials and
 boundaries when server, route, stream, or async work owns replacement.
 
 ### L1
 
-Released local outlet:
+Released local slot:
 
 ```js
 const pane = this.slot(activePane.value, () => ({ item: selected.value }));
@@ -198,18 +104,7 @@ Released boundary target:
 <section async:boundary="product"></section>
 ```
 
-### L2
-
-Outlet source syntax is planned. Boundary markup is protocol syntax:
-
-```tsx
-<>
-  <Outlet component={activePane} item={selected} />
-  <section async:boundary="product" />
-</>
-```
-
-### Advanced OOS
+### L1.5
 
 `this.slot(...)` is local replacement owned by the current component.
 `async:boundary` is the stream target. Boundary patches can apply signal,
@@ -224,13 +119,13 @@ execution channel.
 
 | Avoid | Use Instead |
 | --- | --- |
-| Function children | Scoped content templates |
-| Render prop callbacks | Scoped content templates |
-| Authored `children={...}` source props | Nested children or named regions |
-| Child inspection | Named regions or scoped templates |
-| Clone-style child mutation | Presenter component props |
-| Positional children arrays | Named regions |
-| Mixed outlet and children APIs | Outlets for replacement, children for projection |
+| Function children | Component-valued props. |
+| Render prop callbacks | Component-valued props with explicit props. |
+| Authored `children={...}` source props | Nested children or `<template async:children>`. |
+| Child inspection | Explicit props or component-valued props. |
+| Clone-style child mutation | Component-valued props. |
+| Positional children arrays | Explicit prop names. |
+| Mixed slot and children APIs | Slots for replacement, children for projection. |
 
 ### L1
 
@@ -242,34 +137,17 @@ this.render(List, {}, function children(row) {
 });
 ```
 
-Use a planned scoped template instead:
+Use an explicit component-valued prop instead:
 
 ```js
-this.render(List, {
-  rows,
-  item: this.template(({ row }) => html`<li>${row.label}</li>`)
+const Row = component(function Row({ row }) {
+  return html`<li>${row.label}</li>`;
 });
+
+this.render(List, { rows, Item: Row });
 ```
 
-### L2
-
-Avoid function children:
-
-```tsx
-<List>{(row) => <li>{row.label}</li>}</List>
-```
-
-Use planned scoped-template source:
-
-```tsx
-<List rows={rows}>
-  <List.Item let:row>
-    <li>{row.label}</li>
-  </List.Item>
-</List>
-```
-
-### Advanced OOS
+### L1.5
 
 Out-of-order streaming does not make ambiguous composition safer. Put
 `async:boundary` on the rendered content that needs independent patches, but
