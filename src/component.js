@@ -6,6 +6,7 @@ import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 const componentKind = Symbol.for("@async/framework.component");
 let componentCounter = 0;
 let defineComponentWarned = false;
+const lifecycleAliasWarnings = new Set();
 
 export function component(fn) {
   if (typeof fn !== "function") {
@@ -24,6 +25,15 @@ export function defineComponent(fn) {
     console.warn?.("defineComponent(...) is deprecated. Use component(...) instead.");
   }
   return component(fn);
+}
+
+function warnLifecycleAlias(alias, replacement) {
+  const key = `${alias}->${replacement}`;
+  if (lifecycleAliasWarnings.has(key)) {
+    return;
+  }
+  lifecycleAliasWarnings.add(key);
+  console.warn?.(`${alias} has been renamed to ${replacement}. The old name remains as a compatibility alias.`);
 }
 
 export function createComponentRegistry(initialMap = {}, options = {}) {
@@ -404,6 +414,9 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
         throw new TypeError("Component lifecycle event must be a non-empty string.");
       }
       const event = eventName === "mount" ? "attach" : eventName;
+      if (eventName === "mount") {
+        warnLifecycleAlias('this.on("mount", ...)', 'this.on("attach", ...)');
+      }
       if (event === "intersect") {
         const { options, fn } = normalizeOptionsCallback(`Component lifecycle "${eventName}"`, optionsOrFn, maybeFn);
         intersectionHooks.push((target) => {
@@ -430,8 +443,13 @@ function createComponentContext({ runtime, scope, cleanups, attachHooks, visible
       throw new Error(`Unsupported component lifecycle event "${eventName}".`);
     },
 
-    onMount(fn) {
+    onAttach(fn) {
       context.on("attach", fn);
+    },
+
+    onMount(fn) {
+      warnLifecycleAlias("this.onMount(...)", "this.onAttach(...)");
+      context.onAttach(fn);
     },
 
     onVisible(fn) {

@@ -87,9 +87,14 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
 
 export function normalizePartialResult(result, context = {}) {
   if (isPartialEnvelope(result)) {
+    const normalized = {
+      ...result
+    };
+    if (Object.hasOwn(result, "html") && result.html !== undefined) {
+      normalized.html = renderPartialValue(result.html, context);
+    }
     return {
-      ...result,
-      html: Object.hasOwn(result, "html") ? renderPartialValue(result.html, context) : result.html
+      ...normalized
     };
   }
 

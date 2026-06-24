@@ -365,28 +365,38 @@ test("Loader treats on:attach as the attach pseudo-event and on:mount as an alia
   `;
 
   const events = [];
-  const loader = Loader({
-    root: document.body,
-    handlers: createHandlerRegistry({
-      attach({ element }) {
-        events.push(`attach:${element.id}`);
-        return () => events.push("attach-cleanup");
-      },
-      mount({ element }) {
-        events.push(`mount:${element.id}`);
-        return () => events.push("mount-cleanup");
-      }
-    })
-  }).start();
-  await delay(0);
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    const loader = Loader({
+      root: document.body,
+      handlers: createHandlerRegistry({
+        attach({ element }) {
+          events.push(`attach:${element.id}`);
+          return () => events.push("attach-cleanup");
+        },
+        mount({ element }) {
+          events.push(`mount:${element.id}`);
+          return () => events.push("mount-cleanup");
+        }
+      })
+    }).start();
+    await delay(0);
 
-  loader.scan(document.body);
-  await delay(0);
+    loader.scan(document.body);
+    await delay(0);
 
-  assert.deepEqual(events, ["attach:attach", "mount:mount"]);
+    assert.deepEqual(events, ["attach:attach", "mount:mount"]);
+    assert.deepEqual(warnings, [
+      "on:mount has been renamed to on:attach. The old name remains as a compatibility alias."
+    ]);
 
-  loader.destroy();
-  assert.deepEqual(events, ["attach:attach", "mount:mount", "attach-cleanup", "mount-cleanup"]);
+    loader.destroy();
+    assert.deepEqual(events, ["attach:attach", "mount:mount", "attach-cleanup", "mount-cleanup"]);
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test("boundary swap rescans inserted HTML and scanned handlers still work", async () => {
@@ -428,6 +438,205 @@ test("boundary swap rescans inserted HTML and scanned handlers still work", asyn
   select.click();
   await delay(0);
   assert.equal(select.classList.contains("selected"), true);
+
+  loader.destroy();
+});
+
+test("boundary swap scan none leaves inserted protocol attributes inert until explicit scan", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+
+  const signals = createSignalRegistry({
+    title: signal("Keyboard"),
+    selected: signal(false)
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      select() {
+        this.signals.set("selected", true);
+      }
+    })
+  }).start();
+
+  loader.swap(
+    "product",
+    `<button id="select" on:click="select" signal:class:selected="selected" signal:text="title"></button>`,
+    { scan: "none" }
+  );
+
+  const select = document.querySelector("#select");
+  assert.equal(select.textContent, "");
+  select.click();
+  await delay(0);
+  assert.equal(signals.get("selected"), false);
+  assert.equal(select.classList.contains("selected"), false);
+
+  loader.scan(select);
+  assert.equal(select.textContent, "Keyboard");
+  select.click();
+  await delay(0);
+  assert.equal(signals.get("selected"), true);
+  assert.equal(select.classList.contains("selected"), true);
+
+  loader.destroy();
+});
+
+test("boundary swap scan full preserves boundary-scope rescan behavior", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+
+  const signals = createSignalRegistry({
+    title: signal("Keyboard")
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+
+  loader.swap("product", `<p id="title" signal:text="title"></p>`, { scan: "full" });
+
+  assert.equal(document.querySelector("#title").textContent, "Keyboard");
+  loader.destroy();
+});
+
+test("boundary swap morph preserves stable shell nodes and cleans removed nodes", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="app-shell">
+      <header id="shell-header">
+        <button id="nav" on:click="select">PBI</button>
+      </header>
+      <aside id="old-filter" on:attach="track">Filters</aside>
+      <main id="page"><h1>PBI</h1></main>
+    </section>
+  `;
+
+  const events = [];
+  const signals = createSignalRegistry({
+    selected: signal(false),
+    title: signal("FY26")
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      select() {
+        this.signals.set("selected", true);
+      },
+      track({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push(`cleanup:${element.id}`);
+      }
+    })
+  }).start();
+  await delay(0);
+
+  const header = document.querySelector("#shell-header");
+  const nav = document.querySelector("#nav");
+  const page = document.querySelector("#page");
+
+  loader.swap(
+    "app-shell",
+    `
+      <header id="shell-header">
+        <button id="nav" on:click="select">FY26</button>
+      </header>
+      <main id="page">
+        <h1 signal:text="title"></h1>
+        <button id="new-action" on:click="select">Open</button>
+      </main>
+    `,
+    { strategy: "morph" }
+  );
+
+  assert.equal(document.querySelector("#shell-header"), header);
+  assert.equal(document.querySelector("#nav"), nav);
+  assert.equal(document.querySelector("#page"), page);
+  assert.equal(document.querySelector("#old-filter"), null);
+  assert.equal(document.querySelector("h1").textContent, "FY26");
+  assert.deepEqual(events, ["attach:old-filter", "cleanup:old-filter"]);
+
+  nav.click();
+  document.querySelector("#new-action").click();
+  await delay(0);
+  assert.equal(signals.get("selected"), true);
+
+  loader.destroy();
+});
+
+test("boundary swap morph rebinds changed protocol attributes without stale subscriptions", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="product">
+      <p id="title" signal:text="title"></p>
+    </section>
+  `;
+
+  const signals = createSignalRegistry({
+    title: signal("Keyboard"),
+    alternate: signal("Mouse")
+  });
+  const loader = Loader({ root: document.body, signals }).start();
+  const title = document.querySelector("#title");
+
+  assert.equal(title.textContent, "Keyboard");
+
+  loader.swap("product", `<p id="title" signal:text="alternate"></p>`, { strategy: "morph" });
+
+  assert.equal(document.querySelector("#title"), title);
+  assert.equal(title.textContent, "Mouse");
+
+  signals.set("title", "Ignored");
+  await delay(0);
+  assert.equal(title.textContent, "Mouse");
+
+  signals.set("alternate", "Desk");
+  await delay(0);
+  assert.equal(title.textContent, "Desk");
+
+  loader.destroy();
+});
+
+test("boundary swap auto scan skips the stable boundary element", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+
+  const loader = Loader({ root: document.body }).start();
+  const boundary = document.querySelector("[async\\:boundary='product']");
+  boundary.setAttribute("signal:text", "missing");
+
+  assert.doesNotThrow(() => {
+    loader.swap("product", `<p id="auto">Auto</p>`);
+  });
+  assert.equal(document.querySelector("#auto").textContent, "Auto");
+
+  assert.throws(
+    () => loader.swap("product", `<p>Full</p>`, { scan: "full" }),
+    /Signal "missing" is not registered/
+  );
+
+  loader.destroy();
+});
+
+test("boundary swap rejects invalid scan options", () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+
+  const loader = Loader({ root: document.body }).start();
+
+  assert.throws(
+    () => loader.swap("product", `<p>Invalid</p>`, { scan: "later" }),
+    /Loader swap scan option must be "auto", "full", or "none"/
+  );
+  assert.throws(
+    () => loader.swap("product", `<p>Invalid</p>`, { strategy: "patch" }),
+    /Loader swap strategy option must be "replace" or "morph"/
+  );
 
   loader.destroy();
 });

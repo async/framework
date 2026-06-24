@@ -700,7 +700,9 @@ test("browser and server declarations expose the right public APIs", () => {
   assert.match(browserDeclarations, /loader: AsyncLoaderFacade/);
   assert.match(browserDeclarations, /inspectRuntime\(\): RuntimeInspection/);
   assert.doesNotMatch(appHubDeclarations, /runtime\?: AppRuntime/);
-  assert.match(browserDeclarations, /swap\(boundaryId: string, fragmentOrTemplate: TemplateLike\): Promise<Element>/);
+  assert.match(browserDeclarations, /export type LoaderSwapScan = "auto" \| "full" \| "none"/);
+  assert.match(browserDeclarations, /export type LoaderSwapStrategy = "replace" \| "morph"/);
+  assert.match(browserDeclarations, /swap\(boundaryId: string, fragmentOrTemplate: TemplateLike, options\?: LoaderSwapOptions\): Promise<Element>/);
   assert.match(browserDeclarations, /const Async: AsyncNamespace/);
   assert.match(browserDeclarations, /const AsyncFramework: AsyncNamespace/);
 });

@@ -37,8 +37,13 @@ Default protocol attributes include:
 - `intersect:*`
 
 `Loader({ root, ... }).start()` scans a root. `loader.scan(fragment)` scans
-newly inserted content. `loader.swap(boundary, html)` replaces a boundary and
-rescans the inserted fragment.
+newly inserted content. `loader.swap(boundary, html, options?)` replaces a
+boundary and rescans inserted element roots by default. `strategy: "morph"` is
+an opt-in boundary update strategy for stable shell markup: it preserves
+matching nodes by `async:key`, `data-key`, `id`, or sibling order and tag name,
+then cleans up removed or replaced nodes. `scan: "full"` scans the boundary
+element and its subtree, while `scan: "none"` leaves inserted content inert
+until a later explicit scan.
 
 `Async.loader.scan(...)`, `Async.loader.swap(...)`, and
 `Async.loader.mount(...)` are promise-returning app-level facade methods. They
@@ -81,7 +86,10 @@ DOM resume means existing HTML becomes live by scanning:
 - Already-rendered elements keep their DOM identity.
 - Event listeners attach through protocol attributes.
 - Signal bindings update in place.
-- Boundary swaps clean old scoped resources and rescan new content.
+- Replacement boundary swaps clean old scoped resources and rescan new content
+  unless the caller explicitly disables scanning.
+- Morph boundary swaps preserve matching nodes, clean removed or replaced
+  scoped resources, and scan changed or inserted roots by default.
 - `async:component` mounts a registered component into an element during scan.
 - A direct child `<template async:children>` under an `async:component` host is
   captured as explicit source children before the component replaces the host
@@ -120,8 +128,11 @@ DOM resume means existing HTML becomes live by scanning:
 - A root scan binds signal text, value, attribute, property, and class updates.
 - Input changes write back through `signal:value`.
 - Command chains run sequentially and can include built-ins and server calls.
-- A boundary swap removes old scoped bindings, inserts new HTML, rescans it, and
-  leaves delegated handlers working.
+- A replacement boundary swap removes old scoped bindings, inserts new HTML,
+  rescans newly inserted content by default, and leaves delegated handlers
+  working.
+- A morph boundary swap preserves stable shell nodes while binding inserted
+  handlers and signal attributes and cleaning up nodes that leave the boundary.
 - Data-attribute prefixes behave the same as the default colon attributes.
 
 ## Open Or Deferred Decisions

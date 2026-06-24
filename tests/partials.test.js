@@ -65,3 +65,17 @@ test("lazy partial descriptors render through the async partial path", async () 
     html: "<article>sku-1</article>"
   });
 });
+
+test("partial registry preserves undefined envelope html for route no-op handling", async () => {
+  const partials = createPartialRegistry({
+    noop() {
+      return { html: undefined, status: 204 };
+    }
+  });
+
+  const result = await partials.render("noop");
+
+  assert.equal(Object.hasOwn(result, "html"), true);
+  assert.equal(result.html, undefined);
+  assert.equal(result.status, 204);
+});

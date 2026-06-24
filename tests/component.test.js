@@ -176,9 +176,6 @@ test("component this.on supports rootless fragment lifecycle fallback", async ()
       events.push(`attach:${target.id}`);
       return () => events.push("attach-cleanup");
     });
-    this.on("mount", (target) => {
-      events.push(`mount:${target.id}`);
-    });
     this.on("visible", (target) => {
       events.push(`visible:${target.id}`);
     });
@@ -193,10 +190,44 @@ test("component this.on supports rootless fragment lifecycle fallback", async ()
   loader.mount(document.querySelector("#app"), Rootless);
   await delay(0);
 
-  assert.deepEqual(events, ["attach:app", "mount:app", "visible:app"]);
+  assert.deepEqual(events, ["attach:app", "visible:app"]);
 
   loader.destroy();
-  assert.deepEqual(events, ["attach:app", "mount:app", "visible:app", "destroy", "attach-cleanup"]);
+  assert.deepEqual(events, ["attach:app", "visible:app", "destroy", "attach-cleanup"]);
+});
+
+test("component mount lifecycle aliases warn and attach", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<main id="app"></main>`;
+  const events = [];
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    const AliasLifecycle = component(function AliasLifecycle() {
+      this.on("mount", (target) => {
+        events.push(`on:${target.id}`);
+      });
+      this.onMount((target) => {
+        events.push(`helper:${target.id}`);
+      });
+      return html`alias lifecycle`;
+    });
+
+    const loader = Loader({ root: document });
+    loader.mount(document.querySelector("#app"), AliasLifecycle);
+    await delay(0);
+    loader.destroy();
+
+    assert.deepEqual(events, ["on:app", "helper:app"]);
+    assert.deepEqual(warnings, [
+      'this.on("mount", ...) has been renamed to this.on("attach", ...). The old name remains as a compatibility alias.',
+      "this.onMount(...) has been renamed to this.onAttach(...). The old name remains as a compatibility alias."
+    ]);
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test("component identical attach callbacks both run", async () => {
@@ -574,7 +605,7 @@ test("component child render attach hooks do not dedupe each other", async () =>
   const events = [];
 
   const Child = component(function Child() {
-    this.onMount(() => {
+    this.onAttach(() => {
       events.push("child");
     });
     return html`<span>child</span>`;
@@ -592,7 +623,7 @@ test("component child render attach hooks do not dedupe each other", async () =>
   loader.destroy();
 });
 
-test("nested component onMount targets the child render root", async () => {
+test("nested component onAttach targets the child render root", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<main id="app"></main>`;
@@ -600,7 +631,7 @@ test("nested component onMount targets the child render root", async () => {
 
   let mountedTarget;
   const Child = component(function Child() {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       mountedTarget = target;
       target.classList.add("child-mounted-on");
     });
@@ -638,14 +669,14 @@ test("deeply nested render lifecycle hooks resolve each component root", async (
   const events = [];
 
   const Grandchild = component(function Grandchild() {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       events.push(targetLabel(target));
     });
     return html`<em data-grandchild-root>grandchild</em>`;
   });
 
   const Child = component(function Child() {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       events.push(targetLabel(target));
     });
     return html`
@@ -656,7 +687,7 @@ test("deeply nested render lifecycle hooks resolve each component root", async (
   });
 
   const Page = component(function Page() {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       events.push(targetLabel(target));
     });
     return html`
@@ -731,14 +762,14 @@ test("nested rootless and multi-root lifecycle hooks target the containing eleme
   const events = [];
 
   const Rootless = component(function Rootless() {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       events.push(`rootless:${target.id}`);
     });
     return html`label <span data-rootless>rootless</span>`;
   });
 
   const MultiRoot = component(function MultiRoot() {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       events.push(`multi:${target.id}`);
     });
     return html`<span data-first>first</span><span data-second>second</span>`;
@@ -764,14 +795,14 @@ test("nested rootless and multi-root lifecycle hooks target the containing eleme
   }
 });
 
-test("nested onMount scroll wrappers do not mutate ancestor async boundaries", async () => {
+test("nested onAttach scroll wrappers do not mutate ancestor async boundaries", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<main id="app"></main>`;
   const scheduler = createScheduler({ strategy: "manual" });
 
   const HorizontalScrollChrome = component(function HorizontalScrollChrome({ children }) {
-    this.onMount((target) => {
+    this.onAttach((target) => {
       const scroller = target?.lastElementChild;
       const host = scroller?.parentElement;
       const startFade = host?.children[0];

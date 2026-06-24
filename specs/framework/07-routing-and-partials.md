@@ -24,7 +24,8 @@ boundaries locally or served by the server, depending on the selected mode.
 
 Routing primitives include:
 
-- `defineRoute(partial, options?)` and `route(...)` compatibility alias.
+- `defineRoute(partial, options?)`, `defineRoute({ render: "none", meta })`,
+  and `route(...)` compatibility alias.
 - `createRouteRegistry(initialMap?)`.
 - `createPartialRegistry(initialMap?)`.
 - `createRouter({ mode, urlMode, root, boundary, routes, partials, loader })`.
@@ -35,6 +36,8 @@ Router modes:
   navigation stays local.
 - `spa`: existing HTML may contain route content and later navigation stays
   local.
+- `signals`: existing HTML stays mounted while navigation updates router
+  signals and browser history only.
 - `ssr`: the document is server-rendered and browser navigation stays native.
 - `mpa`: any document source and browser navigation stays native.
 
@@ -46,7 +49,7 @@ Router URL modes:
 
 ## Subsystem Boundaries
 
-- Routes match URLs and point to partial IDs.
+- Routes match URLs and point to partial IDs or metadata-only route records.
 - Partials render fragment content and may call server functions.
 - The loader owns boundary swaps and rescans.
 - The signal registry owns `router.*` state.
@@ -65,8 +68,10 @@ Routing protocol includes:
   `router.query`, `router.route`, `router.pending`, and `router.error`.
 - Partial results that may include HTML and server-result-like side effects.
 
-CSR and SPA modes consume local partial output. SSR and MPA modes preserve
-native document navigation and must not perform hidden route-fragment fetches.
+CSR and SPA modes consume local partial output. Signals mode updates router
+state without rendering partials or swapping boundaries. SSR and MPA modes
+preserve native document navigation and must not perform hidden route-fragment
+fetches.
 
 ## Resume Contract
 
@@ -77,12 +82,16 @@ Routing resume behavior:
 - SPA mode may use existing route HTML as the initial state, then own later
   local navigation.
 - Route boundary swaps must rescan inserted protocol attributes.
+- Route-only navigation must preserve mounted DOM and update router state
+  without requiring noop partials.
 - Stale navigation results must not overwrite newer router state or DOM.
 
 ## Invariants
 
 - Route matching ranks specific routes ahead of wildcard fallbacks.
 - Hash URL mode matches `#/path?query` as `/path?query`.
+- Hash URL mode preserves plain section anchors as native jumps without
+  mutating router state.
 - Malformed encoded params are handled without crashing the router.
 - Prefetch does not mutate router state, history, or DOM.
 - Navigation errors update route error state without corrupting the active
@@ -101,6 +110,8 @@ Routing resume behavior:
 
 - CSR startup renders the current route partial into an empty route boundary.
 - Hash URL mode supports static-host URLs such as `#/docs/getting-started`.
+- Signals mode updates router path, params, query, route, pending, and error
+  state without invoking partial rendering.
 - SPA navigation swaps a route boundary and rescans inserted handlers.
 - Wildcard fallback routes handle unmatched paths.
 - SSR and MPA modes do not intercept link clicks.

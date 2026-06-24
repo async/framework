@@ -9,6 +9,7 @@ import {
   createRouteRegistry,
   createRouter,
   createSignalRegistry,
+  defineRoute,
   delay,
   html,
   route,
@@ -178,6 +179,162 @@ test("route matching ranks static and dynamic routes before wildcard fallbacks",
   assert.equal(routes.match("/products/new").route.partial, "product.new");
   assert.equal(routes.match("/products/sku-1").route.partial, "product.page");
   assert.equal(routes.match("/missing").route.partial, "notFound.page");
+});
+
+test("signals router updates path state and history without rendering partials or swapping", async () => {
+  const window = new Window({ url: "http://app.test/pbi" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <main>
+      <a id="fy26" href="/fy26/launch?tab=roadmap">FY26</a>
+      <form id="search" action="/search">
+        <input name="q" value="launch">
+      </form>
+      <section async:boundary="route"><h1 id="route-title">PBI shell</h1></section>
+    </main>
+  `;
+
+  let partialCalls = 0;
+  const signals = createSignalRegistry();
+  const fy26Route = defineRoute({
+    partial: "dashboard.page",
+    render: "none",
+    meta: { page: "fy26" }
+  });
+  const router = createRouter({
+    mode: "signals",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
+      "/fy26/:section": fy26Route,
+      "/search": defineRoute({ render: "none", meta: { page: "search" } })
+    }),
+    signals,
+    partials: createPartialRegistry({
+      "dashboard.page"() {
+        partialCalls += 1;
+        return `<h1>Rendered</h1>`;
+      }
+    })
+  }).start();
+
+  assert.equal(router.mode, "signals");
+  assert.equal(signals.get("router.path"), "/pbi");
+  assert.equal(partialCalls, 0);
+
+  const click = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#fy26").dispatchEvent(click);
+  await delay(0);
+
+  assert.equal(click.defaultPrevented, true);
+  assert.equal(partialCalls, 0);
+  assert.equal(signals.get("router.path"), "/fy26/launch");
+  assert.deepEqual(signals.get("router.params"), { section: "launch" });
+  assert.deepEqual(signals.get("router.query"), { tab: "roadmap" });
+  assert.equal(signals.get("router.route"), fy26Route);
+  assert.equal(signals.get("router.pending"), false);
+  assert.equal(signals.get("router.error"), null);
+  assert.equal(document.querySelector("#route-title").textContent, "PBI shell");
+  assert.equal(window.location.href, "http://app.test/fy26/launch?tab=roadmap");
+
+  window.history.back();
+  window.dispatchEvent(new window.PopStateEvent("popstate"));
+  await delay(0);
+
+  assert.equal(signals.get("router.path"), "/pbi");
+  assert.equal(partialCalls, 0);
+  assert.equal(document.querySelector("#route-title").textContent, "PBI shell");
+
+  const submit = new window.Event("submit", { bubbles: true, cancelable: true });
+  document.querySelector("#search").dispatchEvent(submit);
+  await delay(0);
+
+  assert.equal(submit.defaultPrevented, true);
+  assert.equal(signals.get("router.path"), "/search");
+  assert.deepEqual(signals.get("router.query"), { q: "launch" });
+  assert.equal(partialCalls, 0);
+
+  router.destroy();
+});
+
+test("signals hash router intercepts hash routes and preserves section anchors", async () => {
+  const window = new Window({ url: "http://app.test/framework/#/docs/start" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <a id="section" href="#quickstart">Quickstart</a>
+    <a id="route" href="#/docs/router?tab=api">Router</a>
+    <section async:boundary="route"><h1 id="route-title">Start</h1></section>
+  `;
+
+  let partialCalls = 0;
+  const signals = createSignalRegistry();
+  const router = createRouter({
+    mode: "signals",
+    urlMode: "hash",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/docs/:page": defineRoute("docs.page", { render: "none" })
+    }),
+    signals,
+    partials: createPartialRegistry({
+      "docs.page"() {
+        partialCalls += 1;
+        return `<h1>Rendered</h1>`;
+      }
+    })
+  }).start();
+
+  const section = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#section").dispatchEvent(section);
+  await delay(0);
+
+  assert.equal(section.defaultPrevented, false);
+  assert.equal(signals.get("router.path"), "/docs/start");
+  assert.equal(document.querySelector("#route-title").textContent, "Start");
+
+  const routeClick = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+  document.querySelector("#route").dispatchEvent(routeClick);
+  await delay(0);
+
+  assert.equal(routeClick.defaultPrevented, true);
+  assert.equal(partialCalls, 0);
+  assert.equal(signals.get("router.path"), "/docs/router");
+  assert.deepEqual(signals.get("router.query"), { tab: "api" });
+  assert.equal(document.querySelector("#route-title").textContent, "Start");
+  assert.equal(window.location.href, "http://app.test/framework/#/docs/router?tab=api");
+
+  router.destroy();
+});
+
+test("signals router records no-route errors without touching the boundary", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
+
+  const signals = createSignalRegistry();
+  const router = createRouter({
+    mode: "signals",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/": defineRoute({ render: "none" })
+    }),
+    signals
+  }).start();
+
+  const result = await router.navigate("/missing");
+
+  assert.equal(result, null);
+  assert.equal(signals.get("router.path"), "/missing");
+  assert.equal(signals.get("router.route"), null);
+  assert.equal(signals.get("router.pending"), false);
+  assert.match(signals.get("router.error").message, /No route matched \/missing/);
+  assert.equal(document.querySelector("#route-title").textContent, "Home");
+  assert.equal(window.location.href, "http://app.test/");
+
+  router.destroy();
 });
 
 test("SPA router aborts stale navigations and ignores late partial results", async () => {
@@ -362,6 +519,72 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
 
   router.destroy();
   loader.destroy();
+});
+
+test("SPA router warns and skips route swaps for undefined partial html", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
+
+  const signals = createSignalRegistry();
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    const router = createRouter({
+      mode: "spa",
+      root: document.body,
+      boundary: "route",
+      routes: createRouteRegistry({
+        "/noop": route("noop")
+      }),
+      signals,
+      partials: createPartialRegistry({
+        noop() {
+          return { html: undefined };
+        }
+      })
+    }).start();
+
+    await router.navigate("/noop");
+    await router.navigate("/noop");
+
+    assert.deepEqual(warnings, [
+      '[async/router] partial returned html: undefined; boundary "route" was not swapped.'
+    ]);
+    assert.equal(signals.get("router.path"), "/noop");
+    assert.equal(signals.get("router.error"), null);
+    assert.equal(document.querySelector("#route-title").textContent, "Home");
+
+    router.destroy();
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("SPA router treats empty partial html as an explicit boundary clear", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/empty": route("empty")
+    }),
+    partials: createPartialRegistry({
+      empty() {
+        return { html: "" };
+      }
+    })
+  }).start();
+
+  await router.navigate("/empty");
+
+  assert.equal(document.querySelector("[async\\:boundary='route']").innerHTML, "");
+  router.destroy();
 });
 
 test("default SSR router starts from existing HTML without intercepting same-origin links", () => {

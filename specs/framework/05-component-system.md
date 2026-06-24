@@ -35,7 +35,9 @@ Component helpers include:
 - `this.suspense(signalRef, views)`.
 - `this.on(event, fn)` with `attach`, `visible`, `intersect`, and `destroy`
   behavior.
-- `this.onMount(fn)` and `this.onVisible(fn)` compatibility aliases.
+- `this.onAttach(fn)` and `this.onVisible(fn)` lifecycle helpers.
+- `this.onMount(fn)` remains a compatibility alias for `this.onAttach(fn)` and
+  warns when used.
 - `this.intersect(element, options, fn)` for direct element observation.
 
 Components return HTML-compatible values. Promise-returning components are not

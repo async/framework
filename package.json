@@ -124,6 +124,7 @@
     "benchmark:apps": "npm --prefix benchmark run apps",
     "benchmark:results": "npm --prefix benchmark run benchmark:results",
     "benchmark:run": "npm --prefix benchmark run benchmark:run",
+    "benchmark:swap-scan": "node scripts/benchmark-swap-scan.js",
     "benchmark:update": "npm --prefix benchmark run benchmark:update",
     "bundle": "node scripts/build-framework-bundle.js",
     "bundle:check": "pnpm run bundle && node scripts/build-framework-bundle.js --check",

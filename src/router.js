@@ -6,17 +6,24 @@ import { applyServerResult } from "./server.js";
 import { createRegistryStore } from "./registry-store.js";
 import { normalizeAttributeConfig } from "./attributes.js";
 
-export function defineRoute(partial, options = {}) {
+export function defineRoute(partialOrDefinition, options = {}) {
+  if (isRouteDefinitionObject(partialOrDefinition)) {
+    return {
+      ...partialOrDefinition,
+      ...options
+    };
+  }
   return {
     ...options,
-    partial
+    partial: partialOrDefinition
   };
 }
 
 export const route = defineRoute;
 
-const routerModes = new Set(["csr", "spa", "ssr", "mpa"]);
+const routerModes = new Set(["csr", "spa", "signals", "ssr", "mpa"]);
 const routerUrlModes = new Set(["path", "hash"]);
+const emptyHtmlWarnings = new Set();
 
 export function createRouteRegistry(initialMap = {}, options = {}) {
   const registryStore = options.registry ?? createRegistryStore();
@@ -204,7 +211,7 @@ export function createRouter({
 
     prefetch(url) {
       assertActive();
-      if (mode === "mpa" || mode === "ssr") {
+      if (mode === "mpa" || mode === "ssr" || mode === "signals") {
         return Promise.resolve(null);
       }
       const matched = api.match(url);
@@ -223,6 +230,10 @@ export function createRouter({
       if (mode === "mpa" || mode === "ssr") {
         documentRef.defaultView?.location?.assign?.(browserUrlForRoute(target).href);
         return null;
+      }
+
+      if (mode === "signals") {
+        return renderSignalRoute(target, options);
       }
 
       return renderLocalRoutePartial(target, options);
@@ -264,7 +275,11 @@ export function createRouter({
       handleNavigation(api.navigate(formActionUrl(form)));
     };
     const history = () => {
-      const target = currentUrl();
+      const browserTarget = currentBrowserUrl();
+      if (urlMode === "hash" && browserTarget.hash && !isHashRoute(browserTarget.hash)) {
+        return;
+      }
+      const target = resolveUrl(browserTarget);
       if (target.href === observedHistoryHref) {
         return;
       }
@@ -325,38 +340,55 @@ export function createRouter({
     }
   }
 
+  async function renderSignalRoute(target, options = {}) {
+    const matched = api.match(target);
+    if (!matched) {
+      beginNavigation(target, null);
+      setNoRouteError(target);
+      return null;
+    }
+
+    const navigation = beginNavigation(target, matched);
+    setMatchedRouterState(target, matched, { pending: false, error: null });
+    if (!isActiveNavigation(navigation)) {
+      return null;
+    }
+    updateBrowserHistory(target, options);
+    return matched;
+  }
+
   async function applyNavigationResult(result, target, options, navigation) {
     if (!isActiveNavigation(navigation)) {
       return;
     }
-    await applyServerResult(result, {
-      signals: signalRegistry,
-      loader: loaderInstance,
-      router: api,
-      cache,
-      scheduler: schedulerInstance,
-      abort: navigation?.abort
+    await schedulerInstance.batch(async () => {
+      await applyServerResult(result, {
+        signals: signalRegistry,
+        loader: loaderInstance,
+        router: api,
+        cache,
+        scheduler: schedulerInstance,
+        abort: navigation?.abort
+      });
+      if (!isActiveNavigation(navigation)) {
+        return;
+      }
+      const hasHtml = result && Object.hasOwn(result, "html");
+      if (hasHtml && result.html === undefined) {
+        warnEmptyPartialHtml(boundary);
+      } else if (hasHtml && result.html != null && !result.boundary && !result.redirect) {
+        loaderInstance.swap(boundary, result.html);
+      }
     });
     await schedulerInstance.flush();
     if (!isActiveNavigation(navigation)) {
       return;
     }
-    if (result?.html != null && !result.boundary && !result.redirect) {
-      loaderInstance.swap(boundary, result.html);
-      await schedulerInstance.flush();
-    }
     if (result?.redirect || options.history === false) {
       syncObservedHistory(target);
       return;
     }
-    const historyUrl = browserUrlForRoute(target).href;
-    if (options.replace) {
-      documentRef.defaultView?.history?.replaceState?.({}, "", historyUrl);
-      syncObservedHistory(target);
-      return;
-    }
-    documentRef.defaultView?.history?.pushState?.({}, "", historyUrl);
-    syncObservedHistory(target);
+    updateBrowserHistory(target, options);
   }
 
   function contextFor(matched, navigation) {
@@ -420,9 +452,11 @@ export function createRouter({
 
   function setRouterState(patch) {
     signalRegistry.ensure("router", {});
-    for (const [key, value] of Object.entries(patch)) {
-      signalRegistry.set(`router.${key}`, value);
-    }
+    schedulerInstance.batch(() => {
+      for (const [key, value] of Object.entries(patch)) {
+        signalRegistry.set(`router.${key}`, value);
+      }
+    });
   }
 
   function handleNavigation(promise) {
@@ -486,6 +520,21 @@ export function createRouter({
     observedHistoryHref = url.href;
   }
 
+  function updateBrowserHistory(target, options = {}) {
+    if (options.history === false) {
+      syncObservedHistory(target);
+      return;
+    }
+    const historyUrl = browserUrlForRoute(target).href;
+    if (options.replace) {
+      documentRef.defaultView?.history?.replaceState?.({}, "", historyUrl);
+      syncObservedHistory(target);
+      return;
+    }
+    documentRef.defaultView?.history?.pushState?.({}, "", historyUrl);
+    syncObservedHistory(target);
+  }
+
   function assertActive() {
     if (destroyed) {
       throw new Error("Router has been destroyed.");
@@ -535,6 +584,10 @@ function normalizeRoute(pattern, definition) {
     score: routeScore(pattern),
     definition: normalized
   };
+}
+
+function isRouteDefinitionObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function compilePattern(pattern) {
@@ -615,6 +668,15 @@ function assertRouterUrlMode(mode) {
   if (!routerUrlModes.has(mode)) {
     throw new TypeError(`Unknown router URL mode "${mode}".`);
   }
+}
+
+function warnEmptyPartialHtml(boundary) {
+  const key = String(boundary);
+  if (emptyHtmlWarnings.has(key)) {
+    return;
+  }
+  emptyHtmlWarnings.add(key);
+  console.warn?.(`[async/router] partial returned html: undefined; boundary "${key}" was not swapped.`);
 }
 
 function dispatchAsyncError(element, error) {

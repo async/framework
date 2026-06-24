@@ -28,6 +28,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   const scopedCleanups = new WeakMap();
   let inlineBindingCounter = 0;
   let destroyed = false;
+  let mountPseudoEventWarned = false;
 
   const api = {
     root: rootNode,
@@ -48,25 +49,29 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
 
     scan(rootOrFragment = rootNode) {
       assertActive();
-      reviveScopes(rootOrFragment);
-      bindSignalAttributes(rootOrFragment);
-      bindClassAttributes(rootOrFragment);
-      bindEventAttributes(rootOrFragment);
-      bindBoundaries(rootOrFragment);
-      bindComponentAttributes(rootOrFragment);
-      runPseudoEvents(rootOrFragment);
+      scanScope(rootOrFragment);
       return api;
     },
 
-    swap(boundaryId, fragmentOrTemplate) {
+    swap(boundaryId, fragmentOrTemplate, options) {
       assertActive();
+      const swapOptions = normalizeSwapOptions(options);
       const boundary = findBoundary(rootNode, boundaryId, attributeConfig);
       if (!boundary) {
         throw new Error(`Boundary "${boundaryId}" was not found.`);
       }
-      cleanupChildren(boundary);
-      boundary.replaceChildren(toFragment(fragmentOrTemplate, documentRef));
-      api.scan(boundary);
+      const scanRoots = swapOptions.strategy === "morph"
+        ? morphChildren(boundary, toFragment(fragmentOrTemplate, documentRef))
+        : replaceBoundaryChildren(boundary, fragmentOrTemplate);
+      if (swapOptions.scan === "full") {
+        scanScope(boundary);
+      } else if (swapOptions.scan === "auto") {
+        if (swapOptions.strategy === "morph") {
+          scanChangedRoots(scanRoots);
+        } else {
+          scanScope(boundary, { includeRoot: false });
+        }
+      }
       return boundary;
     },
 
@@ -141,8 +146,18 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     scheduler: schedulerInstance
   });
 
-  function bindEventAttributes(scope) {
-    for (const element of elementsIn(scope)) {
+  function scanScope(scope, scanOptions = {}) {
+    reviveScopes(scope, scanOptions);
+    bindSignalAttributes(scope, scanOptions);
+    bindClassAttributes(scope, scanOptions);
+    bindEventAttributes(scope, scanOptions);
+    bindBoundaries(scope, scanOptions);
+    bindComponentAttributes(scope, scanOptions);
+    runPseudoEvents(scope, scanOptions);
+  }
+
+  function bindEventAttributes(scope, scanOptions) {
+    for (const element of elementsIn(scope, scanOptions)) {
       if (typeof element.getAttributeNames !== "function") {
         continue;
       }
@@ -192,8 +207,8 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     addCleanup(() => element.removeEventListener(eventName, listener), element);
   }
 
-  function bindSignalAttributes(scope) {
-    for (const element of elementsIn(scope)) {
+  function bindSignalAttributes(scope, scanOptions) {
+    for (const element of elementsIn(scope, scanOptions)) {
       for (const name of element.getAttributeNames?.() ?? []) {
         const signalName = matchAttribute(name, attributeConfig, "signal");
         if (!signalName) {
@@ -250,8 +265,8 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     }
   }
 
-  function bindClassAttributes(scope) {
-    for (const element of elementsIn(scope)) {
+  function bindClassAttributes(scope, scanOptions) {
+    for (const element of elementsIn(scope, scanOptions)) {
       for (const name of element.getAttributeNames?.() ?? []) {
         const className = matchAttribute(name, attributeConfig, "class");
         if (className == null) {
@@ -347,8 +362,8 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     };
   }
 
-  function bindBoundaries(scope) {
-    for (const boundary of elementsIn(scope)) {
+  function bindBoundaries(scope, scanOptions) {
+    for (const boundary of elementsIn(scope, scanOptions)) {
       if (renderingBoundaries.has(boundary)) {
         continue;
       }
@@ -378,8 +393,8 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     }
   }
 
-  function bindComponentAttributes(scope) {
-    for (const element of elementsIn(scope)) {
+  function bindComponentAttributes(scope, scanOptions) {
+    for (const element of elementsIn(scope, scanOptions)) {
       const id = readAttribute(element, attributeConfig, "async", "component");
       if (id == null) {
         continue;
@@ -425,8 +440,227 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     }
   }
 
-  function runPseudoEvents(scope) {
-    for (const element of elementsIn(scope)) {
+  function replaceBoundaryChildren(boundary, fragmentOrTemplate) {
+    cleanupChildren(boundary);
+    boundary.replaceChildren(toFragment(fragmentOrTemplate, documentRef));
+    return [];
+  }
+
+  function morphChildren(boundary, fragment) {
+    const scanRoots = new Set();
+    morphChildList(boundary, [...fragment.childNodes], scanRoots);
+    return [...scanRoots].filter((node) => node.isConnected !== false);
+  }
+
+  function morphChildList(parent, nextNodes, scanRoots) {
+    let current = parent.firstChild;
+    const keyedChildren = collectKeyedChildren(parent);
+    const used = new WeakSet();
+
+    for (const nextNode of nextNodes) {
+      const keyed = keyedMatch(nextNode, keyedChildren, used);
+      if (keyed && keyed !== current) {
+        parent.insertBefore(keyed, current ?? null);
+      }
+
+      const oldNode = keyed ?? current;
+      if (oldNode && canMorphNode(oldNode, nextNode)) {
+        morphNode(oldNode, nextNode, scanRoots);
+        used.add(oldNode);
+        current = oldNode.nextSibling;
+        continue;
+      }
+
+      parent.insertBefore(nextNode, current ?? null);
+      addScanRoot(scanRoots, nextNode);
+      if (current) {
+        const removed = current;
+        current = current.nextSibling;
+        cleanupNode(removed);
+        removed.remove();
+      } else {
+        current = nextNode.nextSibling;
+      }
+    }
+
+    while (current) {
+      const removed = current;
+      current = current.nextSibling;
+      cleanupNode(removed);
+      removed.remove();
+    }
+  }
+
+  function morphNode(current, next, scanRoots) {
+    if (current.nodeType === 3 || current.nodeType === 8) {
+      if (current.nodeValue !== next.nodeValue) {
+        current.nodeValue = next.nodeValue;
+      }
+      return;
+    }
+
+    const attributes = syncElementAttributes(current, next);
+    if (attributes.bindingsChanged) {
+      resetElementBindings(current);
+    }
+    if (attributes.changed) {
+      addScanRoot(scanRoots, current);
+    }
+
+    if (componentIdFor(current) != null) {
+      return;
+    }
+
+    morphChildList(current, [...next.childNodes], scanRoots);
+  }
+
+  function syncElementAttributes(current, next) {
+    let changed = false;
+    let bindingsChanged = false;
+    const currentNames = current.getAttributeNames?.() ?? [];
+    const nextNames = next.getAttributeNames?.() ?? [];
+    const nextNameSet = new Set(nextNames);
+
+    for (const name of currentNames) {
+      if (nextNameSet.has(name)) {
+        continue;
+      }
+      if (isProtocolBindingAttribute(name)) {
+        bindingsChanged = true;
+      }
+      changed = true;
+      current.removeAttribute(name);
+    }
+
+    for (const name of nextNames) {
+      const value = next.getAttribute(name);
+      if (current.getAttribute(name) === value) {
+        continue;
+      }
+      if (isProtocolBindingAttribute(name)) {
+        bindingsChanged = true;
+      }
+      changed = true;
+      current.removeAttribute(name);
+      current.setAttribute(name, value);
+    }
+
+    return {
+      changed,
+      bindingsChanged
+    };
+  }
+
+  function resetElementBindings(element) {
+    runScopedCleanups(element, "self");
+    eventBindings.delete(element);
+    signalBindings.delete(element);
+    mountedElements.delete(element);
+    visibleElements.delete(element);
+    intersectionBindings.delete(element);
+    boundaryState.delete(element);
+    schedulerInstance.markScopeDestroyed(element);
+  }
+
+  function scanChangedRoots(roots) {
+    for (const root of roots) {
+      scanScope(root);
+    }
+  }
+
+  function addScanRoot(roots, node) {
+    if (node?.nodeType === 1 || node?.nodeType === 11) {
+      roots.add(node);
+    }
+  }
+
+  function collectKeyedChildren(parent) {
+    const keyed = new Map();
+    for (const child of parent.childNodes ?? []) {
+      const key = identityKeyFor(child);
+      if (key != null && !keyed.has(key)) {
+        keyed.set(key, child);
+      }
+    }
+    return keyed;
+  }
+
+  function keyedMatch(nextNode, keyedChildren, used) {
+    const key = identityKeyFor(nextNode);
+    if (key == null) {
+      return null;
+    }
+    const candidate = keyedChildren.get(key);
+    if (!candidate || used.has(candidate)) {
+      return null;
+    }
+    return canMorphNode(candidate, nextNode) ? candidate : null;
+  }
+
+  function canMorphNode(current, next) {
+    if (!current || current.nodeType !== next.nodeType) {
+      return false;
+    }
+    if (current.nodeType === 3 || current.nodeType === 8) {
+      return true;
+    }
+    if (current.nodeType !== 1 || current.tagName !== next.tagName) {
+      return false;
+    }
+
+    const currentKey = identityKeyFor(current);
+    const nextKey = identityKeyFor(next);
+    if (currentKey != null || nextKey != null) {
+      return currentKey === nextKey;
+    }
+
+    const currentBoundary = boundaryIdFor(current, attributeConfig);
+    const nextBoundary = boundaryIdFor(next, attributeConfig);
+    if (currentBoundary != null || nextBoundary != null) {
+      return currentBoundary === nextBoundary;
+    }
+
+    const currentComponent = componentIdFor(current);
+    const nextComponent = componentIdFor(next);
+    if (currentComponent != null || nextComponent != null) {
+      return currentComponent === nextComponent;
+    }
+
+    return true;
+  }
+
+  function identityKeyFor(node) {
+    if (node?.nodeType !== 1) {
+      return null;
+    }
+    return readAttribute(node, attributeConfig, "async", "key")
+      ?? node.getAttribute("data-key")
+      ?? node.id
+      ?? null;
+  }
+
+  function componentIdFor(element) {
+    return readAttribute(element, attributeConfig, "async", "component");
+  }
+
+  function isProtocolBindingAttribute(name) {
+    return matchAttribute(name, attributeConfig, "signal") != null
+      || matchAttribute(name, attributeConfig, "class") != null
+      || matchAttribute(name, attributeConfig, "on") != null
+      || matchAttribute(name, attributeConfig, "intersect") != null
+      || isAsyncBindingAttribute(name);
+  }
+
+  function isAsyncBindingAttribute(name) {
+    const asyncName = matchAttribute(name, attributeConfig, "async");
+    return asyncName != null && asyncName !== "key";
+  }
+
+  function runPseudoEvents(scope, scanOptions) {
+    for (const element of elementsIn(scope, scanOptions)) {
+      if (readAttribute(element, attributeConfig, "on", "mount") != null) {
+        warnMountPseudoEventAlias();
+      }
       const refs = readPseudoRefs(element, ["attach", "mount"]);
       if (refs.length === 0) {
         continue;
@@ -440,7 +674,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       }
     }
 
-    for (const element of elementsIn(scope)) {
+    for (const element of elementsIn(scope, scanOptions)) {
       const ref = readAttribute(element, attributeConfig, "on", "visible");
       if (ref == null) {
         continue;
@@ -452,7 +686,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       addCleanup(observeVisible(element, () => scheduleLifecycle(element, () => runPseudo(element, ref), `visible:${ref}`)), element);
     }
 
-    for (const element of elementsIn(scope)) {
+    for (const element of elementsIn(scope, scanOptions)) {
       const ref = readAttribute(element, attributeConfig, "on", "intersect");
       if (ref == null) {
         continue;
@@ -481,6 +715,14 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       }
     }
     return refs;
+  }
+
+  function warnMountPseudoEventAlias() {
+    if (mountPseudoEventWarned) {
+      return;
+    }
+    mountPseudoEventWarned = true;
+    console.warn?.('on:mount has been renamed to on:attach. The old name remains as a compatibility alias.');
   }
 
   async function runPseudo(element, ref, context = {}) {
@@ -898,8 +1140,8 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     }
   }
 
-  function reviveScopes(scope) {
-    for (const element of elementsIn(scope)) {
+  function reviveScopes(scope, scanOptions) {
+    for (const element of elementsIn(scope, scanOptions)) {
       schedulerInstance.reviveScope?.(element);
     }
   }
@@ -1092,17 +1334,17 @@ function updateProperty(element, prop, value) {
   element[prop] = value;
 }
 
-function selectAll(scope, selector) {
+function selectAll(scope, selector, options = {}) {
   const elements = [];
-  if (scope?.nodeType === 1 && scope.matches?.(selector)) {
+  if (options.includeRoot !== false && scope?.nodeType === 1 && scope.matches?.(selector)) {
     elements.push(scope);
   }
   elements.push(...(scope?.querySelectorAll?.(selector) ?? []));
   return elements;
 }
 
-function elementsIn(scope) {
-  return selectAll(scope, "*");
+function elementsIn(scope, options) {
+  return selectAll(scope, "*", options);
 }
 
 function findBoundary(root, boundaryId, attributeConfig) {
@@ -1140,6 +1382,25 @@ function toFragment(value, documentRef) {
   const template = documentRef.createElement("template");
   template.innerHTML = String(value ?? "");
   return template.content.cloneNode(true);
+}
+
+function normalizeSwapOptions(options = {}) {
+  const normalized = options ?? {};
+  if (typeof normalized !== "object" || Array.isArray(normalized)) {
+    throw new TypeError("Loader swap options must be an object.");
+  }
+  const scan = normalized.scan ?? "auto";
+  if (scan !== "auto" && scan !== "full" && scan !== "none") {
+    throw new TypeError('Loader swap scan option must be "auto", "full", or "none".');
+  }
+  const strategy = normalized.strategy ?? "replace";
+  if (strategy !== "replace" && strategy !== "morph") {
+    throw new TypeError('Loader swap strategy option must be "replace" or "morph".');
+  }
+  return {
+    scan,
+    strategy
+  };
 }
 
 function dispatchAsyncError(element, error) {

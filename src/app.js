@@ -489,8 +489,8 @@ function createLoaderFacade() {
       return enqueue("scan", [rootOrFragment]);
     },
 
-    swap(boundaryId, fragmentOrTemplate) {
-      return enqueue("swap", [boundaryId, fragmentOrTemplate]);
+    swap(boundaryId, fragmentOrTemplate, options) {
+      return enqueue("swap", [boundaryId, fragmentOrTemplate, options]);
     },
 
     mount(target, Component, props) {
