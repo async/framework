@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.12.5 - 2026-06-24
+
+- Added `asyncFramework({ layer, server, client })` for Hono-backed Vite
+  development and client-only production asset builds without a platform target.
+- Added Vite Hono and Vite JSX streaming examples, including optimizer report
+  visibility for the selected `signals`, `events`, `async-signals`, and
+  `stream` runtime slices.
+- Re-exported the optimizer `report` from Vite-generated JSX bootstrap modules
+  and marked runtime handler imports for Vite analysis so example dev servers
+  stay warning-free.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 356,171 B (356.2 KB / 0.356 MB), gzip 66,646 B (66.6 KB / 0.067 MB), br 54,356 B (54.4 KB / 0.054 MB) -> `browser.min.js` raw 149,871 B (149.9 KB / 0.150 MB), gzip 43,590 B (43.6 KB / 0.044 MB), br 37,839 B (37.8 KB / 0.038 MB); delta raw -206,300 B (-206.3 KB / -0.206 MB), gzip -23,056 B (-23.1 KB / -0.023 MB), br -16,517 B (-16.5 KB / -0.017 MB).
+
 ## 0.12.4 - 2026-06-24
 
 - Added `loader.swap({ type: "many", ifChanged: true })` to skip unchanged
