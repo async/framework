@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.4 - 2026-06-24
+
 - Added `loader.swap({ type: "many", ifChanged: true })` to skip unchanged
   per-boundary replacement inside batched swaps.
 - Added `loader.defineRefreshPlan(...)` and `loader.refresh(scope)` for
