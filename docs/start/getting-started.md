@@ -61,4 +61,4 @@ Async uses registries for signals, handlers, components, partials, routes, cache
 | `signal:*` | Bind state to text, values, attributes, properties, and classes |
 | `on:*` | Run delegated handlers or server commands |
 | `async:boundary` | Mark a region that can be swapped or streamed |
-| `createRouter(...)` | Start URL-backed routing with route params, history, hash mode, partials, or route-only signals |
+| `Async.router` | Navigate URL-backed routes with params, history, hash mode, partials, or route-only signals |

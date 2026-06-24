@@ -15,14 +15,59 @@ The router coordinates five pieces:
 
 | Piece | Purpose |
 | --- | --- |
-| route registry | Maps URL patterns such as `/products/:id` to route records |
-| partial registry | Renders route records into HTML fragments when a mode uses partials |
+| route declarations | Map URL patterns such as `/products/:id` to route records |
+| partial declarations | Render route records into HTML fragments when a mode uses partials |
 | boundary | Receives rendered route HTML, usually `async:boundary="route"` |
 | history mode | Writes path URLs or hash URLs and handles back/forward navigation |
 | router signals | Publishes `router.path`, params, query, route metadata, pending state, and errors |
 
 If an app already has its own view renderer, use `mode: "signals"` and bind the
 view boundary to `router.*` state instead of using route partials.
+
+## Choose A Routing Layer
+
+Most apps should stay at the app registration layer: declare route patterns and
+partials with `Async.use(...)`, then start the app. The router is materialized
+from the same registry path as signals, handlers, components, cache entries,
+and server calls.
+
+```js
+Async.use({
+  partial: {
+    home() {
+      return html`<h1>Home</h1>`;
+    },
+    "product.page"({ id }) {
+      return html`<h1>Product ${id}</h1>`;
+    }
+  },
+  route: {
+    "/": defineRoute("home"),
+    "/products/:id": defineRoute("product.page"),
+    "*": defineRoute("notFound.page")
+  }
+});
+
+Async.start({
+  mode: "csr",
+  boundary: "route",
+  root: document
+});
+```
+
+Use the next layer down only when the app needs a more specific routing shape:
+
+| If the app is doing this | Use this pattern |
+| --- | --- |
+| Client-rendered route pages with a route boundary | `Async.use({ route, partial })` and `Async.start({ mode: "csr", boundary: "route" })` |
+| Static hosting where every URL must load one HTML file | Add `urlMode: "hash"` and link to `#/path` routes |
+| SSR or static HTML should stay visible until later navigation | Use `mode: "spa"` with the same route and partial declarations |
+| Buttons, handlers, redirects, or preloads need programmatic routing | Call `Async.router.navigate(...)` or `Async.router.prefetch(...)` |
+| Dashboards or shells render from URL state instead of route partials | Use `mode: "signals"` and bind views with `Async.router.loader.swap(...)` |
+| Several route-driven boundaries refresh at different rates | Register refresh scopes with `Async.router.loader.defineRefreshPlan(...)` |
+| Code needs the router object itself, not just navigation | Await `Async.router.ready()` |
+| Navigation belongs to the server or separate documents | Use `mode: "ssr"` or `mode: "mpa"` and let browser navigation stay native |
+| A custom runtime already owns materialized registries and a loader | Use `createRouter(...)` directly |
 
 ## Minimal CSR Router
 
@@ -78,44 +123,38 @@ Async.start({
 
 `route(...)` remains a compatibility alias for `defineRoute(...)`.
 
-## Direct Router Setup
+## App Router Facades
 
-Use `createRouter(...)` when you are building a custom runtime or want to pass
-registries directly instead of using the app hub.
+Use `Async.use({ route, partial })` for app registration, then call
+`Async.router` when code needs imperative navigation. This keeps route and
+partial declarations in the same registry path as signals, handlers,
+components, cache entries, and server calls. `Async.router.navigate(...)` and
+`Async.router.prefetch(...)` queue until the runtime router exists.
+`Async.router.loader.*` gives the same queued access to the active router
+loader's swap, refresh, scan, and mount APIs.
 
 ```js
-import {
-  createPartialRegistry,
-  createRouteRegistry,
-  createRouter,
-  defineRoute,
-  html
-} from "@async/framework";
-
-const partials = createPartialRegistry({
-  home() {
-    return html`<h1>Home</h1>`;
-  },
-  "product.page"({ id }) {
-    return html`<h1>Product ${id}</h1>`;
-  }
-});
-
-const routes = createRouteRegistry({
-  "/": defineRoute("home"),
-  "/products/:id": defineRoute("product.page")
-});
-
-const router = createRouter({
+Async.start({
   mode: "csr",
   root: document.body,
-  boundary: "route",
-  routes,
-  partials
-}).start();
+  boundary: "route"
+});
 
-await router.navigate("/products/sku-1");
+await Async.router.navigate("/products/sku-1");
 ```
+
+Use `Async.router.ready()` only when code needs the router object itself:
+
+```js
+const router = await Async.router.ready();
+router.signals.subscribe("router.path", syncPath);
+```
+
+`createRouter(...)` is the lowest-level layer. It is reserved for custom
+runtime integration that already has materialized runtime registries. It starts
+immediately when called and rejects a separate `signals` option so router state
+always belongs to the runtime loader's signal registry or to the router's own
+standalone loader.
 
 ## Route Patterns
 
@@ -184,19 +223,20 @@ partials or swapping the route boundary. This is useful for dashboards and
 application shells that already derive the visible view from state.
 
 ```js
-const routes = createRouteRegistry({
-  "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
-  "/fy26": defineRoute({ render: "none", meta: { page: "fy26" } })
+Async.use({
+  route: {
+    "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
+    "/fy26": defineRoute({ render: "none", meta: { page: "fy26" } })
+  }
 });
 
-const router = createRouter({
+Async.start({
   mode: "signals",
   urlMode: "hash",
-  root: document.body,
-  routes
-}).start();
+  root: document.body
+});
 
-router.loader.swap({
+await Async.router.loader.swap({
   type: "bind",
   boundary: "app-shell",
   render({ signals }) {
@@ -218,7 +258,7 @@ Hash SPAs with nested `async:boundary` regions can register refresh scopes once
 and batch same-tick updates:
 
 ```js
-router.loader.defineRefreshPlan({
+await Async.router.loader.defineRefreshPlan({
   chrome: {
     boundaries: ["app-chrome", "view-filters"],
     render({ signals }) {
@@ -251,8 +291,8 @@ router.loader.defineRefreshPlan({
   }
 });
 
-router.loader.refresh("timeline");
-router.loader.refresh("content");
+await Async.router.loader.refresh("timeline");
+await Async.router.loader.refresh("content");
 ```
 
 Use `loader.swap({ type: "many", ifChanged: true, scan: "once", updates })`
@@ -300,12 +340,12 @@ The router does not intercept:
 - non-GET forms;
 - plain section hashes in hash mode.
 
-Use `router.navigate(url)` for programmatic navigation:
+Use `Async.router.navigate(url)` for programmatic navigation:
 
 ```js
-await router.navigate("/products/sku-1");
-await router.navigate("/products/sku-2", { replace: true });
-await router.navigate("/products/sku-3", { history: false });
+await Async.router.navigate("/products/sku-1");
+await Async.router.navigate("/products/sku-2", { replace: true });
+await Async.router.navigate("/products/sku-3", { history: false });
 ```
 
 ## Router State
@@ -347,20 +387,22 @@ Route partials can return strings, `html` templates, DOM fragments, or response
 envelopes.
 
 ```js
-createPartialRegistry({
-  "product.page": async function ({ id }) {
-    const product = await this.server.products.get(id);
-    return {
-      html: html`<h1>${product.title}</h1>`,
-      signals: {
-        "product.current": product
-      },
-      cache: {
-        browser: {
-          [`product:${id}`]: product
+Async.use({
+  partial: {
+    "product.page": async function ({ id }) {
+      const product = await this.server.products.get(id);
+      return {
+        html: html`<h1>${product.title}</h1>`,
+        signals: {
+          "product.current": product
+        },
+        cache: {
+          browser: {
+            [`product:${id}`]: product
+          }
         }
-      }
-    };
+      };
+    }
   }
 });
 ```
@@ -376,11 +418,11 @@ For route partial envelopes:
 
 ## Prefetch
 
-`router.prefetch(url)` renders a local partial and returns its result without
+`Async.router.prefetch(url)` renders a local partial and returns its result without
 mutating router state, browser history, or the DOM.
 
 ```js
-const preview = await router.prefetch("/products/sku-1");
+const preview = await Async.router.prefetch("/products/sku-1");
 ```
 
 Prefetch can still execute partial code. Keep partial prefetch work idempotent

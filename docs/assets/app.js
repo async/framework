@@ -1,7 +1,5 @@
 import {
-  createPartialRegistry,
-  createRouteRegistry,
-  createRouter,
+  defineApp,
   route
 } from "./async-framework.js";
 import { docsData } from "./docs-data.js";
@@ -33,14 +31,18 @@ const routeEntries = Object.fromEntries(docsData.pages.map((page) => [
 routeEntries["/"] = route(defaultPage.id);
 routeEntries["*"] = route(fallbackPage.id);
 
-const router = createRouter({
+const docsApp = defineApp({
+  partial: partialEntries,
+  route: routeEntries
+});
+
+docsApp.start({
   mode: "csr",
   urlMode: "hash",
   root: document.body,
-  boundary: "route",
-  routes: createRouteRegistry(routeEntries),
-  partials: createPartialRegistry(partialEntries)
-}).start();
+  boundary: "route"
+});
+const router = await docsApp.router.ready();
 
 const searchInput = document.getElementById("docs-search");
 const searchPanel = document.getElementById("search-panel");

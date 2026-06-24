@@ -6,9 +6,7 @@ import {
   createApp,
   createCacheRegistry,
   createHandlerRegistry,
-  createPartialRegistry,
   createRegistryStore,
-  createRouteRegistry,
   createServerRegistry,
   createSignal,
   createSignalRegistry,
@@ -17,6 +15,8 @@ import {
   defineRoute,
   delay
 } from "../src/index.js";
+import { createPartialRegistry } from "../src/partials.js";
+import { createRouteRegistry } from "../src/router.js";
 
 test("Async.registry exists before startup and reflects Async.use", () => {
   const id = `globalRegistry${Date.now()}${Math.floor(Math.random() * 100000)}`;

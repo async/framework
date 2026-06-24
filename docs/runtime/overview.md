@@ -12,8 +12,9 @@ The runtime starts from a root, scans protocol attributes, registers bindings, a
 
 The built-in router owns URL matching, link and GET form interception, hash
 routes, route params, route partial swaps, and route-only `router.*` state. Use
-`createRouter(...)` directly when a custom runtime needs router control without
-going through `Async.start(...)`.
+`Async.router` for imperative navigation; it queues async navigation work until
+the runtime router exists. Custom runtimes may use `createRouter(...)` after
+they have materialized app declarations into runtime registries.
 
 ## Scheduler
 
@@ -32,7 +33,7 @@ The public runtime object exposes the active loader, signal registry, handler re
 const runtime = Async.start({ root: document });
 
 runtime.signals.get("count");
-runtime.router?.navigate("/products/sku-1");
+Async.router.navigate("/products/sku-1");
 runtime.loader.swap("route", "<h1>Next route</h1>");
 ```
 

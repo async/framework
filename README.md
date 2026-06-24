@@ -71,7 +71,7 @@ next level on every app.
 | Shorthand | Name | Requirement | Purpose |
 | --- | --- | --- | --- |
 | L1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, scheduler, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
-| L1.5 | App/server and streaming bridge | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial registry, SSR output, browser activation, split browser/server cache, and streamed boundary patches. |
+| L1.5 | App/server and streaming bridge | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial declarations, SSR output, browser activation, split browser/server cache, and streamed boundary patches. |
 | L2 | Build-required authoring and compiler profile | Build step required. | JSX, ESM, and TypeScript authoring, optimizer reports, generated plans, generated registries, chunks, manifests, and future resumability records that lower onto L1 and L1.5 protocols. |
 
 The package in this repository intentionally focuses on L1 and L1.5. L2 is a
@@ -434,9 +434,7 @@ import {
   component,
   createSignal,
   createHandlerRegistry,
-  createPartialRegistry,
   createRegistryStore,
-  createRouteRegistry,
   createRouter,
   createScheduler,
   createServerProxy,
@@ -1000,20 +998,38 @@ Async includes a built-in router. Use it for URL matching, route params,
 hash-based static-host routes, same-origin link and GET form interception,
 route partial swaps, and route-only `router.*` state.
 
-The router can be started in two ways:
+For app code, register routes and partials through the app registry:
 
 - `Async.use({ route, partial })` plus `Async.start({ mode, boundary })` for app
   hub setup.
-- `createRouter({ routes, partials, mode, boundary })` for direct runtime setup.
+
+Most apps should start at that layer and only move down when they need a more
+specific routing shape:
+
+| If the app is doing this | Use this pattern |
+| --- | --- |
+| Client-rendered route pages | `Async.use({ route, partial })` and `Async.start({ mode: "csr" })` |
+| Static-host routes | Add `urlMode: "hash"` and link to `#/path` routes |
+| Existing SSR or static HTML should stay visible until navigation | Use `mode: "spa"` |
+| Buttons, handlers, redirects, or preloads need routing | Use `Async.router.navigate(...)` or `Async.router.prefetch(...)` |
+| A dashboard renders from URL state | Use `mode: "signals"` with `Async.router.loader.swap(...)` |
+| Several route-driven boundaries refresh independently | Use `Async.router.loader.defineRefreshPlan(...)` and `refresh(...)` |
+| Code needs the router object itself | Await `Async.router.ready()` |
+| Navigation belongs to the server or separate documents | Use `mode: "ssr"` or `mode: "mpa"` |
+| A custom runtime already owns materialized registries | Use `createRouter(...)` directly |
+
+`createRouter(...)` is lower-level custom runtime wiring for already-materialized
+runtime registries. It is not a second registration API, and it starts
+immediately when called.
 
 Router pieces:
 
 | Piece | Purpose |
 | --- | --- |
-| `createRouteRegistry(...)` | Holds URL patterns such as `/products/:id` |
+| `Async.use({ route, partial })` | Registers URL patterns and fragment renderers |
 | `defineRoute(...)` | Creates route records that point to partials or metadata |
-| `createPartialRegistry(...)` | Holds route fragments that can return HTML or envelopes |
-| `createRouter(...)` | Starts navigation, history handling, matching, and route state |
+| `Async.start({ mode, boundary })` | Materializes the runtime router from app declarations |
+| `Async.router` | Queues or runs navigation, history handling, matching, and prefetch |
 | `async:boundary="route"` | Receives rendered route partial HTML in `csr` and `spa` modes |
 | `router.*` signals | Publish path, params, query, matched route, pending state, and errors |
 
@@ -1021,10 +1037,12 @@ Partials are server-rendered fragment functions. They return HTML, `html`
 templates, DOM fragments, or a response envelope.
 
 ```js
-const partials = createPartialRegistry({
-  "product.page": async function ({ id }) {
-    const product = await this.server.products.get(id);
-    return html`<h1>${product.title}</h1>`;
+Async.use({
+  partial: {
+    "product.page": async function ({ id }) {
+      const product = await this.server.products.get(id);
+      return html`<h1>${product.title}</h1>`;
+    }
   }
 });
 ```
@@ -1085,15 +1103,16 @@ partial. Use `mode: "signals"` for dashboards or app shells that already render
 from state:
 
 ```js
-const routes = createRouteRegistry({
-  "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
-  "/fy26": defineRoute({ render: "none", meta: { page: "fy26" } })
+Async.use({
+  route: {
+    "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
+    "/fy26": defineRoute({ render: "none", meta: { page: "fy26" } })
+  }
 });
 
-const router = createRouter({
+Async.start({
   mode: "signals",
-  urlMode: "hash",
-  routes
+  urlMode: "hash"
 });
 ```
 
@@ -1144,9 +1163,9 @@ router.error
 Programmatic navigation uses the same matcher and history handling:
 
 ```js
-await router.navigate("/products/sku-1");
-await router.navigate("/products/sku-2", { replace: true });
-await router.prefetch("/products/sku-3");
+await Async.router.navigate("/products/sku-1");
+await Async.router.navigate("/products/sku-2", { replace: true });
+await Async.router.prefetch("/products/sku-3");
 ```
 
 When a partial envelope owns an `html` key with `undefined`, the router treats
@@ -1751,9 +1770,9 @@ minimal public export spec, while omitting legacy `main`/`module`/`browser`
 entry fields and generated package file lists. `scripts/build-framework-bundle.js`
 derives the generated `dist/package.json` and staged artifact names from that
 spec. Feature branches should edit source files and let `pnpm run bundle`,
-`pnpm test`, `pnpm run pack:check`, or the generated release workflow
-materialize the publish tree. Use `pnpm run bundle:clean` to remove local
-generated artifacts after inspection.
+`pnpm test`, or the generated release workflow materialize the publish tree.
+Use `pnpm run bundle:clean` to remove local generated artifacts after
+inspection.
 
 `registry:lint` scans package source and examples for declared registry ids
 such as signals, handlers, server functions, partials, routes, and components.

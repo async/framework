@@ -28,7 +28,7 @@ Registries hold named behavior and data:
 
 Async has a built-in router for URL-backed state and route partials. Register
 patterns with `defineRoute(...)`, then start the router through `Async.start(...)`
-or `createRouter(...)`.
+and use `Async.router` for imperative navigation.
 
 Use the router when an app needs:
 

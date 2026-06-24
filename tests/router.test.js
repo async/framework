@@ -5,8 +5,6 @@ import {
   Loader,
   createCacheRegistry,
   createHandlerRegistry,
-  createPartialRegistry,
-  createRouteRegistry,
   createRouter,
   createSignalRegistry,
   defineRoute,
@@ -15,6 +13,8 @@ import {
   route,
   signal
 } from "../src/index.js";
+import { createPartialRegistry } from "../src/partials.js";
+import { createRouteRegistry } from "../src/router.js";
 
 test("CSR router renders the current route partial into an empty boundary on start", async () => {
   const window = new Window({ url: "http://app.test/products/sku-1?ref=nav" });
@@ -71,7 +71,6 @@ test("CSR router renders the current route partial into an empty boundary on sta
       "/products/:id": productRoute
     }),
     loader,
-    signals,
     handlers,
     cache,
     partials
@@ -114,7 +113,6 @@ test("CSR router records an error when no route matches", async () => {
       "/": route("home")
     }),
     loader,
-    signals,
     partials: createPartialRegistry({
       home() {
         return "<h1>Home</h1>";
@@ -151,7 +149,6 @@ test("CSR router supports wildcard fallback routes", async () => {
       "*": notFoundRoute
     }),
     loader,
-    signals,
     partials: createPartialRegistry({
       "notFound.page"() {
         return `<h1 id="not-found">Not found</h1>`;
@@ -181,6 +178,62 @@ test("route matching ranks static and dynamic routes before wildcard fallbacks",
   assert.equal(routes.match("/missing").route.partial, "notFound.page");
 });
 
+test("route registration rejects unsupported render metadata", () => {
+  assert.throws(
+    () => createRouteRegistry({
+      "/broken": defineRoute("broken.page", { render: "sometimes" })
+    }),
+    /Unknown route render mode "sometimes"/
+  );
+});
+
+test("router rejects direct signal registry injection", () => {
+  const signals = createSignalRegistry();
+
+  assert.throws(
+    () => createRouter({ signals }),
+    /createRouter\(\.\.\.\) does not accept a "signals" option/
+  );
+});
+
+test("createRouter starts immediately and start remains idempotent", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <a id="next" href="/next">Next</a>
+    <section async:boundary="route"><h1 id="route-title">Home</h1></section>
+  `;
+
+  let renders = 0;
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/next": route("next.page")
+    }),
+    partials: createPartialRegistry({
+      "next.page"() {
+        renders += 1;
+        return `<h1 id="route-title">Next</h1>`;
+      }
+    })
+  });
+
+  assert.equal(router.signals.get("router.path"), "/");
+
+  router.start();
+  document.querySelector("#next").click();
+  await delay(0);
+
+  assert.equal(renders, 1);
+  assert.equal(router.signals.get("router.path"), "/next");
+  assert.equal(document.querySelector("#route-title").textContent, "Next");
+
+  router.destroy();
+});
+
 test("signals router updates path state and history without rendering partials or swapping", async () => {
   const window = new Window({ url: "http://app.test/pbi" });
   const { document } = window;
@@ -195,7 +248,6 @@ test("signals router updates path state and history without rendering partials o
   `;
 
   let partialCalls = 0;
-  const signals = createSignalRegistry();
   const fy26Route = defineRoute({
     partial: "dashboard.page",
     render: "none",
@@ -210,7 +262,6 @@ test("signals router updates path state and history without rendering partials o
       "/fy26/:section": fy26Route,
       "/search": defineRoute({ render: "none", meta: { page: "search" } })
     }),
-    signals,
     partials: createPartialRegistry({
       "dashboard.page"() {
         partialCalls += 1;
@@ -218,6 +269,7 @@ test("signals router updates path state and history without rendering partials o
       }
     })
   }).start();
+  const { signals } = router;
 
   assert.equal(router.mode, "signals");
   assert.equal(signals.get("router.path"), "/pbi");
@@ -268,7 +320,6 @@ test("signals hash router intercepts hash routes and preserves section anchors",
   `;
 
   let partialCalls = 0;
-  const signals = createSignalRegistry();
   const router = createRouter({
     mode: "signals",
     urlMode: "hash",
@@ -277,7 +328,6 @@ test("signals hash router intercepts hash routes and preserves section anchors",
     routes: createRouteRegistry({
       "/docs/:page": defineRoute("docs.page", { render: "none" })
     }),
-    signals,
     partials: createPartialRegistry({
       "docs.page"() {
         partialCalls += 1;
@@ -285,6 +335,7 @@ test("signals hash router intercepts hash routes and preserves section anchors",
       }
     })
   }).start();
+  const { signals } = router;
 
   const section = new window.MouseEvent("click", { bubbles: true, cancelable: true });
   document.querySelector("#section").dispatchEvent(section);
@@ -313,16 +364,15 @@ test("signals router records no-route errors without touching the boundary", asy
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
 
-  const signals = createSignalRegistry();
   const router = createRouter({
     mode: "signals",
     root: document.body,
     boundary: "route",
     routes: createRouteRegistry({
       "/": defineRoute({ render: "none" })
-    }),
-    signals
+    })
   }).start();
+  const { signals } = router;
 
   const result = await router.navigate("/missing");
 
@@ -333,6 +383,150 @@ test("signals router records no-route errors without touching the boundary", asy
   assert.match(signals.get("router.error").message, /No route matched \/missing/);
   assert.equal(document.querySelector("#route-title").textContent, "Home");
   assert.equal(window.location.href, "http://app.test/");
+
+  router.destroy();
+});
+
+test("SPA router skips duplicate navigation work for the active route snapshot", async () => {
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">sku-1</h1></section>`;
+
+  let renders = 0;
+  const productRoute = route("product.page");
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": productRoute
+    }),
+    partials: createPartialRegistry({
+      "product.page"({ id }) {
+        renders += 1;
+        return `<h1 id="route-title">${id}</h1>`;
+      }
+    })
+  }).start();
+  const { signals } = router;
+
+  const result = await router.navigate("/products/sku-1");
+
+  assert.equal(result.route, productRoute);
+  assert.equal(renders, 0);
+  assert.equal(signals.get("router.path"), "/products/sku-1");
+  assert.deepEqual(signals.get("router.params"), { id: "sku-1" });
+  assert.equal(document.querySelector("#route-title").textContent, "sku-1");
+  assert.equal(window.location.href, "http://app.test/products/sku-1");
+
+  router.destroy();
+});
+
+test("SPA router uses signal fast path for same-view navigation and force refreshes the boundary", async () => {
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">sku-1</h1></section>`;
+
+  let renders = 0;
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": defineRoute("product.page", { viewKey: "product" })
+    }),
+    partials: createPartialRegistry({
+      "product.page"({ id }) {
+        renders += 1;
+        return `<h1 id="route-title">${id}</h1>`;
+      }
+    })
+  }).start();
+  const { signals } = router;
+
+  await router.navigate("/products/sku-2?tab=details");
+
+  assert.equal(renders, 0);
+  assert.equal(signals.get("router.path"), "/products/sku-2");
+  assert.deepEqual(signals.get("router.params"), { id: "sku-2" });
+  assert.deepEqual(signals.get("router.query"), { tab: "details" });
+  assert.equal(document.querySelector("#route-title").textContent, "sku-1");
+  assert.equal(window.location.href, "http://app.test/products/sku-2?tab=details");
+
+  await router.navigate("/products/sku-3", { force: true });
+
+  assert.equal(renders, 1);
+  assert.equal(signals.get("router.path"), "/products/sku-3");
+  assert.deepEqual(signals.get("router.params"), { id: "sku-3" });
+  assert.equal(document.querySelector("#route-title").textContent, "sku-3");
+  assert.equal(window.location.href, "http://app.test/products/sku-3");
+
+  router.destroy();
+});
+
+test("CSR router renders initial route and then uses same-view signal navigation", async () => {
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  let renders = 0;
+  const router = createRouter({
+    mode: "csr",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/products/:id": defineRoute("product.page", { viewKey: "product" })
+    }),
+    partials: createPartialRegistry({
+      "product.page"({ id }) {
+        renders += 1;
+        return `<h1 id="route-title">${id}</h1>`;
+      }
+    })
+  }).start();
+  const { signals } = router;
+
+  await delay(0);
+
+  assert.equal(renders, 1);
+  assert.equal(document.querySelector("#route-title").textContent, "sku-1");
+
+  await router.navigate("/products/sku-2");
+
+  assert.equal(renders, 1);
+  assert.equal(signals.get("router.path"), "/products/sku-2");
+  assert.deepEqual(signals.get("router.params"), { id: "sku-2" });
+  assert.equal(document.querySelector("#route-title").textContent, "sku-1");
+
+  router.destroy();
+});
+
+test("SPA router swaps a route-level boundary override", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="route"><h1 id="route-title">Home</h1></section>
+    <aside async:boundary="side"></aside>
+  `;
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/side/:id": defineRoute("side.page", { boundary: "side" })
+    }),
+    partials: createPartialRegistry({
+      "side.page"({ id }) {
+        return `<h2 id="side-title">${id}</h2>`;
+      }
+    })
+  }).start();
+
+  await router.navigate("/side/panel");
+
+  assert.equal(document.querySelector("#route-title").textContent, "Home");
+  assert.equal(document.querySelector("#side-title").textContent, "panel");
 
   router.destroy();
 });
@@ -380,7 +574,6 @@ test("SPA router aborts stale navigations and ignores late partial results", asy
       "/products/:id": route("product.page")
     }),
     loader,
-    signals,
     cache,
     partials
   }).start();
@@ -441,7 +634,6 @@ test("SPA router ignores stale partial rejections after a newer navigation compl
       "/products/:id": route("product.page")
     }),
     loader,
-    signals,
     partials
   }).start();
 
@@ -501,7 +693,6 @@ test("SPA router swaps route boundaries and rescans inserted handlers", async ()
       "/products/:id": route("product.page")
     }),
     loader,
-    signals,
     handlers,
     partials
   }).start();
@@ -526,7 +717,6 @@ test("SPA router warns and skips route swaps for undefined partial html", async 
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
 
-  const signals = createSignalRegistry();
   const warnings = [];
   const originalWarn = console.warn;
   console.warn = (message) => warnings.push(message);
@@ -538,13 +728,13 @@ test("SPA router warns and skips route swaps for undefined partial html", async 
       routes: createRouteRegistry({
         "/noop": route("noop")
       }),
-      signals,
       partials: createPartialRegistry({
         noop() {
           return { html: undefined };
         }
       })
     }).start();
+    const { signals } = router;
 
     await router.navigate("/noop");
     await router.navigate("/noop");
@@ -676,7 +866,6 @@ test("SPA router catches intercepted link navigation failures without corrupting
       "/broken": route("broken")
     }),
     loader,
-    signals,
     partials: createPartialRegistry({
       broken() {
         throw new Error("broken route failed");
@@ -722,7 +911,6 @@ test("SPA router catches intercepted submit navigation failures", async () => {
       "/search": route("search")
     }),
     loader,
-    signals,
     partials: createPartialRegistry({
       search() {
         throw new Error("search route failed");
@@ -760,7 +948,6 @@ test("SPA router catches popstate navigation failures", async () => {
       "/broken": route("broken")
     }),
     loader,
-    signals,
     partials: createPartialRegistry({
       broken() {
         throw new Error("popstate route failed");
@@ -834,7 +1021,6 @@ test("CSR hash router renders the current hash route into an empty boundary", as
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"></section>`;
 
-  const signals = createSignalRegistry();
   const docsRoute = route("docs.page");
   const router = createRouter({
     mode: "csr",
@@ -844,13 +1030,13 @@ test("CSR hash router renders the current hash route into an empty boundary", as
     routes: createRouteRegistry({
       "/docs/:slug": docsRoute
     }),
-    signals,
     partials: createPartialRegistry({
       "docs.page"({ slug }) {
         return `<h1 id="route-title">${slug}</h1>`;
       }
     })
   }).start();
+  const { signals } = router;
 
   assert.equal(router.urlMode, "hash");
   assert.equal(signals.get("router.pending"), true);
@@ -876,7 +1062,6 @@ test("SPA hash router intercepts hash routes and preserves section anchors", asy
     <section async:boundary="route"><h1 id="route-title">Start</h1></section>
   `;
 
-  const signals = createSignalRegistry();
   const router = createRouter({
     mode: "spa",
     urlMode: "hash",
@@ -885,13 +1070,13 @@ test("SPA hash router intercepts hash routes and preserves section anchors", asy
     routes: createRouteRegistry({
       "/docs/:page": route("docs.page")
     }),
-    signals,
     partials: createPartialRegistry({
       "docs.page"({ page }) {
         return `<h1 id="route-title">${page}</h1>`;
       }
     })
   }).start();
+  const { signals } = router;
 
   const section = new window.MouseEvent("click", { bubbles: true, cancelable: true });
   document.querySelector("#section").dispatchEvent(section);
@@ -918,7 +1103,6 @@ test("SPA hash router navigate writes hash history for route paths", async () =>
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Start</h1></section>`;
 
-  const signals = createSignalRegistry();
   const router = createRouter({
     mode: "spa",
     urlMode: "hash",
@@ -927,13 +1111,13 @@ test("SPA hash router navigate writes hash history for route paths", async () =>
     routes: createRouteRegistry({
       "/docs/:page": route("docs.page")
     }),
-    signals,
     partials: createPartialRegistry({
       "docs.page"({ page }) {
         return `<h1 id="route-title">${page}</h1>`;
       }
     })
   }).start();
+  const { signals } = router;
 
   await router.navigate("/docs/signals?view=all");
 
@@ -950,7 +1134,6 @@ test("SPA hash router follows hashchange and popstate route updates", async () =
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Start</h1></section>`;
 
-  const signals = createSignalRegistry();
   const router = createRouter({
     mode: "spa",
     urlMode: "hash",
@@ -960,7 +1143,6 @@ test("SPA hash router follows hashchange and popstate route updates", async () =
       "/docs/:page": route("docs.page"),
       "*": route("notFound.page")
     }),
-    signals,
     partials: createPartialRegistry({
       "docs.page"({ page }) {
         return `<h1 id="route-title">${page}</h1>`;
@@ -970,6 +1152,7 @@ test("SPA hash router follows hashchange and popstate route updates", async () =
       }
     })
   }).start();
+  const { signals } = router;
 
   window.location.hash = "#/docs/server";
   window.dispatchEvent(new window.HashChangeEvent("hashchange"));
@@ -994,9 +1177,6 @@ test("SPA router prefetch executes partials without mutating route state, histor
   const { document } = window;
   document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
   const cache = createCacheRegistry();
-  const signals = createSignalRegistry({
-    prefetched: signal(false)
-  });
   const contexts = [];
   const router = createRouter({
     mode: "spa",
@@ -1005,7 +1185,6 @@ test("SPA router prefetch executes partials without mutating route state, histor
     routes: createRouteRegistry({
       "/products/:id": route("product.page")
     }),
-    signals,
     cache,
     partials: createPartialRegistry({
       "product.page": function ({ id }) {
@@ -1024,6 +1203,8 @@ test("SPA router prefetch executes partials without mutating route state, histor
       }
     })
   }).start();
+  const { signals } = router;
+  signals.ensure("prefetched", false);
 
   const result = await router.prefetch("/products/sku-1");
 
@@ -1134,7 +1315,6 @@ test("CSR router renders malformed encoded params without crashing", async () =>
       "/products/:id": route("product.page")
     }),
     loader,
-    signals,
     partials: createPartialRegistry({
       "product.page"({ id }) {
         return `<h1 id="product-id">${id}</h1>`;
@@ -1157,9 +1337,7 @@ test("CSR router passes custom attribute config to its owned loader", async () =
   const { document } = window;
   document.body.innerHTML = `<section data-async-boundary="route"></section>`;
 
-  const signals = createSignalRegistry({
-    selected: signal(false)
-  });
+  let selected = false;
   const router = createRouter({
     mode: "csr",
     root: document.body,
@@ -1173,15 +1351,14 @@ test("CSR router passes custom attribute config to its owned loader", async () =
     routes: createRouteRegistry({
       "/custom/:id": route("custom.page")
     }),
-    signals,
     handlers: createHandlerRegistry({
       select() {
-        this.signals.set("selected", true);
+        selected = true;
       }
     }),
     partials: createPartialRegistry({
       "custom.page"({ id }) {
-        return `<button id="custom-select" data-on-click="select" data-class-selected="selected">${id}</button>`;
+        return `<button id="custom-select" data-on-click="select">${id}</button>`;
       }
     })
   }).start();
@@ -1192,7 +1369,7 @@ test("CSR router passes custom attribute config to its owned loader", async () =
   assert.equal(button.textContent, "sku-1");
   button.click();
   await delay(0);
-  assert.equal(button.classList.contains("selected"), true);
+  assert.equal(selected, true);
 
   router.destroy();
 });

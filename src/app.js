@@ -19,11 +19,13 @@ export function defineApp(initial, options = {}) {
   const runtimes = new Set();
   const createRuntime = options.createRuntime ?? createApp;
   const loaderFacade = createLoaderFacade();
+  const routerFacade = createRouterFacade();
   let currentRuntime;
 
   const app = {
     registry,
     loader: loaderFacade,
+    router: routerFacade,
 
     use(typeOrModule, entries) {
       const normalized = normalizeUse(typeOrModule, entries);
@@ -104,6 +106,11 @@ export function defineApp(initial, options = {}) {
   function setCurrentRuntime(runtime) {
     if (runtime) {
       currentRuntime = runtime;
+      if (runtime.router) {
+        routerFacade._setCurrent(runtime.router);
+      } else {
+        routerFacade._clearCurrent();
+      }
     }
   }
 }
@@ -242,6 +249,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
         }
         rootLoaders.clear();
         router?.destroy?.();
+        if (router) {
+          app.router._clearCurrent(router);
+        }
         router = undefined;
         routerStarted = false;
         loader = undefined;
@@ -258,6 +268,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
       rootLoaders.delete(root);
       if (loader === rootLoader) {
         router?.destroy?.();
+        if (router) {
+          app.router._clearCurrent(router);
+        }
         router = undefined;
         routerStarted = false;
         const next = rootLoaders.values().next().value;
@@ -348,6 +361,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
       destroyed = true;
       detach();
       router?.destroy?.();
+      if (router) {
+        app.router._clearCurrent(router);
+      }
       const destroyedLoaders = new Set(rootLoaders.values());
       for (const rootLoader of destroyedLoaders) {
         rootLoader.destroy?.();
@@ -358,6 +374,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       }
       app.loader._clearCurrent([...destroyedLoaders, loader]);
       app.loader._rejectPending(new Error("Async loader queue was cleared because the runtime was destroyed."));
+      app.router._rejectPending(new Error("Async router queue was cleared because the runtime was destroyed."));
       signals.destroy?.();
       for (const mounted of flows.values()) {
         mounted.instance.destroy?.();
@@ -418,7 +435,6 @@ export function createApp(appOrDefinition = Async, options = {}) {
       boundary: options.boundary ?? "route",
       routes,
       loader: runtime.loader,
-      signals,
       handlers,
       server,
       cache: browserCache,
@@ -430,6 +446,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     runtime.loader.router = router;
     configureServerContext({ cache: browserCache, router });
     router.start();
+    app.router._setCurrent(router);
     routerStarted = true;
   }
 
@@ -556,6 +573,207 @@ function createLoaderFacade() {
   function enqueue(method, args) {
     if (current) {
       return invoke(current, method, args);
+    }
+    return new Promise((resolve, reject) => {
+      pending.push({ method, args, resolve, reject });
+    });
+  }
+
+  function flushPending(loader) {
+    while (pending.length > 0) {
+      const operation = pending.shift();
+      invoke(loader, operation.method, operation.args)
+        .then(operation.resolve, operation.reject);
+    }
+  }
+
+  async function invoke(loader, method, args) {
+    return loader[method](...args);
+  }
+}
+
+function createRouterFacade() {
+  let current;
+  const pending = [];
+  const readyWaiters = [];
+  const loaderFacade = createRouterLoaderFacade(() => current);
+
+  const facade = {
+    loader: loaderFacade,
+
+    get current() {
+      return current;
+    },
+
+    ready() {
+      if (current) {
+        return Promise.resolve(current);
+      }
+      return new Promise((resolve, reject) => {
+        readyWaiters.push({ resolve, reject });
+      });
+    },
+
+    match(url) {
+      return current?.match(url) ?? null;
+    },
+
+    navigate(url, options) {
+      return enqueue("navigate", [url, options]);
+    },
+
+    prefetch(url) {
+      return enqueue("prefetch", [url]);
+    },
+
+    inspect() {
+      return {
+        ready: Boolean(current),
+        pending: pending.length,
+        mode: current?.mode,
+        urlMode: current?.urlMode
+      };
+    }
+  };
+
+  Object.defineProperties(facade, {
+    _setCurrent: {
+      value(router) {
+        if (!router) {
+          return;
+        }
+        current = router;
+        while (readyWaiters.length > 0) {
+          readyWaiters.shift().resolve(router);
+        }
+        loaderFacade._flush(router);
+        flushPending(router);
+      }
+    },
+    _clearCurrent: {
+      value(router) {
+        if (router === undefined || router === current) {
+          current = undefined;
+        }
+      }
+    },
+    _rejectPending: {
+      value(error) {
+        while (pending.length > 0) {
+          pending.shift().reject(error);
+        }
+        while (readyWaiters.length > 0) {
+          readyWaiters.shift().reject(error);
+        }
+        loaderFacade._rejectPending(error);
+      }
+    }
+  });
+
+  return facade;
+
+  function enqueue(method, args) {
+    if (current) {
+      return invoke(current, method, args);
+    }
+    return new Promise((resolve, reject) => {
+      pending.push({ method, args, resolve, reject });
+    });
+  }
+
+  function flushPending(router) {
+    while (pending.length > 0) {
+      const operation = pending.shift();
+      invoke(router, operation.method, operation.args)
+        .then(operation.resolve, operation.reject);
+    }
+  }
+
+  async function invoke(router, method, args) {
+    return router[method](...args);
+  }
+}
+
+function createRouterLoaderFacade(getRouter) {
+  const pending = [];
+  const readyWaiters = [];
+
+  const facade = {
+    get current() {
+      return getRouter()?.loader;
+    },
+
+    ready() {
+      const loader = getRouter()?.loader;
+      if (loader) {
+        return Promise.resolve(loader);
+      }
+      return new Promise((resolve, reject) => {
+        readyWaiters.push({ resolve, reject });
+      });
+    },
+
+    scan(rootOrFragment) {
+      return enqueue("scan", [rootOrFragment]);
+    },
+
+    swap(boundaryId, fragmentOrTemplate, options) {
+      return enqueue("swap", [boundaryId, fragmentOrTemplate, options]);
+    },
+
+    defineRefreshPlan(plan) {
+      return enqueue("defineRefreshPlan", [plan]);
+    },
+
+    refresh(scope, updates, options) {
+      return enqueue("refresh", [scope, updates, options]);
+    },
+
+    mount(target, Component, props) {
+      return enqueue("mount", [target, Component, props]);
+    },
+
+    inspect() {
+      const loader = getRouter()?.loader;
+      return {
+        ready: Boolean(loader),
+        pending: pending.length,
+        root: loader?.root
+      };
+    }
+  };
+
+  Object.defineProperties(facade, {
+    _flush: {
+      value(router) {
+        const loader = router?.loader;
+        if (!loader) {
+          return;
+        }
+        while (readyWaiters.length > 0) {
+          readyWaiters.shift().resolve(loader);
+        }
+        flushPending(loader);
+      }
+    },
+    _rejectPending: {
+      value(error) {
+        while (pending.length > 0) {
+          pending.shift().reject(error);
+        }
+        while (readyWaiters.length > 0) {
+          readyWaiters.shift().reject(error);
+        }
+      }
+    }
+  });
+
+  return facade;
+
+  function enqueue(method, args) {
+    const loader = getRouter()?.loader;
+    if (loader) {
+      return invoke(loader, method, args);
     }
     return new Promise((resolve, reject) => {
       pending.push({ method, args, resolve, reject });

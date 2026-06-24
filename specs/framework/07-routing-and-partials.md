@@ -22,20 +22,48 @@ boundaries locally or served by the server, depending on the selected mode.
 
 ## Public Contract
 
-Routing primitives include:
+Routing primitives are layered from app authoring down to custom runtime
+integration:
 
-- `defineRoute(partial, options?)`, `defineRoute({ render: "none", meta })`,
+- App registration layer: `Async.use({ route, partial })` with
+  `defineRoute(partial, options?)`, `defineRoute({ render: "none", meta })`,
   and `route(...)` compatibility alias.
-- `createRouteRegistry(initialMap?)`.
-- `createPartialRegistry(initialMap?)`.
-- `createRouter({ mode, urlMode, root, boundary, routes, partials, loader })`.
+- App start layer: `Async.start({ mode, urlMode, root, boundary })` to materialize runtime
+  route and partial registries from app declarations and start the router.
+- App router facade layer: `Async.router.navigate(...)`,
+  `Async.router.prefetch(...)`, and
+  `Async.router.ready()` for app-level router access that queues until the
+  runtime router exists.
+- `Async.router.loader.*` for queued access to the active router loader's swap,
+  refresh, scan, and mount APIs.
+- Runtime integration layer: `createRouter({ mode, urlMode, root, boundary,
+  loader })` for custom runtime wiring that already owns materialized runtime
+  registries.
+
+`createRouter(...)` does not accept a separate `signals` option. App-managed
+routers publish `router.*` state through the runtime loader's signal registry;
+standalone routers create one internal signal registry for their owned loader.
+As a `create*` API, `createRouter(...)` creates and starts the router
+immediately. `start()` is idempotent compatibility, not the documented app
+authoring path. App code should register route and partial declarations through
+`Async.use(...)`; direct route and partial registry construction is internal
+runtime wiring, not a public app registration model.
+
+Route records may include:
+
+- `partial`: partial ID for route boundary rendering.
+- `render`: `"auto"`, `"partial"`, `"signals"`, or `"none"`.
+- `viewKey`: stable mounted view identity for same-view signal navigation.
+- `boundary`: route-specific boundary override.
+- `dataKey`: reserved route data identity.
+- `meta`: user metadata that does not control router behavior.
 
 Router modes:
 
 - `csr`: initial route renders locally into an empty route boundary and later
-  navigation stays local.
-- `spa`: existing HTML may contain route content and later navigation stays
-  local.
+  navigation uses the transition planner.
+- `spa`: existing HTML may contain route content and later navigation uses the
+  transition planner.
 - `signals`: existing HTML stays mounted while navigation updates router
   signals and browser history only.
 - `ssr`: the document is server-rendered and browser navigation stays native.
@@ -52,7 +80,7 @@ Router URL modes:
 - Routes match URLs and point to partial IDs or metadata-only route records.
 - Partials render fragment content and may call server functions.
 - The loader owns boundary swaps and rescans.
-- The signal registry owns `router.*` state.
+- The runtime or loader signal registry owns `router.*` state.
 - Server rendering may use the same route and partial registries to produce
   initial HTML.
 
@@ -62,16 +90,20 @@ Routing protocol includes:
 
 - Route patterns as stable strings.
 - Partial IDs as registry references.
-- Route boundary ID, usually `route`.
+- Route boundary ID, usually `route`, with optional route-level override.
 - Router URL mode, either `path` or `hash`.
 - Router signals: `router.url`, `router.path`, `router.params`,
   `router.query`, `router.route`, `router.pending`, and `router.error`.
 - Partial results that may include HTML and server-result-like side effects.
+- Transition plans that classify navigation as `noop`, `signals`, `partial`,
+  or native document navigation.
 
-CSR and SPA modes consume local partial output. Signals mode updates router
-state without rendering partials or swapping boundaries. SSR and MPA modes
-preserve native document navigation and must not perform hidden route-fragment
-fetches.
+CSR and SPA modes consume local partial output when the transition planner
+chooses a partial render. A same-view transition with a matching `viewKey` and
+boundary updates router state and browser history without rendering a partial.
+Signals mode updates router state without rendering partials or swapping
+boundaries. SSR and MPA modes preserve native document navigation and must not
+perform hidden route-fragment fetches.
 
 ## Resume Contract
 
@@ -86,6 +118,8 @@ Routing resume behavior:
   without requiring noop partials.
 - Route-only shells may bind view boundaries to `router.*` signal reads so
   same-tick route state changes coalesce into one unchanged-aware refresh.
+- Same-view navigation must require explicit signal-safe metadata, such as a
+  matching `viewKey`, `render: "signals"`, or `render: "none"`.
 - Stale navigation results must not overwrite newer router state or DOM.
 
 ## Invariants
@@ -96,6 +130,10 @@ Routing resume behavior:
   mutating router state.
 - Malformed encoded params are handled without crashing the router.
 - Prefetch does not mutate router state, history, or DOM.
+- Same-URL navigation skips route state writes, partial rendering, boundary
+  swaps, and duplicate history writes.
+- `force: true` refreshes a stable view through the partial path in CSR and SPA
+  modes.
 - Navigation errors update route error state without corrupting the active
   boundary.
 - Route partial envelopes with `status: 204`, no `html` key, `html: undefined`,

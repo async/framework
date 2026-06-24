@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createPartialRegistry, createServerRegistry, html } from "../src/index.js";
+import { createServerRegistry, html } from "../src/index.js";
+import { createPartialRegistry } from "../src/partials.js";
 
 test("partial registry renders templates and can call this.server", async () => {
   const server = createServerRegistry({

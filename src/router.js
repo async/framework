@@ -23,6 +23,7 @@ export const route = defineRoute;
 
 const routerModes = new Set(["csr", "spa", "signals", "ssr", "mpa"]);
 const routerUrlModes = new Set(["path", "hash"]);
+const routeRenderModes = new Set(["auto", "partial", "signals", "none"]);
 const emptyHtmlWarnings = new Set();
 
 export function createRouteRegistry(initialMap = {}, options = {}) {
@@ -123,26 +124,29 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
   }
 }
 
-export function createRouter({
-  mode = "ssr",
-  urlMode = "path",
-  root,
-  boundary = "route",
-  routes = createRouteRegistry(),
-  loader,
-  signals,
-  handlers,
-  server,
-  cache,
-  partials,
-  attributes,
-  scheduler
-} = {}) {
+export function createRouter(options = {}) {
+  if (Object.hasOwn(options, "signals")) {
+    throw new Error('createRouter(...) does not accept a "signals" option. Pass a loader that owns the runtime signal registry instead.');
+  }
+  const {
+    mode = "ssr",
+    urlMode = "path",
+    root,
+    boundary = "route",
+    routes = createRouteRegistry(),
+    loader,
+    handlers,
+    server,
+    cache,
+    partials,
+    attributes,
+    scheduler
+  } = options;
   assertRouterMode(mode);
   assertRouterUrlMode(urlMode);
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
-  const signalRegistry = signals ?? loader?.signals ?? createSignalRegistry();
+  const signalRegistry = loader?.signals ?? createSignalRegistry();
   const handlerRegistry = handlers ?? loader?.handlers ?? createHandlerRegistry();
   const schedulerInstance = scheduler ?? loader?.scheduler ?? createScheduler();
   const ownsScheduler = !scheduler && !loader?.scheduler;
@@ -160,9 +164,11 @@ export function createRouter({
     });
   const ownsLoader = !loader;
   const cleanups = new Set();
+  let started = false;
   let destroyed = false;
   let navigationVersion = 0;
   let activeNavigation;
+  let activeRouteSnapshot;
   let observedHistoryHref = "";
 
   const api = {
@@ -182,6 +188,10 @@ export function createRouter({
 
     start() {
       assertActive();
+      if (started) {
+        return api;
+      }
+      started = true;
       loaderInstance.router = api;
       signalRegistry._setContext?.({ router: api, loader: loaderInstance, server, cache, scheduler: schedulerInstance });
       if (ownsLoader) {
@@ -227,16 +237,28 @@ export function createRouter({
     async navigate(url, options = {}) {
       assertActive();
       const target = resolveUrl(url);
-      if (mode === "mpa" || mode === "ssr") {
+      const matched = api.match(target);
+      const plan = planTransition(target, matched, options);
+      if (plan.kind === "document") {
         documentRef.defaultView?.location?.assign?.(browserUrlForRoute(target).href);
         return null;
       }
 
-      if (mode === "signals") {
-        return renderSignalRoute(target, options);
+      if (!matched) {
+        beginNavigation(target, null);
+        setNoRouteError(target);
+        return null;
       }
 
-      return renderLocalRoutePartial(target, options);
+      if (plan.kind === "noop") {
+        return matched;
+      }
+
+      if (plan.kind === "signals") {
+        return renderSignalRoute(target, options, { matched, plan });
+      }
+
+      return renderLocalRoutePartial(target, options, { matched, plan });
     },
 
     destroy() {
@@ -255,6 +277,7 @@ export function createRouter({
     }
   };
 
+  api.start();
   return api;
 
   function bindNavigation() {
@@ -301,14 +324,15 @@ export function createRouter({
     }
   }
 
-  async function renderLocalRoutePartial(target, options = {}) {
-    const matched = api.match(target);
+  async function renderLocalRoutePartial(target, options = {}, transition = {}) {
+    const matched = transition.matched ?? api.match(target);
     if (!matched) {
       beginNavigation(target, null);
       setNoRouteError(target);
       return null;
     }
 
+    const plan = transition.plan ?? planTransition(target, matched, options);
     const navigation = beginNavigation(target, matched);
     setMatchedRouterState(target, matched, { pending: true, error: null });
 
@@ -325,10 +349,11 @@ export function createRouter({
       if (!isActiveNavigation(navigation)) {
         return null;
       }
-      await applyNavigationResult(result, target, options, navigation);
+      await applyNavigationResult(result, target, options, navigation, plan);
       if (!isActiveNavigation(navigation)) {
         return null;
       }
+      activeRouteSnapshot = routeSnapshot(target, matched, plan);
       setRouterState({ pending: false, error: null });
       return result;
     } catch (error) {
@@ -340,24 +365,26 @@ export function createRouter({
     }
   }
 
-  async function renderSignalRoute(target, options = {}) {
-    const matched = api.match(target);
+  async function renderSignalRoute(target, options = {}, transition = {}) {
+    const matched = transition.matched ?? api.match(target);
     if (!matched) {
       beginNavigation(target, null);
       setNoRouteError(target);
       return null;
     }
 
+    const plan = transition.plan ?? planTransition(target, matched, options);
     const navigation = beginNavigation(target, matched);
     setMatchedRouterState(target, matched, { pending: false, error: null });
     if (!isActiveNavigation(navigation)) {
       return null;
     }
     updateBrowserHistory(target, options);
+    activeRouteSnapshot = routeSnapshot(target, matched, plan);
     return matched;
   }
 
-  async function applyNavigationResult(result, target, options, navigation) {
+  async function applyNavigationResult(result, target, options, navigation, plan) {
     if (!isActiveNavigation(navigation)) {
       return;
     }
@@ -374,10 +401,10 @@ export function createRouter({
         return;
       }
       if (result && Object.hasOwn(result, "html") && result.html === undefined) {
-        warnEmptyPartialHtml(boundary);
+        warnEmptyPartialHtml(plan?.boundary ?? boundary);
       }
       if (shouldSwapRouteResult(result)) {
-        loaderInstance.swap(boundary, result.html);
+        loaderInstance.swap(plan?.boundary ?? boundary, result.html);
       }
     });
     await schedulerInstance.flush();
@@ -428,6 +455,7 @@ export function createRouter({
     const url = currentUrl();
     const matched = api.match(url);
     setMatchedRouterState(url, matched, { pending: false, error: null });
+    activeRouteSnapshot = routeSnapshot(url, matched);
   }
 
   function setMatchedRouterState(url, matched, patch = {}) {
@@ -448,6 +476,7 @@ export function createRouter({
       pending: false,
       error
     });
+    activeRouteSnapshot = routeSnapshot(url, null);
   }
 
   function setRouterState(patch) {
@@ -535,6 +564,115 @@ export function createRouter({
     syncObservedHistory(target);
   }
 
+  function planTransition(target, matched, options = {}) {
+    const planBoundary = routeBoundary(matched);
+    if (mode === "mpa" || mode === "ssr") {
+      return {
+        kind: "document",
+        reason: "native-mode",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
+    if (!matched) {
+      return {
+        kind: "signals",
+        reason: "no-route",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
+    if (!options.force && isSameRouteSnapshot(target, matched, planBoundary)) {
+      return {
+        kind: "noop",
+        reason: "same-url",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
+    if (mode === "signals") {
+      return {
+        kind: "signals",
+        reason: "native-mode",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
+    const renderMode = routeRenderMode(matched);
+    if (!options.force && (renderMode === "signals" || renderMode === "none")) {
+      return {
+        kind: "signals",
+        reason: "same-view",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
+    if (!options.force && renderMode !== "partial" && isSameView(matched, planBoundary)) {
+      return {
+        kind: "signals",
+        reason: "same-view",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
+    return {
+      kind: "partial",
+      reason: options.force ? "forced" : "changed-view",
+      boundary: planBoundary,
+      match: matched,
+      target
+    };
+  }
+
+  function routeSnapshot(target, matched, plan = {}) {
+    return {
+      url: target.href,
+      pattern: matched?.pattern ?? null,
+      route: matched?.route ?? null,
+      params: matched?.params ?? {},
+      boundary: plan.boundary ?? routeBoundary(matched),
+      viewKey: routeViewKey(matched)
+    };
+  }
+
+  function isSameRouteSnapshot(target, matched, planBoundary) {
+    return Boolean(
+      activeRouteSnapshot &&
+        activeRouteSnapshot.url === target.href &&
+        activeRouteSnapshot.pattern === (matched?.pattern ?? null) &&
+        activeRouteSnapshot.route === (matched?.route ?? null) &&
+        activeRouteSnapshot.boundary === planBoundary
+    );
+  }
+
+  function isSameView(matched, planBoundary) {
+    const nextViewKey = routeViewKey(matched);
+    return Boolean(
+      activeRouteSnapshot &&
+        nextViewKey &&
+        activeRouteSnapshot.viewKey === nextViewKey &&
+        activeRouteSnapshot.boundary === planBoundary
+    );
+  }
+
+  function routeBoundary(matched) {
+    return matched?.route?.boundary ?? boundary;
+  }
+
+  function routeRenderMode(matched) {
+    return matched?.route?.render ?? "auto";
+  }
+
+  function routeViewKey(matched) {
+    return matched?.route?.viewKey ?? null;
+  }
+
   function assertActive() {
     if (destroyed) {
       throw new Error("Router has been destroyed.");
@@ -576,6 +714,7 @@ export function createRouter({
 
 function normalizeRoute(pattern, definition) {
   const normalized = typeof definition === "string" ? defineRoute(definition) : definition;
+  assertRouteDefinition(normalized);
   const { regex, keys } = compilePattern(pattern);
   return {
     pattern,
@@ -588,6 +727,21 @@ function normalizeRoute(pattern, definition) {
 
 function isRouteDefinitionObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function assertRouteDefinition(definition) {
+  if (!isRouteDefinitionObject(definition)) {
+    throw new TypeError("Route definition must be a partial id string or route object.");
+  }
+  if (definition.render != null && !routeRenderModes.has(definition.render)) {
+    throw new TypeError(`Unknown route render mode "${definition.render}".`);
+  }
+  if (definition.boundary != null && (typeof definition.boundary !== "string" || definition.boundary.length === 0)) {
+    throw new TypeError("Route boundary must be a non-empty string.");
+  }
+  if (definition.viewKey != null && (typeof definition.viewKey !== "string" || definition.viewKey.length === 0)) {
+    throw new TypeError("Route viewKey must be a non-empty string.");
+  }
 }
 
 function compilePattern(pattern) {

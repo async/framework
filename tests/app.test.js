@@ -194,6 +194,68 @@ test("Async.loader queues swaps until the singleton runtime has a loader", async
   runtime.destroy();
 });
 
+test("Async.router queues navigation until the singleton runtime has a router", async () => {
+  const base = `/queued-router-${Date.now()}${Math.floor(Math.random() * 100000)}`;
+  const partialId = `queuedRouter.product.${Date.now()}`;
+  const window = new Window({ url: `http://app.test${base}/initial` });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+
+  Async.use({
+    partial: {
+      [partialId]({ id }) {
+        return `<h1 id="queued-router-product">${id}</h1>`;
+      }
+    },
+    route: {
+      [`${base}/:id`]: defineRoute(partialId)
+    }
+  });
+
+  const ready = Async.router.ready();
+  const navigation = Async.router.navigate(`${base}/sku-1`);
+  const shellSwap = Async.router.loader.swap("route", `<p id="queued-router-shell">Queued shell</p>`);
+
+  assert.equal(navigation instanceof Promise, true);
+  assert.equal(shellSwap instanceof Promise, true);
+  assert.deepEqual(Async.router.inspect(), {
+    ready: false,
+    pending: 1,
+    mode: undefined,
+    urlMode: undefined
+  });
+  assert.deepEqual(Async.router.loader.inspect(), {
+    ready: false,
+    pending: 1,
+    root: undefined
+  });
+  assert.equal(Async.router.match(`${base}/sku-1`), null);
+
+  const runtime = Async.start({
+    root: document.body,
+    mode: "csr",
+    boundary: "route"
+  });
+  const router = await ready;
+  await shellSwap;
+  await navigation;
+  await delay(0);
+
+  assert.equal(router, runtime.router);
+  assert.equal(Async.router.current, runtime.router);
+  assert.equal(Async.router.loader.current, runtime.router.loader);
+  assert.equal(Async.router.inspect().ready, true);
+  assert.equal(Async.router.inspect().pending, 0);
+  assert.equal(Async.router.loader.inspect().ready, true);
+  assert.equal(Async.router.loader.inspect().pending, 0);
+  assert.equal(Async.router.match(`${base}/sku-2`).route.partial, partialId);
+  assert.equal(document.querySelector("#queued-router-product").textContent, "sku-1");
+  assert.deepEqual(runtime.signals.get("router.params"), { id: "sku-1" });
+
+  runtime.destroy();
+  assert.equal(Async.router.current, undefined);
+});
+
 test("app loader queued failures reject without blocking later loader work", async () => {
   const window = new Window();
   const { document } = window;
