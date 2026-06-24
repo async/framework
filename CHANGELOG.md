@@ -1,7 +1,19 @@
 # Changelog
 
-## 0.12.1 - 2026-06-23
+## 0.12.2 - 2026-06-24
 
+- Added `createRouter({ mode: "signals" })` for route-only shells that update
+  `router.*` state and history without rendering partials or swapping
+  boundaries.
+- Added `loader.swap(boundary, html, { scan })` with `auto`, `full`, and `none`
+  scan modes for cheaper boundary replacement when inserted content is inert or
+  manually scanned later.
+- Added `loader.swap(boundary, html, { strategy: "morph" })` as an opt-in
+  stable-shell update path that preserves matching nodes, avoids full subtree
+  replacement, and still cleans removed or replaced scoped resources.
+- Treat partial envelopes with `html: undefined` as no route replacement and
+  warn instead of clearing the active route boundary; `html: ""` remains an
+  explicit clear.
 - Scoped lifecycle fallback hooks for components rendered through
   `this.render(...)` so `this.onMount(...)`, `this.onVisible(...)`, and
   `this.on("intersect", ...)` target the child component's rendered root
@@ -13,7 +25,10 @@
 - Migration note: code that intentionally used nested fallback hooks to mutate
   the ancestor mount root should move that behavior to the ancestor component or
   bind a specific element with `on:attach`.
-- Bundle size from bundled TypeScript source: `browser.ts` raw 327,212 B (327.2 KB / 0.327 MB), gzip 61,393 B (61.4 KB / 0.061 MB), br 50,139 B (50.1 KB / 0.050 MB) -> `browser.min.js` raw 138,257 B (138.3 KB / 0.138 MB), gzip 40,337 B (40.3 KB / 0.040 MB), br 35,071 B (35.1 KB / 0.035 MB); delta raw -188,955 B (-189.0 KB / -0.189 MB), gzip -21,056 B (-21.1 KB / -0.021 MB), br -15,068 B (-15.1 KB / -0.015 MB).
+- Added `this.onAttach(fn)` as the canonical component attach lifecycle helper,
+  with `this.onMount(fn)`, `this.on("mount", ...)`, and `on:mount` retained as
+  compatibility aliases that warn about the rename.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 338,346 B (338.3 KB / 0.338 MB), gzip 63,620 B (63.6 KB / 0.064 MB), br 51,844 B (51.8 KB / 0.052 MB) -> `browser.min.js` raw 142,172 B (142.2 KB / 0.142 MB), gzip 41,549 B (41.5 KB / 0.042 MB), br 36,106 B (36.1 KB / 0.036 MB); delta raw -196,174 B (-196.2 KB / -0.196 MB), gzip -22,071 B (-22.1 KB / -0.022 MB), br -15,738 B (-15.7 KB / -0.016 MB).
 
 ## 0.12.0 - 2026-06-23
 
