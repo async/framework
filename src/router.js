@@ -373,10 +373,10 @@ export function createRouter({
       if (!isActiveNavigation(navigation)) {
         return;
       }
-      const hasHtml = result && Object.hasOwn(result, "html");
-      if (hasHtml && result.html === undefined) {
+      if (result && Object.hasOwn(result, "html") && result.html === undefined) {
         warnEmptyPartialHtml(boundary);
-      } else if (hasHtml && result.html != null && !result.boundary && !result.redirect) {
+      }
+      if (shouldSwapRouteResult(result)) {
         loaderInstance.swap(boundary, result.html);
       }
     });
@@ -677,6 +677,18 @@ function warnEmptyPartialHtml(boundary) {
   }
   emptyHtmlWarnings.add(key);
   console.warn?.(`[async/router] partial returned html: undefined; boundary "${key}" was not swapped.`);
+}
+
+function shouldSwapRouteResult(result) {
+  return Boolean(
+    result &&
+      result.status !== 204 &&
+      Object.hasOwn(result, "html") &&
+      result.html !== undefined &&
+      result.html !== null &&
+      !result.boundary &&
+      !result.redirect
+  );
 }
 
 function dispatchAsyncError(element, error) {

@@ -771,6 +771,9 @@ aggregate form `class:="buttonClasses"` also remains supported.
 `on:*` works with any native DOM event name. `on:attach` and `on:visible` are
 reserved component lifecycle pseudo-events with cleanup support. `on:mount`
 remains as a compatibility alias for `on:attach` and warns when used.
+When an `on:attach` handler installs listeners, observers, timers, or DOM
+helpers, return a cleanup function. Boundary swaps destroy the old subtree and
+run returned cleanup functions before inserting the next fragment.
 
 Command chains use semicolons and are awaited sequentially:
 
@@ -1453,6 +1456,41 @@ and rescans inserted content by default. For large stable shells that refresh
 from local state, pass `strategy: "morph"` to preserve matching DOM nodes while
 updating changed text, attributes, and children.
 
+Use config-first `swap(...)` for the advanced variants:
+
+```js
+loader.swap({ boundary: "view", html });
+loader.swap({ type: "ifChanged", boundary: "view", html: renderView });
+loader.swap({ type: "many", updates: { filters, timeline }, scan: "once" });
+```
+
+`type: "ifChanged"` skips cleanup, DOM replacement, and rescanning when the
+next rendered HTML matches the previous swap for that boundary. The render
+function form receives `{ boundary, boundaryId, loader, signals, handlers,
+server, router, cache, scheduler }`.
+
+`type: "many"` applies several boundary replacements before activation.
+`updates` can be an object, `Map`, or iterable of `[boundaryId, html]` entries.
+`scan: "once"` defers scanning until every update has been inserted, which
+avoids interleaving cleanup/scan work across multiple same-tick refreshes.
+
+Use `type: "bind"` when local signal state owns a large region. The render
+function runs once, tracks signal reads made while rendering, and schedules one
+unchanged-aware refresh for same-tick signal changes. It returns a cleanup
+function.
+
+```js
+const stopTimeline = loader.swap({
+  type: "bind",
+  boundary: "view-timeline",
+  render({ signals }) {
+    const view = buildTimelineView(signals.get("timeline.filters"));
+    return html`<section>${view.items.map(renderTimelineItem)}</section>`;
+  },
+  strategy: "morph"
+});
+```
+
 The `strategy` option controls how the boundary changes:
 
 | Option | Behavior |
@@ -1470,6 +1508,9 @@ The `scan` option controls activation:
 | `auto` | Default. For replacement, scan inserted roots. For morphing, scan changed or inserted roots. |
 | `full` | Scan the boundary element and its subtree. |
 | `none` | Do not scan inserted content; call `loader.scan(...)` later if needed. |
+
+`type: "many"` also accepts `scan: "once"` as a batched `auto` scan after all
+updates are applied.
 
 When boundary patches can arrive independently, use `createBoundaryReceiver`.
 It keeps per-boundary sequence state, applies signal/cache effects before the

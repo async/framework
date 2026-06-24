@@ -79,3 +79,25 @@ test("partial registry preserves undefined envelope html for route no-op handlin
   assert.equal(result.html, undefined);
   assert.equal(result.status, 204);
 });
+
+test("partial registry preserves no-op route partial shapes", async () => {
+  const partials = createPartialRegistry({
+    missingHtml() {
+      return {};
+    },
+    emptyResult() {
+      return undefined;
+    },
+    nullResult() {
+      return null;
+    },
+    statusOnly() {
+      return { status: 204 };
+    }
+  });
+
+  assert.deepEqual(await partials.render("missingHtml"), {});
+  assert.deepEqual(await partials.render("emptyResult"), {});
+  assert.deepEqual(await partials.render("nullResult"), {});
+  assert.deepEqual(await partials.render("statusOnly"), { status: 204 });
+});

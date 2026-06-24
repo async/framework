@@ -44,6 +44,12 @@ matching nodes by `async:key`, `data-key`, `id`, or sibling order and tag name,
 then cleans up removed or replaced nodes. `scan: "full"` scans the boundary
 element and its subtree, while `scan: "none"` leaves inserted content inert
 until a later explicit scan.
+Config-first `loader.swap(...)` supports `type: "ifChanged"` to skip unchanged
+serialized HTML, `type: "many"` to apply multiple boundary updates before
+scanning, and `type: "bind"` to track signal reads made while rendering.
+`type: "many"` supports `scan: "once"` as a batched auto-scan mode. Protocol
+bindings inserted by a bound swap still update in place and do not become
+refresh dependencies unless the render function reads the signal itself.
 
 `Async.loader.scan(...)`, `Async.loader.swap(...)`, and
 `Async.loader.mount(...)` are promise-returning app-level facade methods. They

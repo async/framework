@@ -622,6 +622,272 @@ test("boundary swap auto scan skips the stable boundary element", () => {
   loader.destroy();
 });
 
+test("boundary swap ifChanged config skips unchanged cleanup and rescan work", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+
+  const events = [];
+  const signals = createSignalRegistry({
+    selected: signal(false),
+    title: signal("Keyboard")
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      attach({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push(`cleanup:${element.id}`);
+      },
+      select() {
+        this.signals.set("selected", true);
+      }
+    })
+  }).start();
+
+  const render = () => `<button id="select" on:attach="attach" on:click="select" signal:text="title"></button>`;
+  loader.swap({ type: "ifChanged", boundary: "product", html: render });
+  await delay(0);
+  const select = document.querySelector("#select");
+
+  loader.swap({ type: "ifChanged", boundary: "product", html: render });
+  await delay(0);
+
+  assert.equal(document.querySelector("#select"), select);
+  assert.deepEqual(events, ["attach:select"]);
+
+  loader.swap({ type: "ifChanged", boundary: "product", html: `<button id="select" on:attach="attach">Changed</button>` });
+  await delay(0);
+
+  assert.notEqual(document.querySelector("#select"), select);
+  assert.deepEqual(events, ["attach:select", "cleanup:select", "attach:select"]);
+
+  document.querySelector("#select").click();
+  await delay(0);
+  assert.equal(signals.get("selected"), false);
+
+  loader.destroy();
+});
+
+test("boundary swap many config applies multiple updates before scanning", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="filters"></section>
+    <section async:boundary="timeline"></section>
+  `;
+
+  const signals = createSignalRegistry({
+    selected: signal(false),
+    title: signal("Roadmap")
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      select() {
+        this.signals.set("selected", true);
+      }
+    })
+  }).start();
+
+  const swapped = loader.swap({
+    type: "many",
+    updates: {
+      filters: `<button id="filter" on:click="select">Filter</button>`,
+      timeline: `<h2 id="timeline-title" signal:text="title"></h2>`
+    },
+    scan: "once"
+  });
+
+  assert.equal(swapped.length, 2);
+  assert.equal(document.querySelector("#timeline-title").textContent, "Roadmap");
+
+  document.querySelector("#filter").click();
+  await delay(0);
+  assert.equal(signals.get("selected"), true);
+
+  loader.destroy();
+});
+
+test("boundary swap accepts config object variants", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="filters"></section>
+    <section async:boundary="timeline"></section>
+    <section async:boundary="detail"></section>
+  `;
+
+  const events = [];
+  const signals = createSignalRegistry({
+    selected: signal(false),
+    count: signal(0),
+    title: signal("Roadmap")
+  });
+  const loader = Loader({
+    root: document.body,
+    signals,
+    handlers: createHandlerRegistry({
+      attach({ element }) {
+        events.push(`attach:${element.id}`);
+        return () => events.push(`cleanup:${element.id}`);
+      },
+      select() {
+        this.signals.set("selected", true);
+      }
+    })
+  }).start();
+
+  const filterBoundary = loader.swap({
+    boundary: "filters",
+    html: `<button id="filter" on:click="select">Filter</button>`
+  });
+
+  assert.equal(filterBoundary.getAttribute("async:boundary"), "filters");
+  document.querySelector("#filter").click();
+  await delay(0);
+  assert.equal(signals.get("selected"), true);
+
+  loader.swap({
+    type: "many",
+    updates: {
+      timeline: `<h2 id="timeline-title" signal:text="title"></h2>`,
+      detail: `<strong id="detail-count">${signals.get("count")}</strong>`
+    },
+    scan: "once"
+  });
+
+  assert.equal(document.querySelector("#timeline-title").textContent, "Roadmap");
+  assert.equal(document.querySelector("#detail-count").textContent, "0");
+
+  const renderDetail = () => `<strong id="detail-count" on:attach="attach">${signals.get("count")}</strong>`;
+  loader.swap({
+    type: "ifChanged",
+    boundary: "detail",
+    html: renderDetail
+  });
+  await delay(0);
+  const detail = document.querySelector("#detail-count");
+  loader.swap({
+    type: "ifChanged",
+    boundary: "detail",
+    html: renderDetail
+  });
+  await delay(0);
+
+  assert.equal(document.querySelector("#detail-count"), detail);
+  assert.deepEqual(events, ["attach:detail-count"]);
+
+  const stop = loader.swap({
+    type: "bind",
+    boundary: "detail",
+    render({ signals }) {
+      return `<strong id="detail-count">${signals.get("count")}</strong>`;
+    }
+  });
+
+  assert.equal(typeof stop, "function");
+  signals.set("count", 2);
+  await delay(0);
+  assert.equal(document.querySelector("#detail-count").textContent, "2");
+
+  stop();
+  loader.destroy();
+});
+
+test("boundary swap bind config coalesces signal-driven swaps and cleans up", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="summary"></section>`;
+
+  const signals = createSignalRegistry({
+    count: signal(0)
+  });
+  const loader = Loader({
+    root: document.body,
+    signals
+  }).start();
+  let renders = 0;
+
+  const stop = loader.swap({
+    type: "bind",
+    boundary: "summary",
+    render({ signals }) {
+      renders += 1;
+      return `<strong id="count">${signals.get("count")}</strong>`;
+    }
+  });
+
+  assert.equal(document.querySelector("#count").textContent, "0");
+  assert.equal(renders, 1);
+
+  signals.set("count", 1);
+  signals.set("count", 2);
+  await delay(0);
+
+  assert.equal(document.querySelector("#count").textContent, "2");
+  assert.equal(renders, 2);
+
+  stop();
+  signals.set("count", 3);
+  await delay(0);
+
+  assert.equal(document.querySelector("#count").textContent, "2");
+  assert.equal(renders, 2);
+
+  loader.destroy();
+});
+
+test("boundary swap bind config does not treat inserted signal bindings as rerender deps", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="summary"></section>`;
+
+  const signals = createSignalRegistry({
+    count: signal(0),
+    title: signal("Roadmap")
+  });
+  const loader = Loader({
+    root: document.body,
+    signals
+  }).start();
+  let renders = 0;
+
+  loader.swap({
+    type: "bind",
+    boundary: "summary",
+    render({ signals }) {
+      renders += 1;
+      return html`
+        <h2 id="title" signal:text=${"title"}></h2>
+        <strong id="count">${signals.get("count")}</strong>
+      `;
+    }
+  });
+
+  assert.equal(document.querySelector("#title").textContent, "Roadmap");
+  assert.equal(document.querySelector("#count").textContent, "0");
+  assert.equal(renders, 1);
+
+  signals.set("title", "Milestones");
+  await delay(0);
+
+  assert.equal(document.querySelector("#title").textContent, "Milestones");
+  assert.equal(document.querySelector("#count").textContent, "0");
+  assert.equal(renders, 1);
+
+  signals.set("count", 1);
+  await delay(0);
+
+  assert.equal(document.querySelector("#title").textContent, "Milestones");
+  assert.equal(document.querySelector("#count").textContent, "1");
+  assert.equal(renders, 2);
+
+  loader.destroy();
+});
+
 test("boundary swap rejects invalid scan options", () => {
   const window = new Window();
   const { document } = window;
@@ -636,6 +902,30 @@ test("boundary swap rejects invalid scan options", () => {
   assert.throws(
     () => loader.swap("product", `<p>Invalid</p>`, { strategy: "patch" }),
     /Loader swap strategy option must be "replace" or "morph"/
+  );
+  assert.throws(
+    () => loader.swap({ type: "many", updates: { product: `<p>Invalid</p>` }, scan: "later" }),
+    /loader\.swap\(\{ type: "many" \}\) scan option must be "auto", "full", "none", or "once"/
+  );
+  assert.throws(
+    () => loader.swap({ type: "later", boundary: "product", html: `<p>Invalid</p>` }),
+    /loader\.swap\(\{ type \}\) must be "replace", "ifChanged", "many", or "bind"/
+  );
+  assert.throws(
+    () => loader.swap({ html: `<p>Invalid</p>` }),
+    /loader\.swap\(\{ boundary, \.\.\. \}\) requires a non-empty boundary string/
+  );
+  assert.throws(
+    () => loader.swap({ boundary: "product" }),
+    /loader\.swap\(\{ html \}\) requires an "html" value/
+  );
+  assert.throws(
+    () => loader.swap({ type: "many" }),
+    /loader\.swap\(\{ type: "many" \}\) requires an "updates" value/
+  );
+  assert.throws(
+    () => loader.swap({ type: "bind", boundary: "product", html: `<p>Invalid</p>` }),
+    /loader\.swap\(\{ type: "bind", render \}\) requires a render function/
   );
 
   loader.destroy();

@@ -86,6 +86,9 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
 }
 
 export function normalizePartialResult(result, context = {}) {
+  if (result == null) {
+    return {};
+  }
   if (isPartialEnvelope(result)) {
     const normalized = {
       ...result
@@ -127,7 +130,12 @@ function isPartialEnvelope(value) {
     value &&
       typeof value === "object" &&
       !Array.isArray(value) &&
-      (Object.hasOwn(value, "html") ||
+      !isTemplateResult(value) &&
+      !value.nodeType &&
+      !value.tagName &&
+      (Object.getPrototypeOf(value) === Object.prototype ||
+        Object.getPrototypeOf(value) === null ||
+        Object.hasOwn(value, "html") ||
         Object.hasOwn(value, "signals") ||
         Object.hasOwn(value, "boundary") ||
         Object.hasOwn(value, "redirect") ||

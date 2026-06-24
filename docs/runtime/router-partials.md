@@ -21,8 +21,8 @@ The router coordinates five pieces:
 | history mode | Writes path URLs or hash URLs and handles back/forward navigation |
 | router signals | Publishes `router.path`, params, query, route metadata, pending state, and errors |
 
-If an app already has its own view renderer, use `mode: "signals"` and subscribe
-to `router.*` instead of using route partials.
+If an app already has its own view renderer, use `mode: "signals"` and bind the
+view boundary to `router.*` state instead of using route partials.
 
 ## Minimal CSR Router
 
@@ -196,16 +196,23 @@ const router = createRouter({
   routes
 }).start();
 
-router.signals.subscribe("router.path", () => {
-  const rendered = renderShell(router.signals.get("router.route"));
-  router.loader.swap("app-shell", rendered.html ?? rendered, {
-    strategy: "morph"
-  });
+router.loader.swap({
+  type: "bind",
+  boundary: "app-shell",
+  render({ signals }) {
+    const rendered = renderShell(signals.get("router.route"));
+    return rendered.html ?? rendered;
+  },
+  strategy: "morph"
 });
 ```
 
 In `signals` mode, `partials.render(...)` is not called. Missing routes update
 `router.error` and leave the DOM unchanged.
+
+For high-frequency dashboard updates, bind or swap smaller nested boundaries
+for filters, timelines, details, and modals. Reserve a full shell swap for rare
+chrome-level changes.
 
 ## Hash Routing
 
@@ -314,7 +321,9 @@ createPartialRegistry({
 
 For route partial envelopes:
 
-- `html: undefined` means no route HTML replacement and emits a dev warning.
+- `status: 204`, a missing `html` key, and bare `null` or `undefined` partial
+  results mean no route HTML replacement.
+- `html: undefined` also skips replacement and emits a dev warning.
 - `html: ""` intentionally clears the route boundary.
 - `redirect` follows the router redirect path.
 - `signals` and browser cache patches apply before the route boundary swap.
@@ -352,5 +361,7 @@ the need:
 - Static-host navigation: `urlMode: "hash"`.
 - Client-rendered route content: `mode: "csr"` or `mode: "spa"`.
 - URL-backed dashboard state: `mode: "signals"`.
+- High-frequency state refreshes: nested boundaries with `swap(...)` config
+  types for bound, unchanged-aware, or batched updates.
 - Server-owned navigation: `mode: "ssr"` or `mode: "mpa"`.
 - Route state in DOM or handlers: `router.*` signals.

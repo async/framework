@@ -562,6 +562,45 @@ test("SPA router warns and skips route swaps for undefined partial html", async 
   }
 });
 
+test("SPA router skips no-op partial result shapes without touching the boundary", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">Home</h1></section>`;
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/status": route("status"),
+      "/missing-html": route("missingHtml"),
+      "/undefined": route("undefinedResult"),
+      "/null": route("nullResult")
+    }),
+    partials: createPartialRegistry({
+      status() {
+        return { status: 204 };
+      },
+      missingHtml() {
+        return {};
+      },
+      undefinedResult() {
+        return undefined;
+      },
+      nullResult() {
+        return null;
+      }
+    })
+  }).start();
+
+  for (const path of ["/status", "/missing-html", "/undefined", "/null"]) {
+    await router.navigate(path);
+    assert.equal(document.querySelector("#route-title").textContent, "Home");
+  }
+
+  router.destroy();
+});
+
 test("SPA router treats empty partial html as an explicit boundary clear", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;

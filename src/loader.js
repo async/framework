@@ -1,6 +1,6 @@
 import { renderComponent } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
-import { childrenFragment, rawHtml } from "./html.js";
+import { childrenFragment, isTemplateResult, rawHtml, renderTemplate } from "./html.js";
 import { createScheduler } from "./scheduler.js";
 import { createSignalRegistry, isSignalRef } from "./signals.js";
 import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attributes.js";
@@ -22,11 +22,13 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   const visibleElements = new WeakSet();
   const intersectionBindings = new WeakMap();
   const boundaryState = new WeakMap();
+  const swapSnapshots = new WeakMap();
   const renderingBoundaries = new WeakSet();
   const componentBindings = new WeakSet();
   const inlineBindings = new Map();
   const scopedCleanups = new WeakMap();
   let inlineBindingCounter = 0;
+  let boundaryBindingCounter = 0;
   let destroyed = false;
   let mountPseudoEventWarned = false;
 
@@ -53,25 +55,14 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       return api;
     },
 
-    swap(boundaryId, fragmentOrTemplate, options) {
+    swap(boundaryIdOrConfig, fragmentOrTemplate, options) {
       assertActive();
+      if (isSwapConfig(boundaryIdOrConfig)) {
+        return runSwapConfig(boundaryIdOrConfig);
+      }
       const swapOptions = normalizeSwapOptions(options);
-      const boundary = findBoundary(rootNode, boundaryId, attributeConfig);
-      if (!boundary) {
-        throw new Error(`Boundary "${boundaryId}" was not found.`);
-      }
-      const scanRoots = swapOptions.strategy === "morph"
-        ? morphChildren(boundary, toFragment(fragmentOrTemplate, documentRef))
-        : replaceBoundaryChildren(boundary, fragmentOrTemplate);
-      if (swapOptions.scan === "full") {
-        scanScope(boundary);
-      } else if (swapOptions.scan === "auto") {
-        if (swapOptions.strategy === "morph") {
-          scanChangedRoots(scanRoots);
-        } else {
-          scanScope(boundary, { includeRoot: false });
-        }
-      }
+      const boundary = requireBoundary(boundaryIdOrConfig);
+      applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions);
       return boundary;
     },
 
@@ -145,6 +136,177 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     cache: api.cache,
     scheduler: schedulerInstance
   });
+
+  function requireBoundary(boundaryId) {
+    const boundary = findBoundary(rootNode, boundaryId, attributeConfig);
+    if (!boundary) {
+      throw new Error(`Boundary "${boundaryId}" was not found.`);
+    }
+    return boundary;
+  }
+
+  function runSwapConfig(config) {
+    const type = normalizeSwapConfigType(config);
+    if (type === "many") {
+      if (!Object.hasOwn(config, "updates")) {
+        throw new TypeError('loader.swap({ type: "many" }) requires an "updates" value.');
+      }
+      return applyManySwap(config.updates, config);
+    }
+    const boundaryId = boundaryIdFromSwapConfig(config);
+    if (type === "bind") {
+      return bindSwapBoundary(boundaryId, config.render, config);
+    }
+    const value = valueFromSwapConfig(config, type);
+    if (type === "ifChanged") {
+      return applyChangedSwap(boundaryId, value, config);
+    }
+    const swapOptions = normalizeSwapOptions(config);
+    const boundary = requireBoundary(boundaryId);
+    applyBoundarySwap(boundary, value, swapOptions);
+    return boundary;
+  }
+
+  function applyChangedSwap(boundaryId, fragmentOrTemplateOrFn, options) {
+    const swapOptions = normalizeSwapOptions(options);
+    const boundary = requireBoundary(boundaryId);
+    const fragmentOrTemplate = typeof fragmentOrTemplateOrFn === "function"
+      ? fragmentOrTemplateOrFn.call(api, boundaryRenderContext(boundaryId, boundary))
+      : fragmentOrTemplateOrFn;
+    const snapshot = snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
+    if (snapshot != null && swapSnapshots.get(boundary) === snapshot) {
+      return boundary;
+    }
+    applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, { snapshot });
+    return boundary;
+  }
+
+  function applyManySwap(updates, options) {
+    const swapOptions = normalizeSwapManyOptions(options);
+    const results = [];
+    for (const [boundaryId, fragmentOrTemplate] of normalizeSwapManyEntries(updates)) {
+      const boundary = requireBoundary(boundaryId);
+      const snapshot = snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
+      const scanRoots = applyBoundarySwap(boundary, fragmentOrTemplate, {
+        ...swapOptions,
+        scan: "none"
+      }, {
+        snapshot
+      });
+      results.push({
+        boundary,
+        strategy: swapOptions.strategy,
+        scanRoots
+      });
+    }
+    scanSwapResults(results, swapOptions.scan === "once" ? "auto" : swapOptions.scan);
+    return results.map((result) => result.boundary);
+  }
+
+  function bindSwapBoundary(boundaryId, renderFn, options) {
+    if (typeof renderFn !== "function") {
+      throw new TypeError('loader.swap({ type: "bind", render }) requires a render function.');
+    }
+    const swapOptions = normalizeSwapOptions(options);
+    const boundary = requireBoundary(boundaryId);
+    const bindingKey = `swap:bind:${String(boundaryId)}:${++boundaryBindingCounter}`;
+    let stopped = false;
+    let dependencyCleanups = [];
+
+    const cleanupDependencies = () => {
+      for (const cleanup of dependencyCleanups) {
+        cleanup();
+      }
+      dependencyCleanups = [];
+    };
+
+    const scheduleRun = () => {
+      schedulerInstance.enqueue("effect", run, {
+        scope: boundary,
+        key: bindingKey
+      });
+    };
+
+    const run = () => {
+      if (stopped) {
+        return;
+      }
+      cleanupDependencies();
+      const outcome = signalRegistry._collectDependencies(() => {
+        const fragmentOrTemplate = renderFn.call(api, boundaryRenderContext(boundaryId, boundary));
+        return {
+          fragmentOrTemplate,
+          snapshot: snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions())
+        };
+      });
+      dependencyCleanups = outcome.dependencies.map((dependency) => signalRegistry.subscribe(dependency, scheduleRun));
+      const { fragmentOrTemplate, snapshot } = outcome.value;
+      if (snapshot != null && swapSnapshots.get(boundary) === snapshot) {
+        return;
+      }
+      applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, { snapshot });
+    };
+
+    run();
+    const cleanup = addCleanup(() => {
+      stopped = true;
+      cleanupDependencies();
+    }, boundary);
+    return () => runCleanup(cleanup);
+  }
+
+  function applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, metadata = {}) {
+    const snapshot = Object.hasOwn(metadata, "snapshot")
+      ? metadata.snapshot
+      : snapshotSwapValue(fragmentOrTemplate, documentRef, templateRenderOptions());
+    const scanRoots = swapOptions.strategy === "morph"
+      ? morphChildren(boundary, toFragment(fragmentOrTemplate, documentRef, templateRenderOptions()))
+      : replaceBoundaryChildren(boundary, fragmentOrTemplate);
+    if (snapshot != null) {
+      swapSnapshots.set(boundary, snapshot);
+    } else {
+      swapSnapshots.delete(boundary);
+    }
+    scanSwapResults([{ boundary, strategy: swapOptions.strategy, scanRoots }], swapOptions.scan);
+    return scanRoots;
+  }
+
+  function scanSwapResults(results, scan) {
+    if (scan === "none") {
+      return;
+    }
+    for (const result of results) {
+      if (scan === "full") {
+        scanScope(result.boundary);
+      } else if (result.strategy === "morph") {
+        scanChangedRoots(result.scanRoots);
+      } else {
+        scanScope(result.boundary, { includeRoot: false });
+      }
+    }
+  }
+
+  function templateRenderOptions() {
+    return {
+      attributes: attributeConfig,
+      signals: signalRegistry,
+      bind: api._registerBinding?.bind(api)
+    };
+  }
+
+  function boundaryRenderContext(boundaryId, boundary) {
+    return {
+      boundary,
+      boundaryId: String(boundaryId),
+      loader: api,
+      signals: signalRegistry,
+      handlers: handlerRegistry,
+      server: api.server,
+      router: api.router,
+      cache: api.cache,
+      scheduler: schedulerInstance
+    };
+  }
 
   function scanScope(scope, scanOptions = {}) {
     reviveScopes(scope, scanOptions);
@@ -442,7 +604,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
 
   function replaceBoundaryChildren(boundary, fragmentOrTemplate) {
     cleanupChildren(boundary);
-    boundary.replaceChildren(toFragment(fragmentOrTemplate, documentRef));
+    boundary.replaceChildren(toFragment(fragmentOrTemplate, documentRef, templateRenderOptions()));
     return [];
   }
 
@@ -1367,7 +1529,7 @@ function isAsyncSuspense(element) {
   return element?.tagName === "ASYNC-SUSPENSE";
 }
 
-function toFragment(value, documentRef) {
+function toFragment(value, documentRef, renderOptions = {}) {
   if (value?.nodeType === 11) {
     return value;
   }
@@ -1380,8 +1542,44 @@ function toFragment(value, documentRef) {
     return fragment;
   }
   const template = documentRef.createElement("template");
-  template.innerHTML = String(value ?? "");
+  template.innerHTML = renderSwapHtml(value, renderOptions);
   return template.content.cloneNode(true);
+}
+
+function snapshotSwapValue(value, documentRef, renderOptions = {}) {
+  if (value?.nodeType === 11) {
+    return [...(value.childNodes ?? [])].map((node) => serializeNode(node)).join("");
+  }
+  if (value?.tagName === "TEMPLATE") {
+    return value.innerHTML;
+  }
+  if (value?.nodeType) {
+    return serializeNode(value);
+  }
+  return renderSwapHtml(value, renderOptions);
+}
+
+function renderSwapHtml(value, renderOptions = {}) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (isTemplateResult(value)) {
+    return renderTemplate(value, renderOptions);
+  }
+  return renderTemplate(value, renderOptions);
+}
+
+function serializeNode(node) {
+  if (node?.nodeType === 1) {
+    return node.outerHTML;
+  }
+  if (node?.nodeType === 3 || node?.nodeType === 8) {
+    return node.textContent ?? "";
+  }
+  if (node?.nodeType === 11) {
+    return [...(node.childNodes ?? [])].map((child) => serializeNode(child)).join("");
+  }
+  return null;
 }
 
 function normalizeSwapOptions(options = {}) {
@@ -1401,6 +1599,91 @@ function normalizeSwapOptions(options = {}) {
     scan,
     strategy
   };
+}
+
+function normalizeSwapManyOptions(options = {}) {
+  const normalized = options ?? {};
+  if (typeof normalized !== "object" || Array.isArray(normalized)) {
+    throw new TypeError('loader.swap({ type: "many" }) options must be an object.');
+  }
+  const scan = normalized.scan ?? "auto";
+  if (scan !== "auto" && scan !== "full" && scan !== "none" && scan !== "once") {
+    throw new TypeError('loader.swap({ type: "many" }) scan option must be "auto", "full", "none", or "once".');
+  }
+  const strategy = normalized.strategy ?? "replace";
+  if (strategy !== "replace" && strategy !== "morph") {
+    throw new TypeError('Loader swap strategy option must be "replace" or "morph".');
+  }
+  return {
+    scan,
+    strategy
+  };
+}
+
+function normalizeSwapManyEntries(updates) {
+  if (!updates) {
+    return [];
+  }
+  if (updates instanceof Map) {
+    return [...updates.entries()];
+  }
+  if (typeof updates[Symbol.iterator] === "function" && !Array.isArray(updates)) {
+    return [...updates];
+  }
+  if (Array.isArray(updates)) {
+    return updates;
+  }
+  if (typeof updates === "object") {
+    return Object.entries(updates);
+  }
+  throw new TypeError('loader.swap({ type: "many", updates }) requires an object, Map, or iterable of [boundaryId, html] entries.');
+}
+
+function isSwapConfig(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !value.nodeType &&
+      (Object.hasOwn(value, "type") ||
+        Object.hasOwn(value, "boundary") ||
+        Object.hasOwn(value, "boundaryId") ||
+        Object.hasOwn(value, "updates") ||
+        Object.hasOwn(value, "html") ||
+        Object.hasOwn(value, "render") ||
+        Object.hasOwn(value, "ifChanged"))
+  );
+}
+
+function normalizeSwapConfigType(config) {
+  const type = config.type ??
+    (Object.hasOwn(config, "updates")
+      ? "many"
+      : config.ifChanged
+        ? "ifChanged"
+        : "replace");
+  if (type === "replace" || type === "ifChanged" || type === "many" || type === "bind") {
+    return type;
+  }
+  throw new TypeError('loader.swap({ type }) must be "replace", "ifChanged", "many", or "bind".');
+}
+
+function boundaryIdFromSwapConfig(config) {
+  const boundaryId = config.boundaryId ?? config.boundary;
+  if (typeof boundaryId !== "string" || boundaryId.length === 0) {
+    throw new TypeError("loader.swap({ boundary, ... }) requires a non-empty boundary string.");
+  }
+  return boundaryId;
+}
+
+function valueFromSwapConfig(config, type) {
+  if (Object.hasOwn(config, "html")) {
+    return config.html;
+  }
+  if (type === "ifChanged" && Object.hasOwn(config, "render")) {
+    return config.render;
+  }
+  throw new TypeError('loader.swap({ html }) requires an "html" value.');
 }
 
 function dispatchAsyncError(element, error) {

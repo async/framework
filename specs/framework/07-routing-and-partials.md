@@ -84,6 +84,8 @@ Routing resume behavior:
 - Route boundary swaps must rescan inserted protocol attributes.
 - Route-only navigation must preserve mounted DOM and update router state
   without requiring noop partials.
+- Route-only shells may bind view boundaries to `router.*` signal reads so
+  same-tick route state changes coalesce into one unchanged-aware refresh.
 - Stale navigation results must not overwrite newer router state or DOM.
 
 ## Invariants
@@ -96,6 +98,8 @@ Routing resume behavior:
 - Prefetch does not mutate router state, history, or DOM.
 - Navigation errors update route error state without corrupting the active
   boundary.
+- Route partial envelopes with `status: 204`, no `html` key, `html: undefined`,
+  or bare `null`/`undefined` results must not replace route HTML.
 - Removed or unsupported modes are rejected explicitly.
 
 ## Failure Modes

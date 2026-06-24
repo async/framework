@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Treat route partials that return `status: 204`, no `html` key, bare `null`,
+  or bare `undefined` as no-op route HTML updates instead of clearing or
+  stringifying the active boundary.
+- Added config-first `loader.swap({ type })` variants for unchanged-aware,
+  batched, and signal-bound boundary refreshes without expanding the loader
+  method surface.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 348,555 B (348.6 KB / 0.349 MB), gzip 65,264 B (65.3 KB / 0.065 MB), br 53,133 B (53.1 KB / 0.053 MB) -> `browser.min.js` raw 146,383 B (146.4 KB / 0.146 MB), gzip 42,600 B (42.6 KB / 0.043 MB), br 37,056 B (37.1 KB / 0.037 MB); delta raw -202,172 B (-202.2 KB / -0.202 MB), gzip -22,664 B (-22.7 KB / -0.023 MB), br -16,077 B (-16.1 KB / -0.016 MB).
+
 ## 0.12.2 - 2026-06-24
 
 - Added `createRouter({ mode: "signals" })` for route-only shells that update

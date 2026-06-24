@@ -8,8 +8,8 @@
       "scripts": [
         {
           "file": "dist/browser.min.js",
-          "rawBytes": 134700,
-          "gzipBytes": 39509
+          "rawBytes": 146383,
+          "gzipBytes": 42600
         },
         {
           "file": "examples/size/boundary-receiver/main.js",
@@ -18,12 +18,12 @@
         }
       ],
       "closure": {
-        "rawBytes": 135055,
-        "gzipBytes": 39643
+        "rawBytes": 146738,
+        "gzipBytes": 42731
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 42000
+        "maxGzipBytes": 43000
       }
     },
     {
@@ -32,8 +32,8 @@
       "scripts": [
         {
           "file": "dist/browser.min.js",
-          "rawBytes": 134700,
-          "gzipBytes": 39509
+          "rawBytes": 146383,
+          "gzipBytes": 42600
         },
         {
           "file": "examples/size/events-counter/main.js",
@@ -42,12 +42,12 @@
         }
       ],
       "closure": {
-        "rawBytes": 134953,
-        "gzipBytes": 39629
+        "rawBytes": 146636,
+        "gzipBytes": 42717
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 42000
+        "maxGzipBytes": 43000
       }
     },
     {
@@ -56,8 +56,8 @@
       "scripts": [
         {
           "file": "dist/browser.min.js",
-          "rawBytes": 134700,
-          "gzipBytes": 39509
+          "rawBytes": 146383,
+          "gzipBytes": 42600
         },
         {
           "file": "examples/size/router-basic/main.js",
@@ -66,12 +66,12 @@
         }
       ],
       "closure": {
-        "rawBytes": 135021,
-        "gzipBytes": 39676
+        "rawBytes": 146704,
+        "gzipBytes": 42767
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 42000
+        "maxGzipBytes": 43000
       }
     },
     {
@@ -231,8 +231,8 @@
       "scripts": [
         {
           "file": "dist/browser.min.js",
-          "rawBytes": 134700,
-          "gzipBytes": 39509
+          "rawBytes": 146383,
+          "gzipBytes": 42600
         },
         {
           "file": "examples/size/server-call-button/main.js",
@@ -241,12 +241,12 @@
         }
       ],
       "closure": {
-        "rawBytes": 135269,
-        "gzipBytes": 39743
+        "rawBytes": 146952,
+        "gzipBytes": 42833
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 42000
+        "maxGzipBytes": 43000
       }
     },
     {
@@ -255,8 +255,8 @@
       "scripts": [
         {
           "file": "dist/browser.min.js",
-          "rawBytes": 134700,
-          "gzipBytes": 39509
+          "rawBytes": 146383,
+          "gzipBytes": 42600
         },
         {
           "file": "examples/size/signals-counter/main.js",
@@ -265,12 +265,12 @@
         }
       ],
       "closure": {
-        "rawBytes": 134859,
-        "gzipBytes": 39584
+        "rawBytes": 146542,
+        "gzipBytes": 42673
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 42000
+        "maxGzipBytes": 43000
       }
     },
     {
@@ -279,8 +279,8 @@
       "scripts": [
         {
           "file": "dist/browser.min.js",
-          "rawBytes": 134700,
-          "gzipBytes": 39509
+          "rawBytes": 146383,
+          "gzipBytes": 42600
         },
         {
           "file": "examples/size/stream-backpatch/main.js",
@@ -289,12 +289,12 @@
         }
       ],
       "closure": {
-        "rawBytes": 135268,
-        "gzipBytes": 39707
+        "rawBytes": 146951,
+        "gzipBytes": 42799
       },
       "budget": {
         "mode": "baseline",
-        "maxGzipBytes": 42000
+        "maxGzipBytes": 43000
       }
     }
   ]

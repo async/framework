@@ -701,8 +701,15 @@ test("browser and server declarations expose the right public APIs", () => {
   assert.match(browserDeclarations, /inspectRuntime\(\): RuntimeInspection/);
   assert.doesNotMatch(appHubDeclarations, /runtime\?: AppRuntime/);
   assert.match(browserDeclarations, /export type LoaderSwapScan = "auto" \| "full" \| "none"/);
+  assert.match(browserDeclarations, /export type LoaderSwapManyScan = LoaderSwapScan \| "once"/);
   assert.match(browserDeclarations, /export type LoaderSwapStrategy = "replace" \| "morph"/);
+  assert.match(browserDeclarations, /export type LoaderSwapConfig = LoaderSwapReplaceConfig \| LoaderSwapIfChangedConfig \| LoaderSwapManyConfig \| LoaderSwapBindConfig/);
+  assert.match(browserDeclarations, /swap\(config: LoaderSwapManyConfig\): Promise<Element\[]>/);
+  assert.match(browserDeclarations, /swap\(config: LoaderSwapBindConfig\): Promise<Cleanup>/);
   assert.match(browserDeclarations, /swap\(boundaryId: string, fragmentOrTemplate: TemplateLike, options\?: LoaderSwapOptions\): Promise<Element>/);
+  assert.doesNotMatch(browserDeclarations, /swapIfChanged\(/);
+  assert.doesNotMatch(browserDeclarations, /swapMany\(/);
+  assert.doesNotMatch(browserDeclarations, /bindBoundary\(/);
   assert.match(browserDeclarations, /const Async: AsyncNamespace/);
   assert.match(browserDeclarations, /const AsyncFramework: AsyncNamespace/);
 });
