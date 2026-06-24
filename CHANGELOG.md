@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.3 - 2026-06-24
+
 - Treat route partials that return `status: 204`, no `html` key, bare `null`,
   or bare `undefined` as no-op route HTML updates instead of clearing or
   stringifying the active boundary.
