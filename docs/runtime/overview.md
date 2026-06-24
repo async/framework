@@ -10,6 +10,11 @@ The runtime starts from a root, scans protocol attributes, registers bindings, a
 4. Scan for containers, boundaries, handlers, signal bindings, components, and lifecycle hooks.
 5. Start the router if route declarations are present.
 
+The built-in router owns URL matching, link and GET form interception, hash
+routes, route params, route partial swaps, and route-only `router.*` state. Use
+`createRouter(...)` directly when a custom runtime needs router control without
+going through `Async.start(...)`.
+
 ## Scheduler
 
 The scheduler batches binding work by phase:

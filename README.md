@@ -770,7 +770,7 @@ aggregate form `class:="buttonClasses"` also remains supported.
 
 `on:*` works with any native DOM event name. `on:attach` and `on:visible` are
 reserved component lifecycle pseudo-events with cleanup support. `on:mount`
-remains as a compatibility alias for `on:attach`.
+remains as a compatibility alias for `on:attach` and warns when used.
 
 Command chains use semicolons and are awaited sequentially:
 
@@ -880,6 +880,27 @@ the async signal stores the unwrapped `value`.
 
 ### Router And Partials
 
+Async includes a built-in router. Use it for URL matching, route params,
+hash-based static-host routes, same-origin link and GET form interception,
+route partial swaps, and route-only `router.*` state.
+
+The router can be started in two ways:
+
+- `Async.use({ route, partial })` plus `Async.start({ mode, boundary })` for app
+  hub setup.
+- `createRouter({ routes, partials, mode, boundary })` for direct runtime setup.
+
+Router pieces:
+
+| Piece | Purpose |
+| --- | --- |
+| `createRouteRegistry(...)` | Holds URL patterns such as `/products/:id` |
+| `defineRoute(...)` | Creates route records that point to partials or metadata |
+| `createPartialRegistry(...)` | Holds route fragments that can return HTML or envelopes |
+| `createRouter(...)` | Starts navigation, history handling, matching, and route state |
+| `async:boundary="route"` | Receives rendered route partial HTML in `csr` and `spa` modes |
+| `router.*` signals | Publish path, params, query, matched route, pending state, and errors |
+
 Partials are server-rendered fragment functions. They return HTML, `html`
 templates, DOM fragments, or a response envelope.
 
@@ -921,14 +942,63 @@ Async.start({
 
 `route(...)` remains a compatibility alias for `defineRoute(...)`.
 
+Route patterns support static paths, params, and wildcard fallback:
+
+```js
+Async.use({
+  route: {
+    "/": defineRoute("home.page"),
+    "/products/:id": defineRoute("product.page"),
+    "/docs/:section/:page": defineRoute("docs.page"),
+    "*": defineRoute("notFound.page")
+  }
+});
+```
+
+The router publishes params and query strings through signals:
+
+```txt
+/products/sku-1?tab=reviews
+router.path   -> "/products/sku-1"
+router.params -> { id: "sku-1" }
+router.query  -> { tab: "reviews" }
+```
+
+Routes that only drive URL-backed state can use route metadata without a
+partial. Use `mode: "signals"` for dashboards or app shells that already render
+from state:
+
+```js
+const routes = createRouteRegistry({
+  "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
+  "/fy26": defineRoute({ render: "none", meta: { page: "fy26" } })
+});
+
+const router = createRouter({
+  mode: "signals",
+  urlMode: "hash",
+  routes
+});
+```
+
 Router modes:
 
-| Mode | Initial route | Later navigation |
-| --- | --- |
-| `csr` | Client renders local partial into boundary | Client renders local partial and swaps |
-| `spa` | Existing HTML may already contain route | Client renders local partial and swaps |
-| `ssr` | Server-rendered document plus snapshot activation | Browser navigates normally |
-| `mpa` | Any document source | Browser navigates normally |
+| Mode | Initial route | Later navigation | Use when |
+| --- | --- | --- | --- |
+| `csr` | Client renders local partial into boundary | Client renders local partial and swaps | A no-build page owns route content on the client |
+| `spa` | Existing HTML may already contain route | Client renders local partial and swaps | SSR or static HTML should stay visible until navigation |
+| `signals` | Existing HTML stays mounted | Updates `router.*` signals and history only | A shell renderer reacts to URL state itself |
+| `ssr` | Server-rendered document plus snapshot activation | Browser navigates normally | Navigation belongs to the server |
+| `mpa` | Any document source | Browser navigates normally | Traditional multi-page navigation |
+
+In `signals` mode, route changes update `router.url`, `router.path`,
+`router.params`, `router.query`, `router.route`, `router.pending`, and
+`router.error` without rendering partials or swapping boundaries.
+
+Client navigation modes intercept same-origin links, GET forms, browser
+back/forward, and route hashes such as `#/products/sku-1`. They do not intercept
+external links, downloads, modified clicks, non-GET forms, or plain section
+anchors such as `#quickstart`.
 
 CSR startup can use an empty route boundary:
 
@@ -955,17 +1025,20 @@ router.pending
 router.error
 ```
 
-Register a wildcard route for an explicit fallback page:
+Programmatic navigation uses the same matcher and history handling:
 
 ```js
-Async.use({
-  route: {
-    "/": defineRoute("home.page"),
-    "/products/:id": defineRoute("product.page"),
-    "*": defineRoute("notFound.page")
-  }
-});
+await router.navigate("/products/sku-1");
+await router.navigate("/products/sku-2", { replace: true });
+await router.prefetch("/products/sku-3");
 ```
+
+When a partial envelope owns an `html` key with `undefined`, the router treats
+it as no route HTML replacement and leaves the active boundary intact. Use
+`html: ""` to intentionally clear the route boundary.
+
+The full router guide lives in `docs/runtime/router-partials.md` and the
+runnable example is `examples/router`.
 
 ### Cache
 
@@ -1151,7 +1224,8 @@ Component helpers:
 | `this.slot(Component, propsOrFn)` | Child component outlet using an `on:attach` target |
 | `this.suspense(signalRef, views)` | Async boundary template helper |
 | `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
-| `this.onMount(fn)` | Compatibility alias for `this.on("attach", fn)` |
+| `this.onAttach(fn)` | Fragment attach lifecycle fallback |
+| `this.onMount(fn)` | Compatibility alias for `this.onAttach(fn)` that warns when used |
 | `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
 | `this.on("intersect", options?, fn)` | Continuous intersection lifecycle for the mounted component scope |
 | `this.intersect(element, options?, fn)` | Component-owned continuous intersection observer for a direct element |
@@ -1374,8 +1448,28 @@ loader.swap(
 );
 ```
 
-`swap(boundaryId, fragmentOrTemplate)` replaces the boundary contents and
-rescans the inserted fragment.
+`swap(boundaryId, fragmentOrTemplate, options?)` replaces the boundary contents
+and rescans inserted content by default. For large stable shells that refresh
+from local state, pass `strategy: "morph"` to preserve matching DOM nodes while
+updating changed text, attributes, and children.
+
+The `strategy` option controls how the boundary changes:
+
+| Option | Behavior |
+| --- | --- |
+| `replace` | Default. Clean up all existing children, replace them, and activate the inserted subtree. |
+| `morph` | Reconcile matching children by tag and stable identity, preserving unchanged nodes and cleaning up removed or replaced nodes. |
+
+Morph matching uses `async:key`, `data-key`, or `id` when present. Without a
+stable identity it falls back to sibling order and tag name.
+
+The `scan` option controls activation:
+
+| Option | Behavior |
+| --- | --- |
+| `auto` | Default. For replacement, scan inserted roots. For morphing, scan changed or inserted roots. |
+| `full` | Scan the boundary element and its subtree. |
+| `none` | Do not scan inserted content; call `loader.scan(...)` later if needed. |
 
 When boundary patches can arrive independently, use `createBoundaryReceiver`.
 It keeps per-boundary sequence state, applies signal/cache effects before the

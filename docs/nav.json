@@ -4,6 +4,7 @@
   "defaultRoute": "/docs/getting-started",
   "topNav": [
     { "label": "Docs", "href": "#/docs/getting-started" },
+    { "label": "Router", "href": "#/runtime/router-partials" },
     { "label": "Examples", "href": "#/reference/examples" },
     { "label": "Changelog", "href": "#/changelog" },
     { "label": "API Reference", "href": "https://www.jsdocs.io/package/@async/framework", "external": true },
@@ -28,9 +29,9 @@
       ]
     },
     {
-      "title": "Router & Partials",
+      "title": "Router",
       "pages": [
-        { "title": "Router & Partials", "route": "/runtime/router-partials", "source": "runtime/router-partials.md" }
+        { "title": "Router Guide", "route": "/runtime/router-partials", "source": "runtime/router-partials.md" }
       ]
     },
     {

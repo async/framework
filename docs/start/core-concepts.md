@@ -24,6 +24,23 @@ Registries hold named behavior and data:
 - `route` for URL patterns.
 - `cache.browser` and `cache.server` for split cache declarations.
 
+## Built-In Router
+
+Async has a built-in router for URL-backed state and route partials. Register
+patterns with `defineRoute(...)`, then start the router through `Async.start(...)`
+or `createRouter(...)`.
+
+Use the router when an app needs:
+
+- route params such as `/products/:id`;
+- static-host hash routes such as `#/docs/getting-started`;
+- same-origin link and GET form interception;
+- route partials swapped into `async:boundary="route"`;
+- route-only state through `mode: "signals"`.
+
+The router publishes `router.*` signals, so DOM bindings and handlers can read
+the current path, params, query, matched route, pending state, and errors.
+
 ## Protocol first
 
 The DOM protocol is the durable surface. Markup says where behavior attaches:

@@ -16,7 +16,7 @@ pnpm add @async/framework
 
 - [Core Concepts](#/docs/core-concepts) explains the runtime pieces.
 - [HTML Protocol](#/runtime/html-protocol) lists the author-facing attributes.
-- [Router & Partials](#/runtime/router-partials) covers hash routing, route boundaries, and fragment swaps.
+- [Router Guide](#/runtime/router-partials) covers the built-in router, hash routing, route-only shells, route boundaries, and fragment swaps.
 - [Server & Streaming](#/runtime/server-streaming) shows server calls and streamed boundary patches.
 
 ## Runtime shape
@@ -61,3 +61,4 @@ Async uses registries for signals, handlers, components, partials, routes, cache
 | `signal:*` | Bind state to text, values, attributes, properties, and classes |
 | `on:*` | Run delegated handlers or server commands |
 | `async:boundary` | Mark a region that can be swapped or streamed |
+| `createRouter(...)` | Start URL-backed routing with route params, history, hash mode, partials, or route-only signals |
