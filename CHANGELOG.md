@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.12.6 - 2026-06-24
+
+- Added the app-level `Async.router` facade with queued `navigate`, `prefetch`,
+  `ready`, `match`, and nested `loader` access before runtime startup.
+- Added router transition planning that skips duplicate active-route work and
+  uses signal-only updates for same-view navigation unless `force: true` is
+  requested.
+- Made `createRouter(...)` start immediately, rejected separate signal registry
+  injection, and kept route and partial registration on the app registry path.
+- Documented routing layers from simple `Async.use({ route, partial })` setup
+  through signal-router dashboards, refresh scopes, and custom runtime wiring.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 366,552 B (366.6 KB / 0.367 MB), gzip 67,930 B (67.9 KB / 0.068 MB), br 55,263 B (55.3 KB / 0.055 MB) -> `browser.min.js` raw 153,961 B (154.0 KB / 0.154 MB), gzip 44,479 B (44.5 KB / 0.044 MB), br 38,561 B (38.6 KB / 0.039 MB); delta raw -212,591 B (-212.6 KB / -0.213 MB), gzip -23,451 B (-23.5 KB / -0.023 MB), br -16,702 B (-16.7 KB / -0.017 MB).
+
 ## 0.12.5 - 2026-06-24
 
 - Added `asyncFramework({ layer, server, client })` for Hono-backed Vite
