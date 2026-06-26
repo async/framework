@@ -3,8 +3,7 @@ import {
   defineComputed,
   defineFlow,
   defineSignal,
-  isFlowDefinition,
-  isAsyncSignal
+  isFlowDefinition
 } from "@async/flow/define";
 import { createFlow } from "@async/flow/framework-runtime";
 import {
@@ -13,6 +12,7 @@ import {
   update as flowUpdate,
   when as flowWhen
 } from "@async/flow/helpers/core";
+import { ASYNC_SIGNAL, COMPUTED, SIGNAL, STATUS } from "@async/flow/protocol";
 
 const frameworkFlowKind = Symbol.for("@async/framework.flow");
 
@@ -371,10 +371,23 @@ function isWritableFlowRef(ref) {
 }
 
 function isFlowAsyncSignalRef(ref) {
-  return isAsyncSignal(ref) || flowRefType(ref) === "asyncSignal";
+  return ref?.[ASYNC_SIGNAL] === true || flowRefType(ref) === "asyncSignal";
 }
 
 function flowRefType(ref) {
+  if (ref?.[ASYNC_SIGNAL]) {
+    return "asyncSignal";
+  }
+  if (ref?.[STATUS]) {
+    return "status";
+  }
+  if (ref?.[SIGNAL]) {
+    return "signal";
+  }
+  if (ref?.[COMPUTED]) {
+    return "computed";
+  }
+
   return ref?.type ?? ref?.kind;
 }
 

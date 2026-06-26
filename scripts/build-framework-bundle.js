@@ -2251,6 +2251,7 @@ function moduleVariable(file) {
 
 function resolveLocalFlowSource(specifier) {
   const flowSources = {
+    "@async/flow/protocol": "src/protocol.js",
     "@async/flow/define": "src/define.js",
     "@async/flow/runtime": "src/runtime.js",
     "@async/flow/framework-runtime": "src/framework-runtime.js",

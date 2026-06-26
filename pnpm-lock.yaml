@@ -16,8 +16,8 @@ importers:
         version: 4.12.27
     devDependencies:
       '@async/flow':
-        specifier: 0.9.0
-        version: 0.9.0
+        specifier: 0.10.0
+        version: 0.10.0
       '@async/pipeline':
         specifier: 0.9.25
         version: 0.9.25
@@ -33,8 +33,8 @@ importers:
 
 packages:
 
-  '@async/flow@0.9.0':
-    resolution: {integrity: sha512-QQ6WKRSTvZ8b4WxWRwAWxEJi/1vJhb8YKpCrb7f1PmOfxIdK7gWH39bX7vZADTZXLbl2/g4PNHx4hP4tt9WkuA==}
+  '@async/flow@0.10.0':
+    resolution: {integrity: sha512-8NvPS7ndvb/wTp/Y1XjQ6e4v4v1A/9+avcf1LZ0xeUmi5ZWX7Vw4hLWXjCeTsbq9rkvyb6aP9Ktfb9wPOFXX3A==}
     engines: {node: '>=24'}
 
   '@async/pipeline@0.9.25':
@@ -161,7 +161,7 @@ packages:
 
 snapshots:
 
-  '@async/flow@0.9.0': {}
+  '@async/flow@0.10.0': {}
 
   '@async/pipeline@0.9.25': {}
 
