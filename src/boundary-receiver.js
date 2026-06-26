@@ -215,10 +215,11 @@ export function createBoundaryReceiver(options = {}) {
     let replacementCount = 0;
     if (normalized.html != null) {
       boundaryElement = loader.swap(normalized.boundary, normalized.html);
+      await waitForLoaderCommit(loader, boundaryElement);
     }
     if (normalized.replace) {
       boundaryElement ??= findBoundaryElement(loader.root, normalized.boundary, attributes);
-      replacementCount = applyReplacements(boundaryElement, normalized.replace);
+      replacementCount = await applyReplacements(boundaryElement, normalized.replace);
     }
 
     let attrs;
@@ -276,7 +277,7 @@ export function createBoundaryReceiver(options = {}) {
     }
   }
 
-  function applyReplacements(boundaryElement, replacements) {
+  async function applyReplacements(boundaryElement, replacements) {
     let applied = 0;
     for (const replacement of replacements) {
       if (replacement.mode === "boundary") {
@@ -284,7 +285,8 @@ export function createBoundaryReceiver(options = {}) {
         if (!containsOrEquals(boundaryElement, target)) {
           throw new Error(`Boundary replacement target "${replacement.target}" is outside boundary "${boundaryIdFor(boundaryElement, attributes)}".`);
         }
-        loader.swap(replacement.target, replacement.html);
+        const swapped = loader.swap(replacement.target, replacement.html);
+        await waitForLoaderCommit(loader, swapped);
         applied += 1;
         continue;
       }
@@ -791,6 +793,12 @@ async function flushScheduler(scheduler, scope) {
   }
   if (typeof scheduler.flush === "function") {
     await scheduler.flush();
+  }
+}
+
+async function waitForLoaderCommit(loader, result) {
+  if (typeof loader?._whenCommitted === "function") {
+    await loader._whenCommitted(result);
   }
 }
 

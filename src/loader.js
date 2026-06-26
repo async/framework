@@ -28,6 +28,9 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   const componentBindings = new WeakSet();
   const inlineBindings = new Map();
   const scopedCleanups = new WeakMap();
+  const boundaryCommitChains = new WeakMap();
+  const boundaryCommits = new WeakMap();
+  const pendingCommits = new Set();
   let inlineBindingCounter = 0;
   let boundaryBindingCounter = 0;
   let destroyed = false;
@@ -63,7 +66,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       }
       const swapOptions = normalizeSwapOptions(options);
       const boundary = requireBoundary(boundaryIdOrConfig);
-      applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions);
+      scheduleBoundarySwap(boundary, fragmentOrTemplate, swapOptions);
       return boundary;
     },
 
@@ -157,6 +160,11 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
 
     _releaseBinding(id) {
       inlineBindings.delete(id);
+    },
+
+    async _whenCommitted(result) {
+      await whenCommitted(result);
+      return result;
     }
   };
 
@@ -196,7 +204,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     }
     const swapOptions = normalizeSwapOptions(config);
     const boundary = requireBoundary(boundaryId);
-    applyBoundarySwap(boundary, value, swapOptions);
+    scheduleBoundarySwap(boundary, value, swapOptions);
     return boundary;
   }
 
@@ -210,13 +218,13 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     if (snapshot != null && swapSnapshots.get(boundary) === snapshot) {
       return boundary;
     }
-    applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, { snapshot });
+    scheduleBoundarySwap(boundary, fragmentOrTemplate, swapOptions, { snapshot });
     return boundary;
   }
 
   function applyManySwap(updates, options) {
     const swapOptions = normalizeSwapManyOptions(options);
-    const results = [];
+    const entries = [];
     for (const [boundaryId, entry] of normalizeSwapManyEntries(updates)) {
       const boundary = requireBoundary(boundaryId);
       const resolved = resolveManySwapEntry(entry, boundaryId, boundary);
@@ -225,24 +233,35 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       if (swapOptions.ifChanged && resolved.snapshot != null && swapSnapshots.get(boundary) === resolved.snapshot) {
         continue;
       }
-      const scanRoots = applyBoundarySwap(boundary, resolved.fragmentOrTemplate, {
-        ...swapOptions,
-        strategy: entryStrategy,
-        attach: entryAttach,
-        scan: "none"
-      }, {
+      entries.push({
+        boundary,
+        fragmentOrTemplate: resolved.fragmentOrTemplate,
+        swapOptions: {
+          ...swapOptions,
+          strategy: entryStrategy,
+          attach: entryAttach,
+          scan: "none"
+        },
         snapshot: resolved.snapshot
       });
-      results.push({
-        boundary,
-        strategy: entryStrategy,
-        scanRoots
+    }
+    if (entries.length > 0) {
+      const boundaries = entries.map((entry) => entry.boundary);
+      scheduleCommitForBoundaries(boundaries, () => {
+        const scanResults = entries.map((entry) => {
+          const scanRoots = applyBoundarySwap(entry.boundary, entry.fragmentOrTemplate, entry.swapOptions, {
+            snapshot: entry.snapshot
+          });
+          return {
+            boundary: entry.boundary,
+            strategy: entry.swapOptions.strategy,
+            scanRoots
+          };
+        });
+        scanSwapResults(scanResults, swapOptions.scan === "once" ? "auto" : swapOptions.scan);
       });
     }
-    if (results.length > 0) {
-      scanSwapResults(results, swapOptions.scan === "once" ? "auto" : swapOptions.scan);
-    }
-    return results.map((result) => result.boundary);
+    return entries.map((entry) => entry.boundary);
   }
 
   function resolveManySwapEntry(entry, boundaryId, boundary) {
@@ -316,7 +335,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       if (snapshot != null && swapSnapshots.get(boundary) === snapshot) {
         return;
       }
-      applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, { snapshot });
+      scheduleBoundarySwap(boundary, fragmentOrTemplate, swapOptions, { snapshot });
     };
 
     run();
@@ -325,6 +344,69 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       cleanupDependencies();
     }, boundary);
     return () => runCleanup(cleanup);
+  }
+
+  function scheduleBoundarySwap(boundary, fragmentOrTemplate, swapOptions, metadata = {}) {
+    const boundaryId = boundaryIdFor(boundary, attributeConfig);
+    return scheduleCommitForBoundaries([boundary], () => {
+      applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, metadata);
+      return boundary;
+    }, {
+      boundary: boundaryId
+    });
+  }
+
+  function scheduleCommitForBoundaries(boundaries, fn, metadata = {}) {
+    const scopes = boundaries.filter(Boolean);
+    const serialize = schedulerInstance.timing?.commit === "frame";
+    const previousCommits = serialize
+      ? scopes.map((boundary) => boundaryCommitChains.get(boundary)).filter(Boolean)
+      : [];
+    const run = () => schedulerInstance.commit(fn, {
+      scope: scopes.length === 1 ? scopes[0] : undefined,
+      boundary: metadata.boundary
+    });
+    const commit = previousCommits.length === 0 ? run() : Promise.all(previousCommits).then(run);
+    const tracked = commit.finally(() => {
+      pendingCommits.delete(commit);
+    });
+    pendingCommits.add(commit);
+    for (const boundary of scopes) {
+      boundaryCommits.set(boundary, commit);
+      if (serialize) {
+        const chain = tracked.catch(() => {});
+        boundaryCommitChains.set(boundary, chain);
+        chain.finally(() => {
+          if (boundaryCommitChains.get(boundary) === chain) {
+            boundaryCommitChains.delete(boundary);
+          }
+        });
+      }
+    }
+    commit.catch(() => {});
+    tracked.catch(() => {});
+    return commit;
+  }
+
+  async function whenCommitted(result) {
+    if (Array.isArray(result)) {
+      await Promise.all(result.map((item) => whenCommitted(item)));
+      return;
+    }
+    if (isBoundaryLike(result)) {
+      const commit = boundaryCommits.get(result);
+      if (commit) {
+        await commit;
+      }
+      return;
+    }
+    if (pendingCommits.size > 0) {
+      await Promise.all([...pendingCommits]);
+    }
+  }
+
+  function isBoundaryLike(value) {
+    return Boolean(value && typeof value === "object" && typeof value.nodeType === "number");
   }
 
   function applyBoundarySwap(boundary, fragmentOrTemplate, swapOptions, metadata = {}) {

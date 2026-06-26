@@ -49,8 +49,10 @@ returned from `Async.start(...)` / `createApp(...).start()`.
 
 - The kernel owns registry materialization and runtime lifecycle.
 - The loader owns DOM scanning once a root is attached.
-- The app-level loader facade owns only bootstrap ordering. The concrete
-  runtime loader keeps synchronous DOM semantics.
+- The app-level loader facade owns bootstrap ordering and promise completion for
+  scheduled commit work. The concrete runtime loader keeps synchronous
+  validation and return shapes while DOM mutation runs through the scheduler
+  commit phase.
 - The router owns navigation once started for a root.
 - The scheduler owns queued work ordering.
 - Signal and cache registries own mutable data state.

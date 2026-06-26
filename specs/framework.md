@@ -125,6 +125,9 @@ tree or hidden hydration model.
 - [12-composition-patterns.md](./framework/12-composition-patterns.md) -
   composition pattern guidance for children, regions, templates, presenters,
   outlets, boundaries, and anti-patterns.
-- [13-use-declarations-and-conventions.md](./framework/13-use-declarations-and-conventions.md)
+- [13-scheduler-and-commit-phase.md](./framework/13-scheduler-and-commit-phase.md)
+  - scheduler timing, visual commit phase, background work, and
+  `Async.loader.swap(...)` completion semantics.
+- [14-use-declarations-and-conventions.md](./framework/14-use-declarations-and-conventions.md)
   - `Async.use(...)` declarations, convention routing, duplicate policies,
   system identity, materialization timing, and queued capability facades.

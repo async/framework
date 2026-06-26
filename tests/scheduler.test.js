@@ -26,6 +26,69 @@ test("scheduler flushes phases in deterministic order and runs post callbacks la
   assert.deepEqual(seen, ["binding", "lifecycle", "effect", "async", "post"]);
 });
 
+test("scheduler defers commit jobs to animation frame and resolves after post flush", async () => {
+  const frames = [];
+  const scheduler = createScheduler({
+    requestAnimationFrame(callback) {
+      frames.push(callback);
+      return frames.length;
+    }
+  });
+  const seen = [];
+
+  const committed = scheduler.commit(() => {
+    seen.push("commit");
+    scheduler.afterFlush(() => {
+      seen.push("post");
+    });
+  });
+
+  await delay(0);
+  assert.deepEqual(seen, []);
+  assert.equal(frames.length, 1);
+
+  frames.shift()(16);
+  await committed;
+
+  assert.deepEqual(seen, ["commit", "post"]);
+});
+
+test("scheduler commit falls back synchronously without animation frames", async () => {
+  const scheduler = createScheduler();
+  const seen = [];
+
+  const committed = scheduler.commit(() => {
+    seen.push("commit");
+  });
+
+  assert.deepEqual(seen, ["commit"]);
+  await committed;
+});
+
+test("scheduler background jobs use idle callback when available", async () => {
+  const idleCallbacks = [];
+  const scheduler = createScheduler({
+    requestIdleCallback(callback) {
+      idleCallbacks.push(callback);
+      return idleCallbacks.length;
+    }
+  });
+  const seen = [];
+
+  scheduler.enqueue("background", () => {
+    seen.push("background");
+  });
+
+  await delay(0);
+  assert.deepEqual(seen, []);
+  assert.equal(idleCallbacks.length, 1);
+
+  idleCallbacks.shift()({ didTimeout: false, timeRemaining: () => 10 });
+  await delay(0);
+
+  assert.deepEqual(seen, ["background"]);
+});
+
 test("scheduler dedupes keyed jobs in the same phase and scope", async () => {
   const scheduler = createScheduler({ strategy: "manual" });
   let runs = 0;

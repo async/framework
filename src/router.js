@@ -404,7 +404,8 @@ export function createRouter(options = {}) {
         warnEmptyPartialHtml(plan?.boundary ?? boundary);
       }
       if (shouldSwapRouteResult(result)) {
-        loaderInstance.swap(plan?.boundary ?? boundary, result.html);
+        const swapped = loaderInstance.swap(plan?.boundary ?? boundary, result.html);
+        await loaderInstance._whenCommitted?.(swapped);
       }
     });
     await schedulerInstance.flush();

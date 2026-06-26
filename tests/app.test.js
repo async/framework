@@ -197,6 +197,104 @@ test("Async.loader queues swaps until the singleton runtime has a loader", async
   runtime.destroy();
 });
 
+test("Async.loader.swap resolves after frame commit, inserted bindings, and post flush", async () => {
+  const window = new Window();
+  const { document } = window;
+  const frames = [];
+  const scheduler = createScheduler({
+    requestAnimationFrame(callback) {
+      frames.push(callback);
+      return frames.length;
+    }
+  });
+  const app = defineApp({
+    signal: {
+      status: createSignal("ready")
+    },
+    handler: {
+      attach({ element }) {
+        element.dataset.attached = this.signals.get("status");
+      }
+    }
+  });
+  document.body.innerHTML = `<main async:boundary="route"></main>`;
+  const runtime = app.start({ root: document.body, router: false, scheduler });
+
+  let resolved = false;
+  const swap = app.loader.swap(
+    "route",
+    `<output id="status" signal:text="status" on:attach="attach"></output>`
+  );
+  swap.then(() => {
+    resolved = true;
+  });
+
+  await delay(0);
+  assert.equal(document.querySelector("#status"), null);
+  assert.equal(resolved, false);
+  assert.equal(frames.length, 1);
+
+  frames.shift()(16);
+  const boundary = await swap;
+
+  assert.equal(boundary.getAttribute("async:boundary"), "route");
+  assert.equal(document.querySelector("#status").textContent, "ready");
+  assert.equal(document.querySelector("#status").dataset.attached, "ready");
+  assert.equal(resolved, true);
+  runtime.destroy();
+});
+
+test("Async.loader.swap uses synchronous fallback when animation frames are unavailable", async () => {
+  const window = new Window();
+  const { document } = window;
+  const app = defineApp();
+  document.body.innerHTML = `<main async:boundary="route"></main>`;
+  const runtime = app.start({ root: document.body, router: false });
+
+  const swap = app.loader.swap("route", `<p id="sync-swap">Ready</p>`);
+
+  assert.equal(document.querySelector("#sync-swap").textContent, "Ready");
+  await swap;
+  runtime.destroy();
+});
+
+test("Async.loader.swap serializes frame commits for the same boundary", async () => {
+  const window = new Window();
+  const { document } = window;
+  const frames = [];
+  const scheduler = createScheduler({
+    requestAnimationFrame(callback) {
+      frames.push(callback);
+      return frames.length;
+    }
+  });
+  const app = defineApp();
+  document.body.innerHTML = `<main async:boundary="route"></main>`;
+  const runtime = app.start({ root: document.body, router: false, scheduler });
+
+  const first = app.loader.swap("route", `<p id="first">First</p>`);
+  const second = app.loader.swap("route", `<p id="second">Second</p>`);
+
+  await delay(0);
+  assert.equal(frames.length, 1);
+  assert.equal(document.querySelector("#first"), null);
+  assert.equal(document.querySelector("#second"), null);
+
+  frames.shift()(16);
+  await first;
+  assert.equal(document.querySelector("#first").textContent, "First");
+  assert.equal(document.querySelector("#second"), null);
+
+  await delay(0);
+  assert.equal(frames.length, 1);
+  frames.shift()(32);
+  await second;
+
+  assert.equal(document.querySelector("#first"), null);
+  assert.equal(document.querySelector("#second").textContent, "Second");
+  runtime.destroy();
+});
+
 test("Async.router queues navigation until the singleton runtime has a router", async () => {
   const base = `/queued-router-${Date.now()}${Math.floor(Math.random() * 100000)}`;
   const partialId = `queuedRouter.product.${Date.now()}`;

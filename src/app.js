@@ -633,7 +633,11 @@ function createLoaderFacade() {
   }
 
   async function invoke(loader, method, args) {
-    return loader[method](...args);
+    const result = loader[method](...args);
+    if (method === "swap" || method === "refresh") {
+      await loader._whenCommitted?.(result);
+    }
+    return result;
   }
 }
 
@@ -834,7 +838,11 @@ function createRouterLoaderFacade(getRouter) {
   }
 
   async function invoke(loader, method, args) {
-    return loader[method](...args);
+    const result = loader[method](...args);
+    if (method === "swap" || method === "refresh") {
+      await loader._whenCommitted?.(result);
+    }
+    return result;
   }
 }
 
