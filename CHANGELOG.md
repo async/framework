@@ -2,11 +2,15 @@
 
 ## Unreleased
 
+- Added scheduler commit-phase ordering for app-level loader swaps and streamed
+  boundary patches, including frame-backed commits and deterministic
+  non-browser fallbacks.
+
 ## 0.14.0 - 2026-06-26
 
 - Updated the Flow bridge to consume `@async/flow` 0.10.0 through the
   scheduler-free integration subpaths and shared protocol brands.
-- Bundle size from bundled TypeScript source: `browser.ts` raw 228,465 B (228.5 KB / 0.228 MB), gzip 42,518 B (42.5 KB / 0.043 MB), br 35,193 B (35.2 KB / 0.035 MB) -> `browser.min.js` raw 96,205 B (96.2 KB / 0.096 MB), gzip 27,993 B (28.0 KB / 0.028 MB), br 24,820 B (24.8 KB / 0.025 MB); delta raw -132,260 B (-132.3 KB / -0.132 MB), gzip -14,525 B (-14.5 KB / -0.015 MB), br -10,373 B (-10.4 KB / -0.010 MB).
+- Bundle size from bundled TypeScript source: `browser.ts` raw 236,170 B (236.2 KB / 0.236 MB), gzip 44,028 B (44.0 KB / 0.044 MB), br 36,421 B (36.4 KB / 0.036 MB) -> `browser.min.js` raw 99,320 B (99.3 KB / 0.099 MB), gzip 29,136 B (29.1 KB / 0.029 MB), br 25,662 B (25.7 KB / 0.026 MB); delta raw -136,850 B (-136.9 KB / -0.137 MB), gzip -14,892 B (-14.9 KB / -0.015 MB), br -10,759 B (-10.8 KB / -0.011 MB).
 
 ## 0.13.0 - 2026-06-26
 

@@ -102,7 +102,8 @@ export async function applyServerResult(result, context = {}) {
   }
 
   if (result.boundary && Object.hasOwn(result, "html")) {
-    context.loader?.swap?.(result.boundary, result.html);
+    const swapped = context.loader?.swap?.(result.boundary, result.html);
+    await context.loader?._whenCommitted?.(swapped);
   }
 
   if (result.redirect) {

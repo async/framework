@@ -1,15 +1,26 @@
-const defaultPhases = ["binding", "lifecycle", "effect", "async", "post"];
+const defaultPhases = ["binding", "lifecycle", "effect", "async", "commit", "post", "background"];
 
 export function createScheduler(options = {}) {
   const phases = [...(options.phases ?? defaultPhases)];
   const queues = new Map(phases.map((phase) => [phase, []]));
   const keyedJobs = new Map();
+  const flushWaiters = [];
   const destroyedObjectScopes = new WeakSet();
   const destroyedPrimitiveScopes = new Set();
   const objectScopeIds = new WeakMap();
   const onError = typeof options.onError === "function" ? options.onError : undefined;
   const maxDepth = options.maxDepth ?? 100;
   const strategy = options.strategy ?? "microtask";
+  const requestFrame = typeof options.requestAnimationFrame === "function"
+    ? options.requestAnimationFrame
+    : typeof globalThis.requestAnimationFrame === "function"
+      ? globalThis.requestAnimationFrame.bind(globalThis)
+      : undefined;
+  const requestIdle = typeof options.requestIdleCallback === "function"
+    ? options.requestIdleCallback
+    : typeof globalThis.requestIdleCallback === "function"
+      ? globalThis.requestIdleCallback.bind(globalThis)
+      : undefined;
   let destroyed = false;
   let flushing = false;
   let scheduled = false;
@@ -20,6 +31,10 @@ export function createScheduler(options = {}) {
   const api = {
     strategy,
     phases,
+    timing: {
+      commit: requestFrame ? "frame" : "sync",
+      background: requestIdle ? "idle" : "sync"
+    },
 
     batch(fn) {
       if (typeof fn !== "function") {
@@ -89,6 +104,17 @@ export function createScheduler(options = {}) {
       return api.enqueue("post", fn, options);
     },
 
+    commit(fn, options = {}) {
+      if (typeof fn !== "function") {
+        throw new TypeError("scheduler.commit(fn) requires a function.");
+      }
+      assertActive();
+      if (!flushing && !requestFrame) {
+        return runSynchronousCommit(fn, options.scope);
+      }
+      return enqueueCompletion("commit", fn, options);
+    },
+
     async flush() {
       assertActive();
       if (flushing) {
@@ -97,6 +123,7 @@ export function createScheduler(options = {}) {
       scheduled = false;
       flushing = true;
       let depth = 0;
+      let flushError;
       try {
         while (hasJobs()) {
           depth += 1;
@@ -104,11 +131,18 @@ export function createScheduler(options = {}) {
             throw new Error(`Scheduler exceeded maxDepth ${maxDepth}.`);
           }
           for (const phase of phases) {
+            if (hasEarlierJobs(phase)) {
+              continue;
+            }
             await flushPhase(phase);
           }
         }
+      } catch (error) {
+        flushError = error;
+        throw error;
       } finally {
         flushing = false;
+        settleFlushWaiters(flushError);
         if (hasJobs()) {
           requestFlush();
         }
@@ -123,6 +157,7 @@ export function createScheduler(options = {}) {
       scheduled = false;
       flushing = true;
       let depth = 0;
+      let flushError;
       try {
         while (hasJobsForScope(scope)) {
           depth += 1;
@@ -130,11 +165,18 @@ export function createScheduler(options = {}) {
             throw new Error(`Scheduler exceeded maxDepth ${maxDepth}.`);
           }
           for (const phase of phases) {
+            if (hasEarlierJobs(phase, scope)) {
+              continue;
+            }
             await flushPhase(phase, scope);
           }
         }
+      } catch (error) {
+        flushError = error;
+        throw error;
       } finally {
         flushing = false;
+        settleFlushWaiters(flushError, scope);
         if (hasJobs()) {
           requestFlush();
         }
@@ -193,7 +235,8 @@ export function createScheduler(options = {}) {
         pending: counts,
         scopesDestroyed: destroyedPrimitiveScopes.size,
         flushing,
-        scheduled
+        scheduled,
+        timing: { ...api.timing }
       };
     },
 
@@ -206,6 +249,7 @@ export function createScheduler(options = {}) {
         queue.length = 0;
       }
       keyedJobs.clear();
+      settleFlushWaiters(new Error("Scheduler has been destroyed."));
       destroyedPrimitiveScopes.clear();
     }
   };
@@ -222,6 +266,71 @@ export function createScheduler(options = {}) {
         void api.flush().catch(reportAutomaticFlushError);
       }
     });
+  }
+
+  function runSynchronousCommit(fn, scope) {
+    let value;
+    try {
+      value = fn();
+    } catch (error) {
+      throw error;
+    }
+    return Promise.resolve(value).then(async (resolved) => {
+      if (scope !== undefined && typeof api.flushScope === "function") {
+        await api.flushScope(scope);
+        return resolved;
+      }
+      await api.flush();
+      return resolved;
+    });
+  }
+
+  function enqueueCompletion(phase, fn, options = {}) {
+    assertPhase(phase);
+    if (isScopeDestroyed(options.scope)) {
+      return Promise.reject(new Error(`Scheduler ${phase} job was canceled because its scope is destroyed.`));
+    }
+    let state = "pending";
+    let value;
+    let failure;
+    return new Promise((resolve, reject) => {
+      flushWaiters.push({ phase, scope: options.scope, resolve, reject, result });
+      api.enqueue(phase, async () => {
+        try {
+          value = await fn();
+          state = "fulfilled";
+        } catch (error) {
+          failure = error;
+          state = "rejected";
+          throw error;
+        }
+      }, options);
+    });
+
+    function result() {
+      return { state, value, failure };
+    }
+  }
+
+  function settleFlushWaiters(flushError, scope) {
+    for (let index = 0; index < flushWaiters.length;) {
+      const waiter = flushWaiters[index];
+      if (scope !== undefined && waiter.scope !== scope) {
+        index += 1;
+        continue;
+      }
+      flushWaiters.splice(index, 1);
+      const result = waiter.result();
+      if (result.state === "fulfilled" && !flushError) {
+        waiter.resolve(result.value);
+        continue;
+      }
+      if (result.state === "rejected") {
+        waiter.reject(result.failure);
+        continue;
+      }
+      waiter.reject(flushError ?? new Error(`Scheduler ${waiter.phase} job did not run before flush completed.`));
+    }
   }
 
   async function flushPhase(phase, scope) {
@@ -241,6 +350,11 @@ export function createScheduler(options = {}) {
     }
 
     queue.push(...remaining);
+    if (runnable.length === 0) {
+      return;
+    }
+
+    await waitForPhase(phase);
 
     for (const job of runnable) {
       if (job.key) {
@@ -258,6 +372,30 @@ export function createScheduler(options = {}) {
           throw annotateSchedulerError(error, job);
         }
       }
+    }
+  }
+
+  function hasEarlierJobs(phase, scope) {
+    if (phase !== "post" && phase !== "background") {
+      return false;
+    }
+    const index = phases.indexOf(phase);
+    for (const previousPhase of phases.slice(0, index)) {
+      const queue = queues.get(previousPhase);
+      if (queue?.some((job) => !job.canceled && (scope === undefined || job.scope === scope))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function waitForPhase(phase) {
+    if (phase === "commit" && requestFrame) {
+      await new Promise((resolve) => requestFrame(() => resolve()));
+      return;
+    }
+    if (phase === "background" && requestIdle) {
+      await new Promise((resolve) => requestIdle(() => resolve()));
     }
   }
 

@@ -80,8 +80,8 @@ Patch effects apply in this order:
 
 1. Signal patches.
 2. Browser cache restore.
-3. Boundary HTML swap and rescan.
-4. Scheduler flush for affected work.
+3. Boundary HTML swap scheduled through the commit phase, with rescan.
+4. Scheduler flush for affected work, including post-commit completion.
 5. Redirect.
 
 ## Resume Contract
@@ -93,7 +93,8 @@ Resume must preserve document continuity:
 - Boundary swaps must clean removed scopes before inserted HTML is scanned.
 - Child patches with destroyed parent scopes are ignored.
 - Same-boundary patches are serialized so later sequence numbers cannot commit
-  before earlier in-flight patches finish.
+  before earlier in-flight patches finish their scheduled DOM commit and
+  post-commit flush.
 
 ## Invariants
 
@@ -117,8 +118,10 @@ Resume must preserve document continuity:
 
 - Browser activation restores signal and cache snapshots and binds existing
   DOM.
-- A boundary patch applies signal and cache effects before replacing HTML.
-- Inserted HTML is rescanned so delegated handlers and signal bindings work.
+- A boundary patch applies signal and cache effects before scheduling HTML
+  replacement.
+- Inserted HTML is rescanned during commit so delegated handlers and signal
+  bindings work before the patch reports success.
 - Stale same-boundary patches are ignored while independent boundary patches can
   apply out of order.
 - Failed DOM, scheduler, redirect, or capability errors can be retried with the

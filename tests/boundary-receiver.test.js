@@ -40,6 +40,38 @@ test("boundary receiver applies signals before swapping HTML", async () => {
   loader.destroy();
 });
 
+test("boundary receiver waits for frame-backed loader commits before reporting applied", async () => {
+  const window = new Window();
+  const { document } = window;
+  const frames = [];
+  const scheduler = createScheduler({
+    requestAnimationFrame(callback) {
+      frames.push(callback);
+      return frames.length;
+    }
+  });
+  document.body.innerHTML = `<section async:boundary="product"></section>`;
+  const loader = Loader({ root: document.body, scheduler }).start();
+  const receiver = createBoundaryReceiver({ loader, scheduler });
+
+  const applied = receiver.apply({
+    boundary: "product",
+    seq: 1,
+    html: `<article><h1>Keyboard</h1></article>`
+  });
+
+  await delay(0);
+  assert.equal(document.querySelector("h1"), null);
+  assert.equal(frames.length, 1);
+
+  frames.shift()(16);
+  const result = await applied;
+
+  assert.deepEqual(result, { status: "applied", boundary: "product", seq: 1 });
+  assert.equal(document.querySelector("h1").textContent, "Keyboard");
+  loader.destroy();
+});
+
 test("boundary receiver restores browser cache patches", async () => {
   const window = new Window();
   const { document } = window;

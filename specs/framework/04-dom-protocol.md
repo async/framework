@@ -37,9 +37,11 @@ Default protocol attributes include:
 - `intersect:*`
 
 `Loader({ root, ... }).start()` scans a root. `loader.scan(fragment)` scans
-newly inserted content. `loader.swap(boundary, html, options?)` replaces a
-boundary and rescans inserted element roots by default. `strategy: "morph"` is
-an opt-in boundary update strategy for stable shell markup: it preserves
+newly inserted content. `loader.swap(boundary, html, options?)` validates and
+targets a boundary synchronously, then schedules replacement or morph work in
+the scheduler commit phase and rescans inserted element roots by default.
+`strategy: "morph"` is an opt-in boundary update strategy for stable shell
+markup: it preserves
 matching nodes by `async:key`, `data-key`, `id`, or sibling order and tag name,
 then cleans up removed or replaced nodes. `scan: "full"` scans the boundary
 element and its subtree, while `scan: "none"` leaves inserted content inert
@@ -61,9 +63,10 @@ do not become refresh dependencies unless the render function reads the signal
 itself or the path is listed in `deps`.
 
 `Async.loader.scan(...)`, `Async.loader.swap(...)`, `Async.loader.refresh(...)`,
-and `Async.loader.mount(...)` are promise-returning app-level facade methods. They
-queue until a concrete runtime loader exists, then delegate to the same
-synchronous loader operations.
+and `Async.loader.mount(...)` are promise-returning app-level facade methods.
+They queue until a concrete runtime loader exists. `Async.loader.swap(...)` and
+refresh calls that perform swaps resolve only after the scheduled commit,
+inserted-DOM scan and binding, and post-commit flush complete.
 
 ## Subsystem Boundaries
 
@@ -73,8 +76,9 @@ synchronous loader operations.
 - The signal registry reads and writes state.
 - The component system may emit protocol attributes in rendered fragments.
 - The boundary receiver and router call loader swaps for replacement.
-- The app-level loader facade may buffer work before bootstrap, but it does not
-  change boundary replacement semantics once a concrete loader exists.
+- The app-level loader facade may buffer work before bootstrap, but it delegates
+  replacement to the concrete loader and waits for commit completion when it
+  returns a promise to app code.
 
 ## Protocol Contract
 
