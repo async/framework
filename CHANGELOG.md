@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Updated the Flow bridge to consume `@async/flow` 0.9.0 through the
+  scheduler-free integration subpaths.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 227,417 B (227.4 KB / 0.227 MB), gzip 42,266 B (42.3 KB / 0.042 MB), br 34,998 B (35.0 KB / 0.035 MB) -> `browser.min.js` raw 95,589 B (95.6 KB / 0.096 MB), gzip 27,809 B (27.8 KB / 0.028 MB), br 24,667 B (24.7 KB / 0.025 MB); delta raw -131,828 B (-131.8 KB / -0.132 MB), gzip -14,457 B (-14.5 KB / -0.014 MB), br -10,331 B (-10.3 KB / -0.010 MB).
+
 ## 0.13.0 - 2026-06-26
 
 - Moved streaming, Flow, and router browser code behind explicit

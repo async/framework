@@ -6,13 +6,13 @@ import {
   isFlowDefinition,
   isAsyncSignal
 } from "@async/flow/define";
-import { createFlow } from "@async/flow/runtime";
+import { createFlow } from "@async/flow/framework-runtime";
 import {
   onError as flowOnError,
   set as flowSet,
   update as flowUpdate,
   when as flowWhen
-} from "@async/flow/helpers";
+} from "@async/flow/helpers/core";
 
 const frameworkFlowKind = Symbol.for("@async/framework.flow");
 
@@ -89,7 +89,7 @@ function mountFlowRegistration(runtime, namespace, declaration) {
     }
     runtime.signals.register(path, createFlowSignalBridge(ref, {
       path,
-      writable: isWritableFlowRef(instance, name)
+      writable: isWritableFlowRef(ref)
     }));
     if (isFlowAsyncSignalRef(ref)) {
       registerFlowAsyncSignalMetadata(runtime, namespace, name, ref);
@@ -150,13 +150,13 @@ function normalizeFrameworkFlowStore(store) {
 }
 
 function normalizeFrameworkSignalDeclaration(declaration) {
-  if (declaration?.kind === "signal" && typeof declaration.subscribe === "function") {
+  if (flowRefType(declaration) === "signal" && typeof declaration.subscribe === "function") {
     return defineSignal(typeof declaration.snapshot === "function"
       ? declaration.snapshot()
       : declaration.value);
   }
 
-  if (declaration?.kind === "computed" && typeof declaration._flowCompute === "function") {
+  if (flowRefType(declaration) === "computed" && typeof declaration._flowCompute === "function") {
     return defineComputed(function frameworkComputedBridge() {
       const context = createFrameworkComputedContext(this);
       return declaration._flowCompute.call(createFrameworkComputedThis(context), context);
@@ -311,7 +311,7 @@ function createFlowReadonlyBridge(ref, { path, read }) {
 
 function createFlowSignalBridge(ref, { path, writable }) {
   return {
-    kind: ref.kind,
+    kind: flowRefType(ref),
 
     get value() {
       return ref.get();
@@ -350,8 +350,11 @@ function createFlowSignalBridge(ref, { path, writable }) {
     },
 
     _restore(value) {
-      if (ref.kind === "signal") {
+      const type = flowRefType(ref);
+      if (type === "signal" || type === "status") {
         ref.set(value);
+      } else if (type === "asyncSignal" && typeof ref.restore === "function") {
+        ref.restore(value);
       }
 
       return ref.snapshot();
@@ -363,13 +366,16 @@ function createFlowSignalBridge(ref, { path, writable }) {
   };
 }
 
-function isWritableFlowRef(instance, name) {
-  const descriptor = instance._describe?.();
-  return Boolean(descriptor?.writable?.includes(name));
+function isWritableFlowRef(ref) {
+  return typeof ref?.set === "function" && typeof ref?.update === "function";
 }
 
 function isFlowAsyncSignalRef(ref) {
-  return isAsyncSignal(ref) || ref?.kind === "asyncSignal";
+  return isAsyncSignal(ref) || flowRefType(ref) === "asyncSignal";
+}
+
+function flowRefType(ref) {
+  return ref?.type ?? ref?.kind;
 }
 
 function capitalizeIdentifier(value) {

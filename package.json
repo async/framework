@@ -194,7 +194,7 @@
     "test": "pnpm run bundle && node --test tests/*.test.js"
   },
   "devDependencies": {
-    "@async/flow": "0.5.0",
+    "@async/flow": "0.9.0",
     "@async/pipeline": "0.9.25",
     "happy-dom": "20.10.5",
     "terser": "5.48.0",
