@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.0 - 2026-06-26
+
 - Moved streaming, Flow, and router browser code behind explicit
   `@async/framework/stream`, `@async/framework/flow`, and
   `@async/framework/router` subpaths so the default browser asset stays focused
