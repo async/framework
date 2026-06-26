@@ -1,13 +1,14 @@
 # Boundary Receiver Size Scenario
 
-Showcases the full browser bundle plus `createBoundaryReceiver(...)` setup for
+Showcases the default browser bundle plus opt-in stream helper setup for
 streamed boundary patch receiving.
 
 Key files:
 
 - `index.html` defines the `product` boundary.
 - `main.js` starts `Async` and creates a boundary receiver.
-- `scenario.json` measures `dist/browser.min.js` plus this scenario script.
+- `scenario.json` measures `dist/browser.min.js`, `dist/stream.min.js`, and
+  this scenario script.
 
 Start from the repo root:
 

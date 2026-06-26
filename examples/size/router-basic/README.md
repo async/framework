@@ -1,12 +1,12 @@
 # Router Basic Size Scenario
 
-Showcases full browser bundle size for a small CSR route and partial boundary.
+Showcases opt-in router bundle size for a small CSR route and partial boundary.
 
 Key files:
 
 - `index.html` defines navigation and the `route` boundary.
 - `main.js` registers a partial and route, then starts CSR routing.
-- `scenario.json` measures `dist/browser.min.js` plus this scenario script.
+- `scenario.json` measures `dist/router.min.js` plus this scenario script.
 
 Start from the repo root:
 

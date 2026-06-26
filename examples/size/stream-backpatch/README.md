@@ -1,6 +1,7 @@
 # Stream Backpatch Size Scenario
 
-Showcases full browser bundle size for out-of-order stream backpatch handling.
+Showcases default browser bundle plus opt-in stream helper size for out-of-order
+stream backpatch handling.
 
 Key files:
 
@@ -8,7 +9,8 @@ Key files:
   stream patches.
 - `main.js` starts `Async`, creates a boundary receiver, and applies stream
   patch scripts.
-- `scenario.json` measures `dist/browser.min.js` plus this scenario script.
+- `scenario.json` measures `dist/browser.min.js`, `dist/stream.min.js`, and
+  this scenario script.
 
 Start from the repo root:
 

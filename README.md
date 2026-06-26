@@ -435,7 +435,6 @@ import {
   createSignal,
   createHandlerRegistry,
   createRegistryStore,
-  createRouter,
   createScheduler,
   createServerProxy,
   createSignalRegistry,
@@ -445,14 +444,20 @@ import {
   defineApp,
   defineCache,
   defineRegistrySnapshot,
-  defineRoute,
   delay,
   effect,
   html,
   readSnapshot,
-  route,
   signal
 } from "@async/framework/browser";
+```
+
+Use feature subpaths when an app needs the larger browser systems:
+
+```js
+import { AsyncStream } from "@async/framework/stream";
+import { Async, defineRoute } from "@async/framework/router";
+import { flow, flowSignal } from "@async/framework/flow";
 ```
 
 Server-only APIs live behind the server entry:
@@ -478,7 +483,7 @@ import {
   createSignal,
   defineCache,
   defineRoute
-} from "@async/framework";
+} from "@async/framework/router";
 
 Async.use({
   signal: {
@@ -994,9 +999,14 @@ the async signal stores the unwrapped `value`.
 
 ### Router And Partials
 
-Async includes a built-in router. Use it for URL matching, route params,
-hash-based static-host routes, same-origin link and GET form interception,
-route partial swaps, and route-only `router.*` state.
+Async includes a built-in router behind the `@async/framework/router` browser
+subpath. Use it for URL matching, route params, hash-based static-host routes,
+same-origin link and GET form interception, route partial swaps, and route-only
+`router.*` state.
+
+```js
+import { Async, defineRoute } from "@async/framework/router";
+```
 
 For app code, register routes and partials through the app registry:
 

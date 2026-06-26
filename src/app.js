@@ -3,10 +3,8 @@ import { createComponentRegistry } from "./component.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { Loader } from "./loader.js";
 import { createPartialRegistry } from "./partials.js";
-import { createRouteRegistry, createRouter } from "./router.js";
 import { createScheduler } from "./scheduler.js";
 import { createServerNamespace } from "./server.js";
-import { mountFlowRegistrations } from "./flow.js";
 import { cloneSignalDeclaration, createSignal, createSignalRegistry } from "./signals.js";
 import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
@@ -15,6 +13,7 @@ import { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } from ".
 const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal", "flow"]);
 
 export function defineApp(initial, options = {}) {
+  const features = createAppFeatureSet(options.features);
   const registry = createRegistryStore(undefined, { target: "browser" });
   const runtimes = new Set();
   const createRuntime = options.createRuntime ?? createApp;
@@ -94,6 +93,17 @@ export function defineApp(initial, options = {}) {
       value(runtime) {
         setCurrentRuntime(runtime);
       }
+    },
+    _features: {
+      get() {
+        return features;
+      }
+    },
+    _installFeature: {
+      value(feature) {
+        mergeAppFeatures(features, feature);
+        return app;
+      }
     }
   });
 
@@ -116,7 +126,8 @@ export function defineApp(initial, options = {}) {
 }
 
 export function createApp(appOrDefinition = Async, options = {}) {
-  const app = isAppHub(appOrDefinition) ? appOrDefinition : defineApp(appOrDefinition ?? {});
+  const app = isAppHub(appOrDefinition) ? appOrDefinition : defineApp(appOrDefinition ?? {}, { features: options.features });
+  const features = createAppFeatureSet(app._features, options.features);
   const target = options.target ?? "browser";
   const scheduler = options.scheduler ?? options.loader?.scheduler ?? createScheduler({
     strategy: target === "server" ? "manual" : "microtask"
@@ -135,7 +146,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
   const serverFactory = options.serverFactory ?? createServerReferenceRegistry;
   const server = options.server ?? serverFactory(undefined, { registry, type: "server" });
   const partials = options.partials ?? createPartialRegistry(undefined, { registry, type: "partial", lazyRegistry });
-  const routes = options.routes ?? createRouteRegistry(undefined, { registry, type: "route" });
+  const routes = options.routes ?? createFeatureRouteRegistry(features, undefined, { registry, type: "route" });
   const components = options.components ?? createComponentRegistry(undefined, { registry, type: "component", lazyRegistry });
   const flows = new Map();
   const hasStartupRoot = options.loader || Object.hasOwn(options, "root");
@@ -391,6 +402,11 @@ export function createApp(appOrDefinition = Async, options = {}) {
   };
 
   Object.defineProperties(runtime, {
+    _features: {
+      get() {
+        return features;
+      }
+    },
     _inspect: {
       value() {
         return {
@@ -408,7 +424,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
   server.cache = serverCache;
   runtime.server.cache = serverCache;
-  mountFlowRegistrations(runtime, registry.rawSnapshot().flow);
+  mountRuntimeFlowRegistrations(runtime, registry.rawSnapshot().flow);
   runtime.applySnapshot(initialSnapshot, { strict: options.strictSnapshots ?? true });
   detach = app._attach(runtime);
 
@@ -428,6 +444,10 @@ export function createApp(appOrDefinition = Async, options = {}) {
   function startRouterFor(root) {
     if (router === false || routerStarted || !(router || shouldStartRouter(routes, options)) || !runtime.loader) {
       return;
+    }
+    const createRouter = features.router?.createRouter;
+    if (!router && !createRouter) {
+      throw new Error("Router usage requires the @async/framework/router entrypoint.");
     }
     router = router ?? createRouter({
       mode: options.mode ?? "ssr",
@@ -830,7 +850,7 @@ export function readSnapshot(root = globalThis.document, { attributes } = {}) {
 
 function applyUseToRuntime(runtime, normalized) {
   applyRegistryStoreUse(runtime.registry, "flow", normalized.flow);
-  mountFlowRegistrations(runtime, normalized.flow);
+  mountRuntimeFlowRegistrations(runtime, normalized.flow);
   applyRegistryUse(runtime.signals, runtime.registry, normalized.signal);
   applyRegistryUse(runtime.handlers, runtime.registry, normalized.handler);
   applyRegistryUse(runtime.server, runtime.registry, normalized.server);
@@ -840,6 +860,116 @@ function applyUseToRuntime(runtime, normalized) {
   applyRegistryStoreUse(runtime.registry, "asyncSignal", normalized.asyncSignal);
   applyRegistryUse(runtime.browser.cache, runtime.registry, normalized.cache.browser);
   applyRegistryUse(runtime.server.cache, runtime.registry, normalized.cache.server);
+}
+
+function mountRuntimeFlowRegistrations(runtime, entries = {}) {
+  if (!entries || Object.keys(entries).length === 0) {
+    return runtime;
+  }
+  const mountRegistrations = runtime._features?.flow?.mountRegistrations;
+  if (!mountRegistrations) {
+    throw new Error("Flow usage requires the @async/framework/flow entrypoint.");
+  }
+  return mountRegistrations(runtime, entries);
+}
+
+function createFeatureRouteRegistry(features, initialMap, options) {
+  const createRouteRegistry = features.router?.createRouteRegistry ?? createRouteRegistryGuard;
+  return createRouteRegistry(initialMap, options);
+}
+
+function createRouteRegistryGuard(initialMap = {}, options = {}) {
+  const registryStore = options.registry ?? createRegistryStore();
+  const type = options.type ?? "route";
+  const entries = registryStore._map(type);
+
+  const registry = {
+    registry: registryStore,
+
+    register(pattern, definition) {
+      if (typeof pattern !== "string" || pattern.length === 0) {
+        throw new TypeError("Route pattern must be a non-empty string.");
+      }
+      if (entries.has(pattern)) {
+        throw new Error(`Route "${pattern}" is already registered.`);
+      }
+      entries.set(pattern, definition);
+      return {
+        pattern,
+        params: {},
+        route: definition
+      };
+    },
+
+    registerMany(map) {
+      for (const [pattern, definition] of Object.entries(map ?? {})) {
+        registry.register(pattern, definition);
+      }
+      return registry;
+    },
+
+    unregister(pattern) {
+      return entries.delete(pattern);
+    },
+
+    match() {
+      if (entries.size > 0) {
+        throw new Error("Router usage requires the @async/framework/router entrypoint.");
+      }
+      return null;
+    },
+
+    entries() {
+      return [...entries].map(([pattern, route]) => ({ pattern, route }));
+    },
+
+    keys() {
+      return [...entries.keys()];
+    },
+
+    inspect() {
+      return registryStore.entries(type);
+    },
+
+    _adoptMany(map = {}) {
+      for (const [pattern, definition] of Object.entries(map ?? {})) {
+        if (!entries.has(pattern)) {
+          entries.set(pattern, definition);
+        }
+      }
+      return registry;
+    }
+  };
+
+  registry.registerMany(initialMap);
+  return registry;
+}
+
+function createAppFeatureSet(...featureSets) {
+  const target = {};
+  for (const featureSet of featureSets) {
+    mergeAppFeatures(target, featureSet);
+  }
+  return target;
+}
+
+function mergeAppFeatures(target, featureSet) {
+  if (!featureSet) {
+    return target;
+  }
+  if (featureSet.flow) {
+    target.flow = {
+      ...(target.flow ?? {}),
+      ...featureSet.flow
+    };
+  }
+  if (featureSet.router) {
+    target.router = {
+      ...(target.router ?? {}),
+      ...featureSet.router
+    };
+  }
+  return target;
 }
 
 function applyRegistryStoreUse(registry, type, entries) {

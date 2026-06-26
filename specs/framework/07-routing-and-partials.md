@@ -25,6 +25,9 @@ boundaries locally or served by the server, depending on the selected mode.
 Routing primitives are layered from app authoring down to custom runtime
 integration:
 
+- Browser routing apps import from `@async/framework/router`; the default
+  browser entrypoint records route declarations but does not carry router
+  startup code.
 - App registration layer: `Async.use({ route, partial })` with
   `defineRoute(partial, options?)`, `defineRoute({ render: "none", meta })`,
   and `route(...)` compatibility alias.

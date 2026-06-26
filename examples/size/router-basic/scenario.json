@@ -2,7 +2,7 @@
   "id": "router-basic",
   "entry": "main.js",
   "scripts": [
-    "../../../dist/browser.min.js",
+    "../../../dist/router.min.js",
     "main.js"
   ],
   "budget": {

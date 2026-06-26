@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Moved streaming, Flow, and router browser code behind explicit
+  `@async/framework/stream`, `@async/framework/flow`, and
+  `@async/framework/router` subpaths so the default browser asset stays focused
+  on the core runtime.
+- Added guarded Flow and router startup errors when default-browser apps use
+  those declarations without importing their opt-in subpath.
+- Added a bundle optimizer pipeline for Brotli-oriented candidate measurement
+  and diagnostics.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 227,580 B (227.6 KB / 0.228 MB), gzip 42,303 B (42.3 KB / 0.042 MB), br 35,028 B (35.0 KB / 0.035 MB) -> `browser.min.js` raw 95,660 B (95.7 KB / 0.096 MB), gzip 27,847 B (27.8 KB / 0.028 MB), br 24,709 B (24.7 KB / 0.025 MB); delta raw -131,920 B (-131.9 KB / -0.132 MB), gzip -14,456 B (-14.5 KB / -0.014 MB), br -10,319 B (-10.3 KB / -0.010 MB).
+
 ## 0.12.6 - 2026-06-24
 
 - Added the app-level `Async.router` facade with queued `navigate`, `prefetch`,

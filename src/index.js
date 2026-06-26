@@ -1,7 +1,6 @@
 export { asyncSignal } from "./async-signal.js";
 export { Async, createApp, defineApp, readSnapshot } from "./server-entry.js";
 export { attributeName, defineAttributeConfig } from "./attributes.js";
-export { AsyncStream, createBoundaryReceiver } from "./boundary-receiver.js";
 export { createCacheRegistry, defineCache } from "./cache.js";
 export { component, createComponentRegistry, defineComponent } from "./component.js";
 export { delay } from "./delay.js";

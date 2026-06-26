@@ -3,6 +3,7 @@
   "entry": "main.js",
   "scripts": [
     "../../../dist/browser.min.js",
+    "../../../dist/stream.min.js",
     "main.js"
   ],
   "budget": {

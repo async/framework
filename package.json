@@ -68,6 +68,27 @@
       "import": "./browser.js",
       "default": "./browser.js"
     },
+    "./stream": {
+      "types": "./stream.d.ts",
+      "unpkg": "./stream.umd.min.js",
+      "browser": "./stream.js",
+      "import": "./stream.js",
+      "default": "./stream.js"
+    },
+    "./flow": {
+      "types": "./flow.d.ts",
+      "unpkg": "./flow.umd.min.js",
+      "browser": "./flow.js",
+      "import": "./flow.js",
+      "default": "./flow.js"
+    },
+    "./router": {
+      "types": "./router.d.ts",
+      "unpkg": "./router.umd.min.js",
+      "browser": "./router.js",
+      "import": "./router.js",
+      "default": "./router.js"
+    },
     "./server": {
       "types": "./framework.d.ts",
       "node": "./server.js",
@@ -141,6 +162,7 @@
     "bundle": "node scripts/build-framework-bundle.js",
     "bundle:check": "pnpm run bundle && node scripts/build-framework-bundle.js --check",
     "bundle:clean": "node scripts/build-framework-bundle.js --clean",
+    "bundle:optimize": "node scripts/bundle-optimizer.js",
     "bundle:size": "pnpm run bundle && node scripts/bundle-size.js",
     "bundle:size:check": "pnpm run bundle && node scripts/bundle-size.js --check",
     "docs:build": "pnpm run bundle && node scripts/build-pages.js",

@@ -74,6 +74,9 @@ System 2 systems must lower into explicit protocol records:
   helpers remain ordinary signal entries; Flow `on` handlers remain ordinary
   handler entries. The lower runtime must not require a separate Flow registry
   path for binding, scheduling, snapshot restore, or browser protocol records.
+- Browser apps that author Flow declarations import from
+  `@async/framework/flow`; the default browser entrypoint may preserve the
+  registry shape without carrying Flow mounting code.
 
 ## Resume Contract
 

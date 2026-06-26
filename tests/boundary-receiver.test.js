@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
-  Loader,
   AsyncStream,
-  createBoundaryReceiver,
+  createBoundaryReceiver
+} from "../src/stream.js";
+import {
+  Loader,
   createCacheRegistry,
   createHandlerRegistry,
   createScheduler,

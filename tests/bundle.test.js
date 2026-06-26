@@ -10,7 +10,16 @@ import { promisify } from "node:util";
 import vm from "node:vm";
 import * as bundle from "../dist/browser.js";
 import * as minBundle from "../dist/browser.min.js";
+import * as streamBundle from "../dist/stream.js";
+import * as minStreamBundle from "../dist/stream.min.js";
+import * as flowBundle from "../dist/flow.js";
+import * as minFlowBundle from "../dist/flow.min.js";
+import * as routerBundle from "../dist/router.js";
+import * as minRouterBundle from "../dist/router.min.js";
 import * as source from "../src/browser.js";
+import * as streamSource from "../src/stream.js";
+import * as flowSource from "../src/flow-entry.js";
+import * as routerSource from "../src/router-entry.js";
 import * as serverSource from "../src/index.js";
 import manifest from "../package.json" with { type: "json" };
 import publishManifest from "../dist/package.json" with { type: "json" };
@@ -77,6 +86,60 @@ test("browser ESM bundles export the public browser runtime API", () => {
   assert.equal(bundle.Loader, bundle.AsyncLoader);
   assert.equal(minBundle.Loader, minBundle.AsyncLoader);
   assert.equal(bundle.createServerRegistry, undefined);
+  assert.equal(bundle.AsyncStream, undefined);
+  assert.equal(bundle.createBoundaryReceiver, undefined);
+});
+
+test("stream ESM bundles export the opt-in streaming API", () => {
+  assert.deepEqual(Object.keys(streamBundle).sort(), Object.keys(streamSource).sort());
+  assert.deepEqual(Object.keys(minStreamBundle).sort(), Object.keys(streamSource).sort());
+  assert.equal(typeof streamBundle.AsyncStream.applyScript, "function");
+  assert.equal(typeof streamBundle.createBoundaryReceiver, "function");
+});
+
+test("flow ESM bundles export the opt-in Flow API", () => {
+  assert.deepEqual(Object.keys(flowBundle).sort(), Object.keys(flowSource).sort());
+  assert.deepEqual(Object.keys(minFlowBundle).sort(), Object.keys(flowSource).sort());
+  assert.equal(typeof flowBundle.Async.start, "function");
+  assert.equal(typeof flowBundle.flow, "function");
+  assert.equal(typeof flowBundle.installFlow, "function");
+});
+
+test("router ESM bundles export the opt-in router API", () => {
+  assert.deepEqual(Object.keys(routerBundle).sort(), Object.keys(routerSource).sort());
+  assert.deepEqual(Object.keys(minRouterBundle).sort(), Object.keys(routerSource).sort());
+  assert.equal(typeof routerBundle.Async.start, "function");
+  assert.equal(typeof routerBundle.createRouter, "function");
+  assert.equal(typeof routerBundle.defineRoute, "function");
+  assert.equal(typeof routerBundle.installRouter, "function");
+});
+
+test("default browser entry guards Flow and router declarations behind subpaths", async () => {
+  const flowApp = source.defineApp({
+    flow: {
+      cart: flowSource.flow({
+        store: {
+          count: 1
+        }
+      })
+    }
+  });
+  assert.throws(
+    () => source.createApp(flowApp),
+    /Flow usage requires the @async\/framework\/flow entrypoint/
+  );
+
+  const routerApp = source.defineApp({
+    route: {
+      "/": routerSource.defineRoute("home")
+    }
+  });
+  const runtime = source.createApp(routerApp, { target: "server" });
+  await assert.rejects(
+    () => runtime.render("/"),
+    /Router usage requires the @async\/framework\/router entrypoint/
+  );
+  runtime.destroy();
 });
 
 test("ESM Async export stays the app hub", () => {
@@ -100,7 +163,7 @@ test("UMD helper exports do not conflict with app hub fields", () => {
 });
 
 test("browser ESM bundles are standalone without relative imports", () => {
-  for (const file of ["browser.js", "browser.min.js"]) {
+  for (const file of ["browser.js", "browser.min.js", "stream.js", "stream.min.js", "flow.js", "flow.min.js", "router.js", "router.min.js"]) {
     const contents = readFileSync(distFileUrl(file), "utf8");
 
     assert.doesNotMatch(contents, /^\s*import\s/m);
@@ -110,7 +173,7 @@ test("browser ESM bundles are standalone without relative imports", () => {
 });
 
 test("browser minified bundles do not contain newlines", () => {
-  for (const file of ["browser.min.js", "browser.umd.min.js"]) {
+  for (const file of ["browser.min.js", "browser.umd.min.js", "stream.min.js", "stream.umd.min.js", "flow.min.js", "flow.umd.min.js", "router.min.js", "router.umd.min.js"]) {
     const contents = readFileSync(distFileUrl(file), "utf8");
 
     assert.equal(contents.includes("\n"), false);
@@ -197,6 +260,30 @@ test("browser UMD bundles expose the public browser runtime API", () => {
   }
 });
 
+test("feature UMD bundles expose opt-in namespaces", () => {
+  for (const [file, globalName, moduleSource] of [
+    ["stream.umd.js", "AsyncFrameworkStream", streamSource],
+    ["stream.umd.min.js", "AsyncFrameworkStream", streamSource],
+    ["flow.umd.js", "AsyncFrameworkFlow", flowSource],
+    ["flow.umd.min.js", "AsyncFrameworkFlow", flowSource],
+    ["router.umd.js", "AsyncFrameworkRouter", routerSource],
+    ["router.umd.min.js", "AsyncFrameworkRouter", routerSource]
+  ]) {
+    const contents = readFileSync(distFileUrl(file), "utf8");
+    const browserContext = {};
+    vm.runInNewContext(contents, browserContext, { filename: file });
+
+    assert.deepEqual(Object.keys(browserContext[globalName]).sort(), Object.keys(moduleSource).sort());
+
+    const cjsContext = {
+      module: { exports: {} }
+    };
+    vm.runInNewContext(contents, cjsContext, { filename: file });
+
+    assert.deepEqual(Object.keys(cjsContext.module.exports).sort(), Object.keys(moduleSource).sort());
+  }
+});
+
 test("root UMD bundle rejects namespace conflicts before assignment", () => {
   const contents = readFileSync(distFileUrl("browser.umd.js"), "utf8");
   const conflicting = contents.replace("const api = { ", "const api = { use: asyncSignal, ");
@@ -226,6 +313,9 @@ test("temporary project can import generated dist package subpaths", async () =>
     await writeFile(join(root, "check.mjs"), `
       import * as rootPackage from "@async/framework";
       import * as browserPackage from "@async/framework/browser";
+      import * as streamPackage from "@async/framework/stream";
+      import * as flowPackage from "@async/framework/flow";
+      import * as routerPackage from "@async/framework/router";
       import * as serverPackage from "@async/framework/server";
       import * as jsxPackage from "@async/framework/jsx";
       import * as jsxRuntimeProfilePackage from "@async/framework/jsx/runtime";
@@ -243,6 +333,16 @@ test("temporary project can import generated dist package subpaths", async () =>
         rootServerRegistry: typeof rootPackage.createServerRegistry,
         browserCreateApp: typeof browserPackage.createApp,
         browserAsyncStream: typeof browserPackage.AsyncStream?.applyScript,
+        browserFlow: typeof browserPackage.flow,
+        browserRouter: typeof browserPackage.createRouter,
+        streamAsyncStream: typeof streamPackage.AsyncStream?.applyScript,
+        streamBoundaryReceiver: typeof streamPackage.createBoundaryReceiver,
+        flowCreateApp: typeof flowPackage.createApp,
+        flowHelper: typeof flowPackage.flow,
+        flowInstall: typeof flowPackage.installFlow,
+        routerCreateApp: typeof routerPackage.createApp,
+        routerCreateRouter: typeof routerPackage.createRouter,
+        routerInstall: typeof routerPackage.installRouter,
         browserServerRegistry: typeof browserPackage.createServerRegistry,
         serverCreateApp: typeof serverPackage.createApp,
         serverRequestContextStore: typeof serverPackage.createRequestContextStore,
@@ -278,7 +378,17 @@ test("temporary project can import generated dist package subpaths", async () =>
       rootCreateApp: "function",
       rootServerRegistry: "function",
       browserCreateApp: "function",
-      browserAsyncStream: "function",
+      browserAsyncStream: "undefined",
+      browserFlow: "undefined",
+      browserRouter: "undefined",
+      streamAsyncStream: "function",
+      streamBoundaryReceiver: "function",
+      flowCreateApp: "function",
+      flowHelper: "function",
+      flowInstall: "function",
+      routerCreateApp: "function",
+      routerCreateRouter: "function",
+      routerInstall: "function",
       browserServerRegistry: "undefined",
       serverCreateApp: "function",
       serverRequestContextStore: "function",
@@ -331,6 +441,9 @@ test("packed package can be installed and resolves browser/server entrypoints", 
     await writeFile(join(project, "check.mjs"), `
       import * as rootPackage from "@async/framework";
       import * as browserPackage from "@async/framework/browser";
+      import * as streamPackage from "@async/framework/stream";
+      import * as flowPackage from "@async/framework/flow";
+      import * as routerPackage from "@async/framework/router";
       import * as serverPackage from "@async/framework/server";
       import * as jsxPackage from "@async/framework/jsx";
       import * as jsxRuntimeProfilePackage from "@async/framework/jsx/runtime";
@@ -349,6 +462,16 @@ test("packed package can be installed and resolves browser/server entrypoints", 
         rootServerRegistry: typeof rootPackage.createServerRegistry,
         rootRequestContextStore: typeof rootPackage.createRequestContextStore,
         browserAsyncStream: typeof browserPackage.AsyncStream?.applyScript,
+        browserFlow: typeof browserPackage.flow,
+        browserRouter: typeof browserPackage.createRouter,
+        streamAsyncStream: typeof streamPackage.AsyncStream?.applyScript,
+        streamBoundaryReceiver: typeof streamPackage.createBoundaryReceiver,
+        flowCreateApp: typeof flowPackage.createApp,
+        flowHelper: typeof flowPackage.flow,
+        flowInstall: typeof flowPackage.installFlow,
+        routerCreateApp: typeof routerPackage.createApp,
+        routerCreateRouter: typeof routerPackage.createRouter,
+        routerInstall: typeof routerPackage.installRouter,
         browserServerRegistry: typeof browserPackage.createServerRegistry,
         browserRequestContextStore: typeof browserPackage.createRequestContextStore,
         browserServerProxy: typeof browserPackage.createServerProxy,
@@ -394,7 +517,17 @@ test("packed package can be installed and resolves browser/server entrypoints", 
     assert.deepEqual(installed, {
       rootServerRegistry: "function",
       rootRequestContextStore: "function",
-      browserAsyncStream: "function",
+      browserAsyncStream: "undefined",
+      browserFlow: "undefined",
+      browserRouter: "undefined",
+      streamAsyncStream: "function",
+      streamBoundaryReceiver: "function",
+      flowCreateApp: "function",
+      flowHelper: "function",
+      flowInstall: "function",
+      routerCreateApp: "function",
+      routerCreateRouter: "function",
+      routerInstall: "function",
       browserServerRegistry: "undefined",
       browserRequestContextStore: "undefined",
       browserServerProxy: "function",
@@ -444,6 +577,24 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       ["browser", "import", "default"],
       ["types", "browser", "import", "default"]
     );
+    const stream = await assertPackedExportParity(
+      packageRoot,
+      "./stream",
+      ["browser", "import", "default"],
+      ["types", "browser", "import", "default"]
+    );
+    const flow = await assertPackedExportParity(
+      packageRoot,
+      "./flow",
+      ["browser", "import", "default"],
+      ["types", "browser", "import", "default"]
+    );
+    const router = await assertPackedExportParity(
+      packageRoot,
+      "./router",
+      ["browser", "import", "default"],
+      ["types", "browser", "import", "default"]
+    );
     const jsx = await assertPackedExportParity(
       packageRoot,
       "./jsx",
@@ -481,6 +632,9 @@ test("packed package can be installed and resolves browser/server entrypoints", 
         rootBrowser: [rootBrowser.declarationTarget, rootBrowser.runtimeTarget],
         explicitServer: [explicitServer.declarationTarget, explicitServer.runtimeTarget],
         explicitBrowser: [explicitBrowser.declarationTarget, explicitBrowser.runtimeTarget],
+        stream: [stream.declarationTarget, stream.runtimeTarget],
+        flow: [flow.declarationTarget, flow.runtimeTarget],
+        router: [router.declarationTarget, router.runtimeTarget],
         jsx: [jsx.declarationTarget, jsx.runtimeTarget],
         vite: [vite.declarationTarget, vite.runtimeTarget],
         runtime: [runtime.declarationTarget, runtime.runtimeTarget],
@@ -492,6 +646,9 @@ test("packed package can be installed and resolves browser/server entrypoints", 
         rootBrowser: ["./browser.d.ts", "./browser.min.js"],
         explicitServer: ["./framework.d.ts", "./server.js"],
         explicitBrowser: ["./browser.d.ts", "./browser.js"],
+        stream: ["./stream.d.ts", "./stream.js"],
+        flow: ["./flow.d.ts", "./flow.js"],
+        router: ["./router.d.ts", "./router.js"],
         jsx: ["./jsx.d.ts", "./jsx.js"],
         vite: ["./vite.d.ts", "./vite.js"],
         runtime: ["./runtime.d.ts", "./runtime.js"],
@@ -516,6 +673,14 @@ test("packed package can be installed and resolves browser/server entrypoints", 
       import { ${explicitBrowser.valueExports.join(", ")} } from "@async/framework/browser";
       console.log("ok");
     `, "utf8");
+    await writeFile(join(project, "check-flow-static.mjs"), `
+      import { ${flow.valueExports.join(", ")} } from "@async/framework/flow";
+      console.log("ok");
+    `, "utf8");
+    await writeFile(join(project, "check-router-static.mjs"), `
+      import { ${router.valueExports.join(", ")} } from "@async/framework/router";
+      console.log("ok");
+    `, "utf8");
     await writeFile(join(project, "check-runtime-static.mjs"), `
       import { ${runtime.valueExports.join(", ")} } from "@async/framework/runtime";
       import { ${runtimeSignals.valueExports.join(", ")} } from "@async/framework/runtime/signals";
@@ -532,6 +697,8 @@ test("packed package can be installed and resolves browser/server entrypoints", 
     await execFileAsync(process.execPath, ["--conditions=browser", "check-root-browser-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["check-server-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["check-browser-static.mjs"], { cwd: project });
+    await execFileAsync(process.execPath, ["check-flow-static.mjs"], { cwd: project });
+    await execFileAsync(process.execPath, ["check-router-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["check-runtime-static.mjs"], { cwd: project });
     await execFileAsync(process.execPath, ["check-build-profile-static.mjs"], { cwd: project });
   } finally {
@@ -557,6 +724,9 @@ test("source package metadata owns the minimal public export spec", () => {
   assert.deepEqual(Object.keys(manifest.exports), [
     ".",
     "./browser",
+    "./stream",
+    "./flow",
+    "./router",
     "./server",
     "./jsx",
     "./jsx/runtime",
@@ -579,6 +749,9 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
   assert.deepEqual(Object.keys(publishManifest.exports), [
     ".",
     "./browser",
+    "./stream",
+    "./flow",
+    "./router",
     "./server",
     "./jsx",
     "./jsx/runtime",
@@ -605,6 +778,9 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
   assert.equal(resolvePackageTarget(publishManifest.exports["."], ["node", "import", "default"]), "./server.js");
   assert.equal(resolvePackageTarget(publishManifest.exports["."], ["node", "types", "import", "default"]), "./framework.d.ts");
   assert.equal(publishManifest.exports["./browser"].import, "./browser.js");
+  assert.equal(publishManifest.exports["./stream"].import, "./stream.js");
+  assert.equal(publishManifest.exports["./flow"].import, "./flow.js");
+  assert.equal(publishManifest.exports["./router"].import, "./router.js");
   assert.equal(publishManifest.exports["./server"].import, "./server.js");
   assert.equal(publishManifest.exports["./jsx"].import, "./jsx.js");
   assert.equal(publishManifest.exports["./jsx/runtime"].import, "./jsx/runtime.js");
@@ -639,6 +815,24 @@ test("package file list only publishes generated framework artifacts", () => {
   assert.ok(publishManifest.files.includes("browser.umd.min.js"));
   assert.ok(publishManifest.files.includes("browser.ts"));
   assert.ok(publishManifest.files.includes("browser.d.ts"));
+  assert.ok(publishManifest.files.includes("stream.js"));
+  assert.ok(publishManifest.files.includes("stream.min.js"));
+  assert.ok(publishManifest.files.includes("stream.umd.js"));
+  assert.ok(publishManifest.files.includes("stream.umd.min.js"));
+  assert.ok(publishManifest.files.includes("stream.ts"));
+  assert.ok(publishManifest.files.includes("stream.d.ts"));
+  assert.ok(publishManifest.files.includes("flow.js"));
+  assert.ok(publishManifest.files.includes("flow.min.js"));
+  assert.ok(publishManifest.files.includes("flow.umd.js"));
+  assert.ok(publishManifest.files.includes("flow.umd.min.js"));
+  assert.ok(publishManifest.files.includes("flow.ts"));
+  assert.ok(publishManifest.files.includes("flow.d.ts"));
+  assert.ok(publishManifest.files.includes("router.js"));
+  assert.ok(publishManifest.files.includes("router.min.js"));
+  assert.ok(publishManifest.files.includes("router.umd.js"));
+  assert.ok(publishManifest.files.includes("router.umd.min.js"));
+  assert.ok(publishManifest.files.includes("router.ts"));
+  assert.ok(publishManifest.files.includes("router.d.ts"));
   assert.ok(publishManifest.files.includes("server.js"));
   assert.ok(publishManifest.files.includes("framework.ts"));
   assert.ok(publishManifest.files.includes("framework.d.ts"));
@@ -684,13 +878,34 @@ test("dist browser.ts is a bundled TypeScript entrypoint", async () => {
 
 test("browser and server declarations expose the right public APIs", () => {
   const browserDeclarations = readFileSync(distFileUrl("browser.d.ts"), "utf8");
+  const streamDeclarations = readFileSync(distFileUrl("stream.d.ts"), "utf8");
+  const flowDeclarations = readFileSync(distFileUrl("flow.d.ts"), "utf8");
+  const routerDeclarations = readFileSync(distFileUrl("router.d.ts"), "utf8");
   const serverDeclarations = readFileSync(distFileUrl("framework.d.ts"), "utf8");
   const appHubDeclarations = browserDeclarations.match(/export interface AppHub \{[\s\S]*?\n\}/)?.[0] ?? "";
 
   assertDeclarationRuntimeParity("browser", browserDeclarations, source);
+  assertDeclarationRuntimeParity("stream", streamDeclarations, streamSource);
+  assertDeclarationRuntimeParity("flow", flowDeclarations, flowSource);
+  assertDeclarationRuntimeParity("router", routerDeclarations, routerSource);
   assertDeclarationRuntimeParity("server", serverDeclarations, serverSource);
   assert.doesNotMatch(browserDeclarations, /createServerRegistry/);
   assert.doesNotMatch(browserDeclarations, /createRequestContextStore/);
+  assert.doesNotMatch(browserDeclarations, /export declare const AsyncStream/);
+  assert.doesNotMatch(browserDeclarations, /export declare function createBoundaryReceiver/);
+  assert.doesNotMatch(browserDeclarations, /export declare const flow/);
+  assert.doesNotMatch(browserDeclarations, /export declare function defineFrameworkFlow/);
+  assert.doesNotMatch(browserDeclarations, /export declare function createRouter/);
+  assert.doesNotMatch(browserDeclarations, /export declare function defineRoute/);
+  assert.match(streamDeclarations, /export declare const AsyncStream/);
+  assert.match(streamDeclarations, /export declare function createBoundaryReceiver/);
+  assert.match(flowDeclarations, /export declare function installFlow/);
+  assert.match(flowDeclarations, /export declare const flow/);
+  assert.doesNotMatch(flowDeclarations, /export declare function createRouter/);
+  assert.match(routerDeclarations, /export declare function installRouter/);
+  assert.match(routerDeclarations, /export declare function createRouteRegistry/);
+  assert.match(routerDeclarations, /export declare function createRouter/);
+  assert.doesNotMatch(routerDeclarations, /export declare const flow/);
   assert.doesNotMatch(browserDeclarations, /createPartialRegistry/);
   assert.doesNotMatch(browserDeclarations, /createRouteRegistry/);
   assert.match(serverDeclarations, /createServerRegistry/);

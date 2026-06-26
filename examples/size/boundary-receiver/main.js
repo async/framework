@@ -1,4 +1,5 @@
-import { Async, createBoundaryReceiver } from "../../../dist/browser.min.js";
+import { Async } from "../../../dist/browser.min.js";
+import { createBoundaryReceiver } from "../../../dist/stream.min.js";
 
 const runtime = Async.start({ root: document, router: false });
 const receiver = createBoundaryReceiver({

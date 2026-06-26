@@ -30,6 +30,11 @@ Package surfaces include:
 
 - Root import with condition-specific browser and Node behavior.
 - `@async/framework/browser` for browser runtime APIs.
+- `@async/framework/stream` for opt-in browser streaming boundary receivers.
+- `@async/framework/flow` for opt-in browser Flow authoring helpers and Flow
+  runtime mounting.
+- `@async/framework/router` for opt-in browser route helpers, route registries,
+  and router runtime mounting.
 - `@async/framework/server` for server-capable APIs.
 - `@async/framework/jsx` for the current build-required JSX authoring helpers.
 - `@async/framework/vite` for the current Vite 8+ with Rolldown build-required
@@ -42,8 +47,9 @@ Package surfaces include:
   built-mode runtime slices defined by
   [11-runtime-slice-entrypoints.md](./11-runtime-slice-entrypoints.md).
 - Explicit artifact subpaths such as `browser.js`, `browser.min.js`,
-  `browser.umd.min.js`, `browser.ts`, `browser.d.ts`, `server.js`,
-  `framework.ts`, and `framework.d.ts`.
+  `browser.umd.min.js`, `browser.ts`, `browser.d.ts`, `stream.js`,
+  `flow.js`, `router.js`, `server.js`, `framework.ts`, and
+  `framework.d.ts`.
 - CDN defaults for UNPKG and jsDelivr.
 
 The package is ESM-first and expects Node.js 24 or newer for package tooling and
@@ -64,6 +70,8 @@ server-side verification.
 Delivery must preserve the protocol:
 
 - Browser bundles expose the public browser runtime API.
+- Flow, router, and streaming browser bundles expose their opt-in subpath APIs
+  without requiring the default browser asset to carry those implementations.
 - UMD bundles expose `Async` and helper functions without namespace conflicts.
 - Browser bundles exclude server-only registry internals where possible.
 - Generated declaration files match browser/server runtime availability.
@@ -85,7 +93,8 @@ Published artifacts must support resume and streaming:
 
 - Browser entrypoints can read snapshots and scan existing documents.
 - Server-capable entrypoints can render snapshot-bearing route HTML.
-- Boundary receiver APIs are available to browser consumers.
+- Boundary receiver APIs are available to browser consumers through
+  `@async/framework/stream`.
 - Generated artifacts must not introduce implicit fetch behavior that bypasses
   explicit server transport or router-mode rules.
 - Bundled and no-bundler delivery must both support requesting only the

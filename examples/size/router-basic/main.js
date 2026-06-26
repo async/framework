@@ -1,4 +1,4 @@
-import { Async, html, route } from "../../../dist/browser.min.js";
+import { Async, html, route } from "../../../dist/router.min.js";
 
 Async.use({
   partial: {
