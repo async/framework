@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.0 - 2026-06-26
+
 - Added scheduler commit-phase ordering for app-level loader swaps and streamed
   boundary patches, including frame-backed commits and deterministic
   non-browser fallbacks.
