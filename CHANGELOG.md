@@ -8,6 +8,7 @@
 - Added declaration conventions for `Async.use(...)` so registered kinds can
   materialize on register, start, or demand under configurable duplicate
   policies.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 256,039 B (256.0 KB / 0.256 MB), gzip 47,748 B (47.7 KB / 0.048 MB), br 39,376 B (39.4 KB / 0.039 MB) -> `browser.min.js` raw 107,985 B (108.0 KB / 0.108 MB), gzip 31,556 B (31.6 KB / 0.032 MB), br 27,711 B (27.7 KB / 0.028 MB); delta raw -148,054 B (-148.1 KB / -0.148 MB), gzip -16,192 B (-16.2 KB / -0.016 MB), br -11,665 B (-11.7 KB / -0.012 MB).
 
 ## 0.14.0 - 2026-06-26
 
