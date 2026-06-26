@@ -3,6 +3,7 @@ export { Async, createApp, defineApp, readSnapshot } from "./app.js";
 export { attributeName, defineAttributeConfig } from "./attributes.js";
 export { createCacheRegistry, defineCache } from "./cache.js";
 export { component, createComponentRegistry, defineComponent } from "./component.js";
+export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
 export { createHandlerRegistry } from "./handlers.js";

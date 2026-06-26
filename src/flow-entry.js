@@ -15,6 +15,7 @@ export { asyncSignal } from "./async-signal.js";
 export { attributeName, defineAttributeConfig } from "./attributes.js";
 export { createCacheRegistry, defineCache } from "./cache.js";
 export { component, createComponentRegistry, defineComponent } from "./component.js";
+export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
 export { asyncSignal as flowAsyncSignal, computed as flowComputed, defineFrameworkFlow, flow, signal as flowSignal, isFrameworkFlowDefinition, onError, set, update, when } from "./flow.js";
@@ -42,8 +43,12 @@ export function createApp(appOrDefinition = Async, options = {}) {
   });
 }
 
-export function defineApp(initial) {
-  return defineBaseApp(initial, { createRuntime: createApp, features: flowFeature });
+export function defineApp(initial, options = {}) {
+  return defineBaseApp(initial, {
+    ...options,
+    createRuntime: createApp,
+    features: mergeFeatures(flowFeature, options.features)
+  });
 }
 
 export const Async = defineApp();

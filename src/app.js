@@ -9,12 +9,14 @@ import { cloneSignalDeclaration, createSignal, createSignalRegistry } from "./si
 import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
 import { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } from "./lazy-registry.js";
+import { createDeclarationBus, system } from "./declaration-bus.js";
 
 const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal", "flow"]);
 
 export function defineApp(initial, options = {}) {
   const features = createAppFeatureSet(options.features);
   const registry = createRegistryStore(undefined, { target: "browser" });
+  const declarations = createDeclarationBus({ duplicates: options.duplicates });
   const runtimes = new Set();
   const createRuntime = options.createRuntime ?? createApp;
   const loaderFacade = createLoaderFacade();
@@ -23,14 +25,24 @@ export function defineApp(initial, options = {}) {
 
   const app = {
     registry,
+    declarations,
+    system,
     loader: loaderFacade,
     router: routerFacade,
 
+    configure(config = {}) {
+      declarations.configure(config);
+      return app;
+    },
+
     use(typeOrModule, entries) {
       const normalized = normalizeUse(typeOrModule, entries);
-      appendDeclarations(registry, normalized);
+      const applied = appendDeclarations(app, registry, declarations, normalized);
       for (const runtime of runtimes) {
-        runtime._applyUse(normalized);
+        runtime._applyUse(applied);
+        if (runtime._inspect?.().started) {
+          declarations.start(createDeclarationContext(app, runtime.registry, runtime));
+        }
       }
       return app;
     },
@@ -99,6 +111,11 @@ export function defineApp(initial, options = {}) {
         return features;
       }
     },
+    _declarations: {
+      get() {
+        return declarations;
+      }
+    },
     _installFeature: {
       value(feature) {
         mergeAppFeatures(features, feature);
@@ -106,6 +123,9 @@ export function defineApp(initial, options = {}) {
       }
     }
   });
+
+  installDeclarationRegistryResolver(registry, declarations, () => createDeclarationContext(app, registry));
+  registerBuiltInConventions(declarations);
 
   if (initial) {
     app.use(initial);
@@ -126,7 +146,9 @@ export function defineApp(initial, options = {}) {
 }
 
 export function createApp(appOrDefinition = Async, options = {}) {
-  const app = isAppHub(appOrDefinition) ? appOrDefinition : defineApp(appOrDefinition ?? {}, { features: options.features });
+  const app = isAppHub(appOrDefinition)
+    ? appOrDefinition
+    : defineApp(appOrDefinition ?? {}, { duplicates: options.duplicates, features: options.features });
   const features = createAppFeatureSet(app._features, options.features);
   const target = options.target ?? "browser";
   const scheduler = options.scheduler ?? options.loader?.scheduler ?? createScheduler({
@@ -189,6 +211,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
       }
       started = true;
       app._setRuntime?.(runtime);
+      app._declarations?.start(createDeclarationContext(app, registry, runtime));
 
       if (target !== "server") {
         configureServerContext({ cache: browserCache });
@@ -422,6 +445,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     }
   });
 
+  installDeclarationRegistryResolver(registry, app._declarations, () => createDeclarationContext(app, registry, runtime));
   server.cache = serverCache;
   runtime.server.cache = serverCache;
   mountRuntimeFlowRegistrations(runtime, registry.rawSnapshot().flow);
@@ -502,6 +526,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
 }
 
 export const Async = defineApp();
+export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 
 function createLoaderFacade() {
   let current;
@@ -1027,14 +1052,24 @@ function emptyDeclarations() {
   };
 }
 
+function emptyUse() {
+  return {
+    configure: undefined,
+    declarations: emptyDeclarations(),
+    genericDeclarations: {},
+    conventions: {},
+    modules: []
+  };
+}
+
 function normalizeUse(typeOrModule, entries) {
-  const normalized = emptyDeclarations();
+  const normalized = emptyUse();
 
   if (typeof typeOrModule === "string") {
     if (!registryTypes.has(typeOrModule)) {
       throw new Error(`Unknown Async registry type "${typeOrModule}".`);
     }
-    normalized[typeOrModule] = normalizeEntries(typeOrModule, entries);
+    normalized.declarations[typeOrModule] = normalizeEntries(typeOrModule, entries);
     return normalized;
   }
 
@@ -1043,32 +1078,207 @@ function normalizeUse(typeOrModule, entries) {
   }
 
   for (const [type, value] of Object.entries(typeOrModule)) {
+    if (type === "configure") {
+      normalized.configure = {
+        ...(normalized.configure ?? {}),
+        ...(value ?? {})
+      };
+      continue;
+    }
+    if (type === "declaration" || type === "declarations") {
+      mergeGenericDeclarationGroups(normalized.genericDeclarations, value);
+      continue;
+    }
+    if (type === "convention" || type === "conventions") {
+      Object.assign(normalized.conventions, value ?? {});
+      continue;
+    }
+    if (type === "module" || type === "modules") {
+      mergeModuleDefinitions(normalized.modules, value);
+      continue;
+    }
     if (type === "cache") {
-      normalized.cache.browser = { ...(value?.browser ?? {}) };
-      normalized.cache.server = { ...(value?.server ?? {}) };
+      normalized.declarations.cache.browser = { ...(value?.browser ?? {}) };
+      normalized.declarations.cache.server = { ...(value?.server ?? {}) };
       continue;
     }
     if (!registryTypes.has(type)) {
       throw new Error(`Unknown Async registry type "${type}".`);
     }
-    normalized[type] = normalizeEntries(type, value);
+    normalized.declarations[type] = normalizeEntries(type, value);
   }
 
   return normalized;
 }
 
-function appendDeclarations(target, source) {
-  for (const type of registryTypes) {
-    addEntries(target, type, source[type]);
+function appendDeclarations(app, target, declarationBus, source) {
+  const applied = emptyDeclarations();
+  const context = createDeclarationContext(app, target, undefined, applied);
+  if (source.configure) {
+    app.configure(source.configure);
   }
-  addEntries(target, "cache.browser", source.cache.browser);
-  addEntries(target, "cache.server", source.cache.server);
+  declarationBus.installModules(source.modules, context);
+  declarationBus.registerConventions(source.conventions, context);
+  for (const type of registryTypes) {
+    addDeclarationBusEntries(declarationBus, type, source.declarations[type], context);
+  }
+  addDeclarationBusEntries(declarationBus, "cache.browser", source.declarations.cache.browser, context);
+  addDeclarationBusEntries(declarationBus, "cache.server", source.declarations.cache.server, context);
+  for (const [kind, entries] of Object.entries(source.genericDeclarations)) {
+    addDeclarationBusEntries(declarationBus, kind, entries, context);
+  }
+  return applied;
 }
 
-function addEntries(registry, type, source) {
+function addDeclarationBusEntries(declarationBus, type, source, context) {
   for (const [id, value] of Object.entries(source ?? {})) {
-    registry.register(type, id, value);
+    declarationBus.register(type, id, value, context);
   }
+}
+
+function mergeGenericDeclarationGroups(target, source = {}) {
+  for (const [kind, entries] of Object.entries(source ?? {})) {
+    if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+      throw new TypeError(`Async declarations for "${kind}" must be an object.`);
+    }
+    target[kind] = {
+      ...(target[kind] ?? {}),
+      ...entries
+    };
+  }
+}
+
+function mergeModuleDefinitions(target, source) {
+  if (Array.isArray(source)) {
+    target.push(...source);
+    return;
+  }
+  if (source && typeof source === "object" && isModuleDefinition(source)) {
+    target.push(source);
+    return;
+  }
+  for (const [id, value] of Object.entries(source ?? {})) {
+    if (!value || typeof value !== "object") {
+      throw new TypeError(`Async module "${id}" must be an object.`);
+    }
+    target.push({ id, ...value });
+  }
+}
+
+function isModuleDefinition(value) {
+  return Boolean(value && typeof value === "object" && (
+    Object.hasOwn(value, "install")
+    || Object.hasOwn(value, "owner")
+    || Object.hasOwn(value, "system")
+    || Object.hasOwn(value, "id")
+  ));
+}
+
+function createDeclarationContext(app, registry, runtime, applied) {
+  return {
+    app,
+    registry,
+    runtime,
+    acceptDeclaration(kind, id, value) {
+      acceptRegistryDeclaration(registry, kind, id, value);
+      if (applied) {
+        addAppliedDeclaration(applied, kind, id, value);
+      }
+      return value;
+    }
+  };
+}
+
+function acceptRegistryDeclaration(registry, kind, id, value) {
+  if (!registry.has(kind, id)) {
+    registry.register(kind, id, value);
+  }
+  return value;
+}
+
+function addAppliedDeclaration(target, kind, id, value) {
+  if (kind === "cache.browser") {
+    target.cache.browser[id] = value;
+    return;
+  }
+  if (kind === "cache.server") {
+    target.cache.server[id] = value;
+    return;
+  }
+  if (Object.hasOwn(target, kind)) {
+    target[kind][id] = value;
+  }
+}
+
+function installDeclarationRegistryResolver(registry, declarationBus, getContext) {
+  Object.defineProperties(registry, {
+    resolve: {
+      configurable: true,
+      value(kind, id, options = {}) {
+        return declarationBus?.resolve(kind, id, {
+          ...getContext(),
+          ...options
+        });
+      }
+    },
+    inspectDeclarations: {
+      configurable: true,
+      value() {
+        return declarationBus?.inspect();
+      }
+    }
+  });
+  return registry;
+}
+
+function registerBuiltInConventions(declarationBus) {
+  for (const kind of registryTypes) {
+    declarationBus.registerConvention(kind, builtInConvention(kind));
+  }
+  declarationBus.registerConvention("cache.browser", builtInConvention("cache.browser"));
+  declarationBus.registerConvention("cache.server", builtInConvention("cache.server"));
+}
+
+function builtInConvention(kind) {
+  return {
+    owner: builtInOwner(kind),
+    policy: "on-register",
+    materialize(declaration, context) {
+      context.acceptDeclaration?.(kind, declaration.id, declaration.value);
+      return declaration.value;
+    }
+  };
+}
+
+function builtInOwner(kind) {
+  if (kind === "signal" || kind === "asyncSignal") {
+    return system.for("@async/framework/signals");
+  }
+  if (kind === "handler") {
+    return system.for("@async/framework/handlers");
+  }
+  if (kind === "server") {
+    return system.for("@async/framework/server");
+  }
+  if (kind === "partial") {
+    return system.for("@async/framework/partials");
+  }
+  if (kind === "route") {
+    return system.for("@async/framework/router");
+  }
+  if (kind === "component") {
+    return system.for("@async/framework/components");
+  }
+  if (kind === "flow") {
+    return system.for("@async/framework/flow");
+  }
+  if (kind === "cache.browser") {
+    return system.for("@async/framework/browser-cache");
+  }
+  if (kind === "cache.server") {
+    return system.for("@async/framework/server-cache");
+  }
+  return system.for(`@async/framework/${kind}`);
 }
 
 function isAppHub(value) {

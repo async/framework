@@ -6,6 +6,7 @@ import {
 import { mountFlowRegistrations } from "./flow.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createServerRegistry } from "./server-registry.js";
+export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 
 const serverFeatures = {
   flow: {
@@ -25,8 +26,12 @@ export function createApp(appOrDefinition = Async, options = {}) {
   });
 }
 
-export function defineApp(initial) {
-  return defineBaseApp(initial, { createRuntime: createApp, features: serverFeatures });
+export function defineApp(initial, options = {}) {
+  return defineBaseApp(initial, {
+    ...options,
+    createRuntime: createApp,
+    features: mergeFeatures(serverFeatures, options.features)
+  });
 }
 
 export const Async = defineApp();

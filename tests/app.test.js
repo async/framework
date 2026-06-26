@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   Async,
+  asyncSystem,
   component,
   createApp,
   createLazyRegistry,
@@ -20,6 +21,8 @@ import {
   route,
   signal
 } from "../src/index.js";
+
+const system = Async.system;
 
 test("Async.use(type, entries) before start registers app runtime pieces", async () => {
   const window = new Window();
@@ -317,16 +320,191 @@ test("app loader queues mount and scan until a rootless runtime attaches", async
   runtime.destroy();
 });
 
-test("app duplicate ids fail by default", () => {
+test("app duplicate ids warn by default and strict declaration policy can fail", () => {
   const app = defineApp({
     signal: {
       count: createSignal(0)
     }
   });
 
+  const warnings = captureWarnings(() => {
+    app.use("signal", { count: createSignal(1) });
+  });
+
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /signal "count" is already declared/);
+  assert.equal(app.registry.get("signal", "count").value, 0);
+
+  const strict = defineApp({
+    signal: {
+      count: createSignal(0)
+    }
+  });
+  strict.configure({ duplicates: { declarations: "strict" } });
+
   assert.throws(
-    () => app.use("signal", { count: createSignal(1) }),
-    /signal "count" is already registered/
+    () => strict.use("signal", { count: createSignal(1) }),
+    /signal "count" is already declared/
+  );
+});
+
+test("Async.use declarations can be registered before their convention", () => {
+  const app = defineApp();
+  const owner = system.for("test.views");
+  const materialized = [];
+
+  app.use({
+    declarations: {
+      view: {
+        home: { title: "Home" }
+      }
+    }
+  });
+
+  assert.equal(app.registry.resolve("view", "home"), undefined);
+  assert.deepEqual(app.declarations.inspect().declarations.view[0], {
+    id: "home",
+    owner: undefined,
+    policy: undefined,
+    materialized: []
+  });
+
+  app.use({
+    conventions: {
+      view: {
+        owner,
+        policy: "on-register",
+        materialize(declaration) {
+          materialized.push(`${declaration.owner.id}:${declaration.id}`);
+          return declaration.value.title;
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(materialized, ["test.views:home"]);
+  assert.equal(app.registry.resolve("view", "home"), "Home");
+  assert.deepEqual(app.declarations.inspect().conventions.view, {
+    owner: "test.views",
+    policy: "on-register"
+  });
+});
+
+test("Async.use supports on-start declaration conventions", () => {
+  const app = defineApp({
+    declarations: {
+      startup: {
+        boot: "ready"
+      }
+    },
+    conventions: {
+      startup: {
+        owner: system.for("test.startup"),
+        policy: "on-start",
+        materialize(declaration, context) {
+          return `${context.runtime.target}:${declaration.id}:${declaration.value}`;
+        }
+      }
+    }
+  });
+
+  assert.equal(app.registry.resolve("startup", "boot"), undefined);
+
+  const runtime = createApp(app, { target: "server" }).start();
+
+  assert.equal(runtime.registry.resolve("startup", "boot"), "server:boot:ready");
+  runtime.destroy();
+});
+
+test("registry.resolve materializes on-demand declarations once", () => {
+  const app = defineApp();
+  let resolves = 0;
+
+  app.use({
+    conventions: {
+      template: {
+        owner: system.for("test.templates"),
+        policy: "on-demand",
+        materialize(declaration) {
+          resolves += 1;
+          return `<h1>${declaration.value.title}</h1>`;
+        }
+      }
+    },
+    declarations: {
+      template: {
+        card: { title: "Card" }
+      }
+    }
+  });
+
+  assert.equal(resolves, 0);
+  assert.equal(app.registry.resolve("template", "card"), "<h1>Card</h1>");
+  assert.equal(app.registry.resolve("template", "card"), "<h1>Card</h1>");
+  assert.equal(resolves, 1);
+});
+
+test("module system identities prevent duplicate installs", () => {
+  const app = defineApp();
+  const owner = system.for("test.module");
+  let installs = 0;
+
+  const warnings = captureWarnings(() => {
+    app.use({
+      modules: {
+        first: {
+          owner,
+          install() {
+            installs += 1;
+          }
+        }
+      }
+    });
+    app.use({
+      modules: {
+        second: {
+          owner: system.for("test.module"),
+          install() {
+            installs += 1;
+          }
+        }
+      }
+    });
+  });
+
+  assert.equal(system.for("test.module"), owner);
+  assert.equal(asyncSystem.for("test.module"), owner);
+  assert.equal(installs, 1);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Module "second" is already installed/);
+  assert.deepEqual(app.declarations.modules(), [
+    {
+      id: "first",
+      owner: "test.module"
+    }
+  ]);
+});
+
+test("resolver duplicates are strict by default", () => {
+  const app = defineApp({
+    conventions: {
+      template: {
+        owner: system.for("test.templates"),
+        policy: "on-demand"
+      }
+    }
+  });
+
+  assert.throws(
+    () => app.use({
+      conventions: {
+        template: {
+          owner: system.for("test.templates"),
+          policy: "on-demand"
+        }
+      }
+    }),
+    /Convention for "template" is already registered/
   );
 });
 
@@ -1774,4 +1952,18 @@ function serverEnvelope(fields = {}) {
     __async_server_result__: 1,
     ...fields
   };
+}
+
+function captureWarnings(fn) {
+  const original = console.warn;
+  const warnings = [];
+  console.warn = (...args) => {
+    warnings.push(args.join(" "));
+  };
+  try {
+    fn();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
 }

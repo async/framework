@@ -16,6 +16,7 @@ export { asyncSignal } from "./async-signal.js";
 export { attributeName, defineAttributeConfig } from "./attributes.js";
 export { createCacheRegistry, defineCache } from "./cache.js";
 export { component, createComponentRegistry, defineComponent } from "./component.js";
+export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
 export { createHandlerRegistry } from "./handlers.js";
@@ -43,8 +44,12 @@ export function createApp(appOrDefinition = Async, options = {}) {
   });
 }
 
-export function defineApp(initial) {
-  return defineBaseApp(initial, { createRuntime: createApp, features: routerFeature });
+export function defineApp(initial, options = {}) {
+  return defineBaseApp(initial, {
+    ...options,
+    createRuntime: createApp,
+    features: mergeFeatures(routerFeature, options.features)
+  });
 }
 
 export const Async = defineApp();
