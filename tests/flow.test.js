@@ -197,6 +197,50 @@ test("Flow asyncSignal helper paths mount as value loading error and ready signa
   runtime.destroy();
 });
 
+test("failed Flow mounts roll back concrete signal and handler bridge entries", () => {
+  const app = defineApp({
+    signal: {
+      "cart.details.loading": signal(false)
+    }
+  });
+  const runtime = createApp(app).start();
+  const cart = flow({
+    store: {
+      details: flowAsyncSignal(async () => ({ id: "sku_123" }))
+    },
+    on: {
+      select() {}
+    }
+  });
+
+  assert.throws(
+    () => app.use("flow", { cart }),
+    /Signal "cart\.details\.loading" is already registered/
+  );
+
+  assert.equal(runtime.signals.has("cart.details"), false);
+  assert.equal(runtime.signals.has("cart.details.loading"), true);
+  assert.equal(runtime.handlers.resolve("cart.refreshDetails"), undefined);
+  assert.equal(runtime.handlers.resolve("cart.select"), undefined);
+  assert.equal(runtime.flows.has("cart"), false);
+
+  const inventory = flow({
+    store: {
+      count: 0
+    },
+    on: {
+      increment(store) {
+        store.count += 1;
+      }
+    }
+  });
+
+  app.use("flow", { inventory });
+  assert.equal(runtime.signals.has("inventory.count"), true);
+  assert.equal(typeof runtime.handlers.resolve("inventory.increment"), "function");
+  runtime.destroy();
+});
+
 test("Flow asyncSignal refresh without input uses configured arguments", async () => {
   const calls = [];
   const app = defineApp({

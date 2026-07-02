@@ -79,35 +79,35 @@ function mountFlowRegistration(runtime, namespace, declaration) {
   const mounted = {
     namespace,
     instance,
-    signalStops: []
+    handlers: [],
+    signals: []
   };
 
-  for (const [name, ref] of Object.entries(instance.refs)) {
-    const path = `${namespace}.${name}`;
-    if (runtime.signals.has(path)) {
-      throw new Error(`Signal "${path}" is already registered.`);
+  try {
+    for (const [name, ref] of Object.entries(instance.refs)) {
+      const path = `${namespace}.${name}`;
+      registerMountedFlowSignal(runtime, mounted, path, createFlowSignalBridge(ref, {
+        path,
+        writable: isWritableFlowRef(ref)
+      }));
+      if (isFlowAsyncSignalRef(ref)) {
+        registerFlowAsyncSignalMetadata(runtime, mounted, namespace, name, ref);
+        registerFlowAsyncSignalRefreshHandler(runtime, mounted, namespace, name, ref);
+      }
     }
-    runtime.signals.register(path, createFlowSignalBridge(ref, {
-      path,
-      writable: isWritableFlowRef(ref)
-    }));
-    if (isFlowAsyncSignalRef(ref)) {
-      registerFlowAsyncSignalMetadata(runtime, namespace, name, ref);
-      registerFlowAsyncSignalRefreshHandler(runtime, namespace, name, ref);
-    }
-  }
 
-  for (const name of Object.keys(instance.handlers)) {
-    const path = `${namespace}.${name}`;
-    if (runtime.handlers.resolve(path)) {
-      throw new Error(`Handler "${path}" is already registered.`);
+    for (const name of Object.keys(instance.handlers)) {
+      const path = `${namespace}.${name}`;
+      registerMountedFlowHandler(runtime, mounted, path, function runMountedFlowHandler(context = {}) {
+        return instance.dispatch(name, context.input);
+      });
     }
-    runtime.handlers.register(path, function runMountedFlowHandler(context = {}) {
-      return instance.dispatch(name, context.input);
-    });
-  }
 
-  runtime.flows.set(namespace, mounted);
+    runtime.flows.set(namespace, mounted);
+  } catch (error) {
+    rollbackMountedFlow(runtime, mounted);
+    throw error;
+  }
 }
 
 function normalizeFlowDefinition(declaration) {
@@ -244,7 +244,37 @@ function createFrameworkFlowScheduler(scheduler) {
   };
 }
 
-function registerFlowAsyncSignalMetadata(runtime, namespace, name, ref) {
+function registerMountedFlowSignal(runtime, mounted, path, signalLike) {
+  if (runtime.signals.has(path)) {
+    throw new Error(`Signal "${path}" is already registered.`);
+  }
+  runtime.signals.register(path, signalLike);
+  mounted.signals.push(path);
+}
+
+function registerMountedFlowHandler(runtime, mounted, path, handler) {
+  if (runtime.handlers.resolve(path)) {
+    throw new Error(`Handler "${path}" is already registered.`);
+  }
+  runtime.handlers.register(path, handler);
+  mounted.handlers.push(path);
+}
+
+function rollbackMountedFlow(runtime, mounted) {
+  runtime.flows?.delete(mounted.namespace);
+
+  for (const path of [...mounted.handlers].reverse()) {
+    runtime.handlers.unregister?.(path);
+  }
+
+  for (const path of [...mounted.signals].reverse()) {
+    runtime.signals.unregister?.(path);
+  }
+
+  mounted.instance.destroy?.();
+}
+
+function registerFlowAsyncSignalMetadata(runtime, mounted, namespace, name, ref) {
   for (const [metadata, read] of Object.entries({
     loading: () => ref.loading ?? false,
     error: () => ref.error ?? null,
@@ -253,19 +283,13 @@ function registerFlowAsyncSignalMetadata(runtime, namespace, name, ref) {
     version: () => ref.version ?? 0
   })) {
     const path = `${namespace}.${name}.${metadata}`;
-    if (runtime.signals.has(path)) {
-      throw new Error(`Signal "${path}" is already registered.`);
-    }
-    runtime.signals.register(path, createFlowReadonlyBridge(ref, { path, read }));
+    registerMountedFlowSignal(runtime, mounted, path, createFlowReadonlyBridge(ref, { path, read }));
   }
 }
 
-function registerFlowAsyncSignalRefreshHandler(runtime, namespace, name, ref) {
+function registerFlowAsyncSignalRefreshHandler(runtime, mounted, namespace, name, ref) {
   const path = `${namespace}.refresh${capitalizeIdentifier(name)}`;
-  if (runtime.handlers.resolve(path)) {
-    throw new Error(`Handler "${path}" is already registered.`);
-  }
-  runtime.handlers.register(path, function refreshMountedFlowAsyncSignal(context = {}) {
+  registerMountedFlowHandler(runtime, mounted, path, function refreshMountedFlowAsyncSignal(context = {}) {
     const input = normalizeRefreshInput(context);
     return ref.reload?.(...input) ?? ref.load?.(...input);
   });
