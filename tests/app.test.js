@@ -16,6 +16,7 @@ import {
   defineRegistrySnapshot,
   defineRoute,
   delay,
+  flow,
   html,
   readSnapshot,
   route,
@@ -922,6 +923,38 @@ test("SSR render serializes signals and browser cache, never server cache", asyn
   assert.equal(response.cache.server, undefined);
   assert.doesNotMatch(response.html, /do-not-ship|secret:token/);
   assert.match(response.html, /async:snapshot/);
+  runtime.destroy();
+});
+
+test("SSR signal patches update exact mounted Flow signal paths", async () => {
+  const app = defineApp({
+    flow: {
+      cart: flow({
+        store: {
+          total: 0
+        }
+      })
+    },
+    partial: {
+      "cart.page"() {
+        return serverEnvelope({
+          html: `<output signal:text="cart.total"></output>`,
+          signals: {
+            "cart.total": 7
+          }
+        });
+      }
+    },
+    route: {
+      "/cart": defineRoute("cart.page")
+    }
+  });
+  const runtime = createApp(app, { target: "server" });
+  const response = await runtime.render("/cart");
+
+  assert.equal(response.signals["cart.total"], 7);
+  assert.equal(Object.hasOwn(response.signals, "cart"), false);
+  assert.equal(runtime.signals.get("cart.total"), 7);
   runtime.destroy();
 });
 

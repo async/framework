@@ -13,6 +13,7 @@ import {
   defineApp,
   delay,
   flow,
+  flowAsyncSignal,
   flowComputed,
   signal
 } from "../src/index.js";
@@ -193,6 +194,30 @@ test("Flow asyncSignal helper paths mount as value loading error and ready signa
   assert.equal(runtime.signals.get("product.details.loading"), false);
   assert.equal(runtime.signals.get("product.details.error"), null);
   assert.equal(runtime.signals.get("product.details.ready"), true);
+  runtime.destroy();
+});
+
+test("Flow asyncSignal refresh without input uses configured arguments", async () => {
+  const calls = [];
+  const app = defineApp({
+    flow: {
+      product: flow({
+        store: {
+          details: flowAsyncSignal({ arguments: () => ["sku_123"] }, async (id) => {
+            calls.push(id);
+            return { id };
+          })
+        }
+      })
+    }
+  });
+  const runtime = createApp(app).start();
+
+  await runtime.handlers.run("product.refreshDetails", {});
+  await runtime.scheduler.flush();
+
+  assert.deepEqual(calls, ["sku_123"]);
+  assert.deepEqual(runtime.signals.get("product.details"), { id: "sku_123" });
   runtime.destroy();
 });
 

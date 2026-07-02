@@ -346,7 +346,7 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
     },
 
     _setPath(path, value) {
-      const parsed = parseRootPath(path);
+      const parsed = parseRegistryPath(path);
       if (!entries.has(parsed.id)) {
         if (asyncDescriptors.has(parsed.id)) {
           materializeAsyncSignal(parsed.id);
@@ -419,14 +419,6 @@ export function createSignalRegistry(initialMap = {}, options = {}) {
       }
     }
     const [id, ...parts] = segments;
-    return { id, parts, path };
-  }
-
-  function parseRootPath(path) {
-    if (typeof path !== "string" || path.length === 0) {
-      throw new TypeError("Signal path must be a non-empty string.");
-    }
-    const [id, ...parts] = path.split(".");
     return { id, parts, path };
   }
 

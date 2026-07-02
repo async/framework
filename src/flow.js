@@ -266,9 +266,36 @@ function registerFlowAsyncSignalRefreshHandler(runtime, namespace, name, ref) {
     throw new Error(`Handler "${path}" is already registered.`);
   }
   runtime.handlers.register(path, function refreshMountedFlowAsyncSignal(context = {}) {
-    const input = Array.isArray(context.input) ? context.input : [context.input];
+    const input = normalizeRefreshInput(context);
     return ref.reload?.(...input) ?? ref.load?.(...input);
   });
+}
+
+function normalizeRefreshInput(context) {
+  if (context.input === undefined || isSourceLessEmptyInput(context)) {
+    return [];
+  }
+
+  return Array.isArray(context.input) ? context.input : [context.input];
+}
+
+function isSourceLessEmptyInput(context) {
+  return (
+    isPlainRecord(context.input) &&
+    Object.keys(context.input).length === 0 &&
+    !context.element &&
+    !context.el &&
+    !context.event
+  );
+}
+
+function isPlainRecord(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function createFlowReadonlyBridge(ref, { path, read }) {

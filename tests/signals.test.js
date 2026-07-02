@@ -47,7 +47,7 @@ test("ensure creates a signal once and subscribe observes nested changes", () =>
   assert.equal(signals.ensure("settings", { enabled: "ignored" }).value.enabled, true);
 });
 
-test("signal registry internal patches keep first-segment path semantics", () => {
+test("signal registry internal patches prefer the longest registered path", () => {
   const signals = createSignalRegistry({
     product: signal({ title: "Keyboard" }),
     "product.title": signal("Exact Title")
@@ -55,8 +55,8 @@ test("signal registry internal patches keep first-segment path semantics", () =>
 
   signals._setPath("product.title", "Mouse");
 
-  assert.deepEqual(signals.get("product"), { title: "Mouse" });
-  assert.equal(signals.get("product.title"), "Exact Title");
+  assert.deepEqual(signals.get("product"), { title: "Keyboard" });
+  assert.equal(signals.get("product.title"), "Mouse");
 });
 
 test("computed signals update from tracked registry reads", () => {
