@@ -10,7 +10,7 @@
 - Added declaration conventions for `Async.use(...)` so registered kinds can
   materialize on register, start, or demand under configurable duplicate
   policies.
-- Bundle size from bundled TypeScript source: `browser.ts` raw 256,039 B (256.0 KB / 0.256 MB), gzip 47,748 B (47.7 KB / 0.048 MB), br 39,376 B (39.4 KB / 0.039 MB) -> `browser.min.js` raw 107,985 B (108.0 KB / 0.108 MB), gzip 31,556 B (31.6 KB / 0.032 MB), br 27,711 B (27.7 KB / 0.028 MB); delta raw -148,054 B (-148.1 KB / -0.148 MB), gzip -16,192 B (-16.2 KB / -0.016 MB), br -11,665 B (-11.7 KB / -0.012 MB).
+- Bundle size from bundled TypeScript source: `browser.ts` raw 255,782 B (255.8 KB / 0.256 MB), gzip 47,724 B (47.7 KB / 0.048 MB), br 39,343 B (39.3 KB / 0.039 MB) -> `browser.min.js` raw 107,826 B (107.8 KB / 0.108 MB), gzip 31,527 B (31.5 KB / 0.032 MB), br 27,717 B (27.7 KB / 0.028 MB); delta raw -147,956 B (-148.0 KB / -0.148 MB), gzip -16,197 B (-16.2 KB / -0.016 MB), br -11,626 B (-11.6 KB / -0.012 MB).
 
 ## 0.14.0 - 2026-06-26
 
@@ -109,6 +109,21 @@
   with `this.onMount(fn)`, `this.on("mount", ...)`, and `on:mount` retained as
   compatibility aliases that warn about the rename.
 - Bundle size from bundled TypeScript source: `browser.ts` raw 338,346 B (338.3 KB / 0.338 MB), gzip 63,620 B (63.6 KB / 0.064 MB), br 51,844 B (51.8 KB / 0.052 MB) -> `browser.min.js` raw 142,172 B (142.2 KB / 0.142 MB), gzip 41,549 B (41.5 KB / 0.042 MB), br 36,106 B (36.1 KB / 0.036 MB); delta raw -196,174 B (-196.2 KB / -0.196 MB), gzip -22,071 B (-22.1 KB / -0.022 MB), br -15,738 B (-15.7 KB / -0.016 MB).
+
+## 0.12.1 - 2026-06-23
+
+- Scoped lifecycle fallback hooks for components rendered through
+  `this.render(...)` so `this.onMount(...)`, `this.onVisible(...)`, and
+  `this.on("intersect", ...)` target the child component's rendered root
+  instead of the ancestor mount root.
+- Preserved direct `loader.mount(target, Component)` fallback behavior, where
+  rootless and multi-root top-level components still receive the mount target.
+- Updated the bundled Flow bridge to `@async/flow@0.5.0`, using async signal
+  detection while preserving existing async signal metadata and refresh paths.
+- Migration note: code that intentionally used nested fallback hooks to mutate
+  the ancestor mount root should move that behavior to the ancestor component or
+  bind a specific element with `on:attach`.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 327,212 B (327.2 KB / 0.327 MB), gzip 61,393 B (61.4 KB / 0.061 MB), br 50,139 B (50.1 KB / 0.050 MB) -> `browser.min.js` raw 138,257 B (138.3 KB / 0.138 MB), gzip 40,337 B (40.3 KB / 0.040 MB), br 35,071 B (35.1 KB / 0.035 MB); delta raw -188,955 B (-189.0 KB / -0.189 MB), gzip -21,056 B (-21.1 KB / -0.021 MB), br -15,068 B (-15.1 KB / -0.015 MB).
 
 ## 0.12.0 - 2026-06-23
 
