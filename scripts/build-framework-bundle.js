@@ -1443,12 +1443,28 @@ const fullBrowserDtsOutput = [
   "  flowSignal: typeof flowSignal;",
   "  flowComputed: typeof flowComputed;",
   "  flowAsyncSignal: typeof flowAsyncSignal;",
+  "  flowStatus: typeof flowStatus;",
   "  defineFrameworkFlow: typeof defineFrameworkFlow;",
   "  isFrameworkFlowDefinition: typeof isFrameworkFlowDefinition;",
   "  set: typeof set;",
   "  update: typeof update;",
   "  when: typeof when;",
   "  onError: typeof onError;",
+  "  dispatch: typeof dispatch;",
+  "  after: typeof after;",
+  "  branch: typeof branch;",
+  "  guard: typeof guard;",
+  "  transition: typeof transition;",
+  "  can: typeof can;",
+  "  matches: typeof matches;",
+  "  bool: typeof bool;",
+  "  every: typeof every;",
+  "  some: typeof some;",
+  "  not: typeof not;",
+  "  inspect: typeof inspect;",
+  "  compose: typeof compose;",
+  "  parallel: typeof parallel;",
+  "  remember: typeof remember;",
   "  createApp: typeof createApp;",
   "  defineApp: typeof defineApp;",
   "  readSnapshot: typeof readSnapshot;",
@@ -1501,8 +1517,24 @@ const fullBrowserDtsOutput = [
   "export declare function isFrameworkFlowDefinition(value: unknown): value is FlowDefinition;",
   "export declare function set(nameOrUpdates: string | Record<string, unknown>, value?: unknown): FlowStep;",
   "export declare function update(name: string, fn: (current: unknown, store: Record<string, unknown>, input?: unknown) => unknown): FlowStep;",
-  "export declare function when(predicate: FlowPredicate): FlowStep;",
+  "export declare function when(predicate: FlowPredicate, options?: { availability?: boolean; reason?: string; label?: string }): FlowStep;",
   "export declare function onError(handle: (error: unknown, store: Record<string, unknown>, input?: unknown) => unknown, handler: FlowStep): FlowStep;",
+  "export declare function flowStatus<T = unknown>(initial: T, allowed?: readonly T[]): FlowSignalDeclaration<T>;",
+  "export declare function dispatch(targetOrEventName: string | object, eventNameOrPayload?: unknown, payload?: unknown): FlowStep;",
+  "export declare function after(ms: number, eventNameOrTask: string | ((input?: unknown) => unknown), input?: unknown): FlowStep;",
+  "export declare function branch(cases: Array<[FlowPredicate, FlowStep] | { when?: FlowPredicate; then: FlowStep; default?: boolean } | FlowStep>): FlowStep;",
+  "export declare function guard(predicate: FlowPredicate, handler: FlowStep, options?: { reason?: string; label?: string }): FlowStep;",
+  "export declare function transition(statusTarget: string | object, rules: Record<string, unknown> | Array<Record<string, unknown>>): FlowStep;",
+  "export declare function can(statusNameOrFlowOrEventName: string | object, eventName?: string, input?: unknown): FlowSignalDeclaration<boolean>;",
+  "export declare function matches(statusNameOrRef: string | object, value: unknown): FlowSignalDeclaration<boolean>;",
+  "export declare function bool(condition: FlowPredicate | object): FlowSignalDeclaration<boolean>;",
+  "export declare function every(...conditions: Array<FlowPredicate | object>): FlowSignalDeclaration<boolean>;",
+  "export declare function some(...conditions: Array<FlowPredicate | object>): FlowSignalDeclaration<boolean>;",
+  "export declare function not(condition: FlowPredicate | object): FlowSignalDeclaration<boolean>;",
+  "export declare function inspect(target: unknown): Record<string, unknown>;",
+  "export declare function compose(stepOrSteps: FlowStep | FlowStep[]): FlowStep;",
+  "export declare function parallel(branches: Record<string, FlowStep> | FlowStep[]): FlowStep;",
+  "export declare function remember(mappingOrMappings: unknown, stepOrSteps?: FlowStep | FlowStep[]): FlowStep;",
   "export declare function createApp(appOrDefinition?: AppHub | AsyncUseDefinition, options?: CreateAppOptions): AppRuntime;",
   "export declare function defineApp(initial?: AsyncUseDefinition, options?: DefineAppOptions): AppHub;",
   "export declare function readSnapshot(root?: Document | Element, options?: { attributes?: AttributeConfig }): RegistryRuntimeSnapshot;",
@@ -2079,26 +2111,61 @@ function removeFlowDeclarations(source) {
     "  flowSignal: typeof flowSignal;",
     "  flowComputed: typeof flowComputed;",
     "  flowAsyncSignal: typeof flowAsyncSignal;",
+    "  flowStatus: typeof flowStatus;",
     "  defineFrameworkFlow: typeof defineFrameworkFlow;",
     "  isFrameworkFlowDefinition: typeof isFrameworkFlowDefinition;",
     "  set: typeof set;",
     "  update: typeof update;",
     "  when: typeof when;",
-    "  onError: typeof onError;"
+    "  onError: typeof onError;",
+    "  dispatch: typeof dispatch;",
+    "  after: typeof after;",
+    "  branch: typeof branch;",
+    "  guard: typeof guard;",
+    "  transition: typeof transition;",
+    "  can: typeof can;",
+    "  matches: typeof matches;",
+    "  bool: typeof bool;",
+    "  every: typeof every;",
+    "  some: typeof some;",
+    "  not: typeof not;",
+    "  inspect: typeof inspect;",
+    "  compose: typeof compose;",
+    "  parallel: typeof parallel;",
+    "  remember: typeof remember;"
   ]);
+  const removeDeclaredFunctions = [
+    "defineFrameworkFlow",
+    "flowSignal",
+    "flowComputed",
+    "flowAsyncSignal",
+    "flowStatus",
+    "isFrameworkFlowDefinition",
+    "set",
+    "update",
+    "when",
+    "onError",
+    "dispatch",
+    "after",
+    "branch",
+    "guard",
+    "transition",
+    "can",
+    "matches",
+    "bool",
+    "every",
+    "some",
+    "not",
+    "inspect",
+    "compose",
+    "parallel",
+    "remember"
+  ].map((name) => new RegExp(`^export declare function ${name}\\b`));
   return source
     .split("\n")
     .filter((line) => !removeExact.has(line))
-    .filter((line) => !/^export declare function defineFrameworkFlow\b/.test(line))
     .filter((line) => !/^export declare const flow\b/.test(line))
-    .filter((line) => !/^export declare function flowSignal\b/.test(line))
-    .filter((line) => !/^export declare function flowComputed\b/.test(line))
-    .filter((line) => !/^export declare function flowAsyncSignal\b/.test(line))
-    .filter((line) => !/^export declare function isFrameworkFlowDefinition\b/.test(line))
-    .filter((line) => !/^export declare function set\b/.test(line))
-    .filter((line) => !/^export declare function update\b/.test(line))
-    .filter((line) => !/^export declare function when\b/.test(line))
-    .filter((line) => !/^export declare function onError\b/.test(line))
+    .filter((line) => !removeDeclaredFunctions.some((pattern) => pattern.test(line)))
     .join("\n");
 }
 
@@ -2410,12 +2477,12 @@ function moduleVariable(file) {
 function resolveLocalFlowSource(specifier) {
   const flowSources = {
     "@async/flow/protocol": "src/protocol.js",
+    "@async/flow/compose": "src/compose.js",
     "@async/flow/define": "src/define.js",
     "@async/flow/runtime": "src/runtime.js",
     "@async/flow/framework-runtime": "src/framework-runtime.js",
     "@async/flow/helpers": "src/helpers.js",
     "@async/flow/helpers/core": "src/helpers/core.js",
-    "@async/flow/run": "src/run.js",
     "@async/flow/scheduler": "src/scheduler.js"
   };
   const fallback = flowSources[specifier];

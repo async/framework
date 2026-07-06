@@ -460,8 +460,16 @@ Use feature subpaths when an app needs the larger browser systems:
 ```js
 import { AsyncStream } from "@async/framework/stream";
 import { Async, defineRoute } from "@async/framework/router";
-import { flow, flowSignal } from "@async/framework/flow";
+import { flow, flowSignal, flowStatus, compose, when, transition } from "@async/framework/flow";
 ```
+
+The flow entry re-exports the complete `@async/flow` authoring surface:
+declaration helpers (`flowSignal`, `flowComputed`, `flowAsyncSignal`,
+`flowStatus`), step helpers (`set`, `update`, `when`, `branch`, `guard`,
+`transition`, `dispatch`, `after`, `onError`), condition helpers (`bool`,
+`every`, `some`, `not`, `can`, `matches`, `inspect`), and composition
+(`compose`, `parallel`, `remember`). Apps do not need to install
+`@async/flow` separately.
 
 Server-only APIs live behind the server entry:
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.2 - 2026-07-06
+
+- Expanded `@async/framework/flow` (and the main entry) to re-export the
+  complete `@async/flow` helper surface: step helpers (`dispatch`, `after`,
+  `branch`, `guard`, `transition`), condition helpers (`bool`, `every`,
+  `some`, `not`, `can`, `matches`, `inspect`), composition (`compose`,
+  `parallel`, `remember`), and the `flowStatus` declaration helper, alongside
+  the existing `set`, `update`, `when`, and `onError`. Apps can author full
+  Flow definitions without installing `@async/flow` directly.
+- Removed the per-notification random dedupe key from the Flow scheduler
+  bridge. Keys added keyed-job bookkeeping for every Flow notification without
+  ever deduping, and a key collision could silently drop a notification.
+- Dropped the stale `@async/flow/run` module mapping from the bundle scripts
+  (`@async/flow/run` is not a public Flow subpath) and added the
+  `@async/flow/compose` mapping used by the expanded flow entry.
+
 ## 0.15.1 - 2026-07-06
 
 - Updated the Flow bridge to consume `@async/flow` 0.10.3, including the

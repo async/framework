@@ -1,14 +1,32 @@
 import {
+  compose as flowCompose,
+  parallel as flowParallel,
+  remember as flowRemember
+} from "@async/flow/compose";
+import {
   defineAsyncSignal,
   defineComputed,
   defineFlow,
   defineSignal,
+  defineStatus,
   isFlowDefinition
 } from "@async/flow/define";
 import { createFlow } from "@async/flow/framework-runtime";
 import {
+  after as flowAfter,
+  bool as flowBool,
+  branch as flowBranch,
+  can as flowCan,
+  dispatch as flowDispatch,
+  every as flowEvery,
+  guard as flowGuard,
+  inspect as flowInspect,
+  matches as flowMatches,
+  not as flowNot,
   onError as flowOnError,
   set as flowSet,
+  some as flowSome,
+  transition as flowTransition,
   update as flowUpdate,
   when as flowWhen
 } from "@async/flow/helpers/core";
@@ -42,8 +60,27 @@ export function asyncSignal(optionsOrLoader, maybeLoader) {
   return defineAsyncSignal(optionsOrLoader, maybeLoader);
 }
 
+export function status(initial, allowed) {
+  return defineStatus(initial, allowed);
+}
+
+export const after = flowAfter;
+export const bool = flowBool;
+export const branch = flowBranch;
+export const can = flowCan;
+export const compose = flowCompose;
+export const dispatch = flowDispatch;
+export const every = flowEvery;
+export const guard = flowGuard;
+export const inspect = flowInspect;
+export const matches = flowMatches;
+export const not = flowNot;
 export const onError = flowOnError;
+export const parallel = flowParallel;
+export const remember = flowRemember;
 export const set = flowSet;
+export const some = flowSome;
+export const transition = flowTransition;
 export const update = flowUpdate;
 export const when = flowWhen;
 
@@ -233,9 +270,10 @@ function createFrameworkFlowScheduler(scheduler) {
         return;
       }
 
-      scheduler.enqueue("binding", fn, {
-        key: `flow:${Math.random().toString(36).slice(2)}`
-      });
+      // No dedupe key: each Flow notification is distinct work. A key would
+      // add keyed-job bookkeeping per notification and risk dropping
+      // notifications on key collisions.
+      scheduler.enqueue("binding", fn);
     },
 
     flush() {

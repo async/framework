@@ -1263,12 +1263,12 @@ function resolveSpecifier(file, specifier) {
 function resolveLocalFlowSource(specifier) {
   const flowSources = {
     "@async/flow/protocol": "src/protocol.js",
+    "@async/flow/compose": "src/compose.js",
     "@async/flow/define": "src/define.js",
     "@async/flow/runtime": "src/runtime.js",
     "@async/flow/framework-runtime": "src/framework-runtime.js",
     "@async/flow/helpers": "src/helpers.js",
     "@async/flow/helpers/core": "src/helpers/core.js",
-    "@async/flow/run": "src/run.js",
     "@async/flow/scheduler": "src/scheduler.js"
   };
   const fallback = flowSources[specifier];
