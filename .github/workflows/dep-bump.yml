@@ -1,0 +1,168 @@
+# Hand-written companion to the pipeline-owned async-pipeline.yml. Keep it out of
+# that file: async-pipeline.yml is owned by `async-pipeline github generate`.
+#
+# What this does: on an async-dep-bump repository_dispatch (sent by
+# async/pipeline's Release Train for @async/pipeline, or async/flow's Release
+# Train for @async/flow) or a manual run, bump the pinned @async/*
+# devDependency, regenerate the synced surfaces with the NEW pipeline version,
+# and run the full release:check:
+#
+#   green -> commit straight to main (no release of this repo)
+#   red   -> push a dep-bump/* branch, open a PR carrying the failure, and
+#            mark this run failed so it is visible
+#
+# Pushes use ASYNC_RELEASE_TRAIN_TOKEN (PAT) so the resulting main commit still
+# triggers the normal "Async Pipeline" push run; GITHUB_TOKEN pushes would
+# suppress downstream workflows, and pushing synced .github/workflows
+# files requires the PAT's Workflows permission.
+name: Dep Bump
+
+on:
+  repository_dispatch:
+    types: [async-dep-bump]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "npm package to bump (@async/pipeline or @async/flow)"
+        required: false
+        default: "@async/pipeline"
+      version:
+        description: "Exact version, no leading v. Empty = npm dist-tag latest."
+        required: false
+        default: ""
+
+run-name: "bump ${{ github.event.client_payload.package || inputs.package }}@${{ github.event.client_payload.version || inputs.version || 'latest' }}"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Serialize per package so a re-dispatch cannot race its predecessor's push;
+# @async/pipeline and @async/flow bumps may run concurrently (the push step
+# rebases + retries).
+concurrency:
+  group: dep-bump-${{ github.event.client_payload.package || inputs.package }}
+  cancel-in-progress: false
+
+env:
+  PKG: ${{ github.event.client_payload.package || inputs.package }}
+  REQUESTED: ${{ github.event.client_payload.version || inputs.version }}
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.ASYNC_RELEASE_TRAIN_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.ASYNC_RELEASE_TRAIN_TOKEN }}
+
+      - name: Setup pnpm runtime
+        uses: pnpm/setup@cf03a9b516e09bc5a90f041fc26fc930c9dc631b # v1.0.0
+        with:
+          version: 11.1.0
+          runtime: node@24
+          install: false
+          cache: false
+
+      - name: Resolve version and wait for the npm registry
+        id: resolve
+        run: |
+          set -euo pipefail
+          VERSION="${REQUESTED:-}"
+          if [ -z "$VERSION" ]; then
+            VERSION="$(npm view "$PKG" dist-tags.latest)"
+          fi
+          echo "Waiting for ${PKG}@${VERSION} to be installable from npm..."
+          found=""
+          for i in $(seq 1 40); do
+            if [ -n "$(npm view "${PKG}@${VERSION}" version 2>/dev/null)" ]; then
+              found=1
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "$found" ]; then
+            echo "::error::${PKG}@${VERSION} never appeared on the npm registry (waited ~10 minutes)"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump pinned version
+        id: bump
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          CURRENT="$(node -p "require('./package.json').devDependencies?.['$PKG'] ?? ''")"
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "Already pinned to ${PKG}@${VERSION}; nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pnpm add -D --save-exact "${PKG}@${VERSION}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Regenerate synced surfaces with the new pipeline
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          pnpm run pipeline:sync:generate
+          pnpm run pipeline:github:generate
+
+      - name: Verify (release:check)
+        if: steps.bump.outputs.changed == 'true'
+        id: verify
+        continue-on-error: true
+        env:
+          CI: true
+        run: pnpm run release:check
+
+      - name: Commit bump
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(deps): bump ${PKG} to ${VERSION}"
+
+      - name: Land on main (verify green)
+        if: steps.bump.outputs.changed == 'true' && steps.verify.outcome == 'success'
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push attempt ${attempt} failed; retrying..."
+            sleep 5
+          done
+          echo "::error::Could not push the bump to main after 3 attempts"
+          exit 1
+
+      - name: Open PR (verify red)
+        if: steps.bump.outputs.changed == 'true' && steps.verify.outcome != 'success'
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="dep-bump/${PKG##*/}-${VERSION}"
+          git push --force origin "HEAD:refs/heads/${BRANCH}"
+          gh pr create \
+            --head "${BRANCH}" \
+            --title "chore(deps): bump ${PKG} to ${VERSION} (verify failed)" \
+            --body "Automated bump of \`${PKG}\` to \`${VERSION}\` failed \`release:check\`, so it was not pushed to main.
+
+          - Failing run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - This PR's own Async Pipeline verify run reproduces the failure with full \`.async/runs\` evidence.
+
+          Fix the fallout on this branch, then merge; do not release this repo just to absorb the bump." \
+            || echo "PR for ${BRANCH} already exists; branch was force-updated."
+          echo "::error::release:check failed for ${PKG}@${VERSION}; opened/updated PR from ${BRANCH} instead of pushing to main"
+          exit 1
