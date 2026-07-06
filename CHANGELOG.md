@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.3 - 2026-07-06
+
+- Memoized attribute-prefix normalization by config identity so activation
+  scans reuse normalized attribute config on the hot path instead of
+  re-normalizing prefixes for every attribute read.
+- Reworked loader activation to collect each scan scope once with a TreeWalker,
+  share that element list across revive, signal, class, event, boundary, and
+  component passes, and merge attach, visible, and intersect pseudo-event
+  binding into one pass.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 258,315 B (258.3 KB / 0.258 MB), gzip 48,822 B (48.8 KB / 0.049 MB), br 40,208 B (40.2 KB / 0.040 MB) -> `browser.min.js` raw 108,261 B (108.3 KB / 0.108 MB), gzip 31,669 B (31.7 KB / 0.032 MB), br 27,814 B (27.8 KB / 0.028 MB); delta raw -150,054 B (-150.1 KB / -0.150 MB), gzip -17,153 B (-17.2 KB / -0.017 MB), br -12,394 B (-12.4 KB / -0.012 MB).
+
 ## 0.15.2 - 2026-07-06
 
 - Expanded `@async/framework/flow` (and the main entry) to re-export the
