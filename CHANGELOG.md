@@ -1,6 +1,38 @@
 # Changelog
 
-## Unreleased
+## 0.15.1 - 2026-07-06
+
+- Updated the Flow bridge to consume `@async/flow` 0.10.3, including the
+  framework-runtime helper paths required by current Flow releases.
+- Fixed Flow async signal refresh handlers so a refresh without authored input
+  uses the signal's configured arguments instead of passing an empty object.
+- Rolled back partial signal and handler registrations when a Flow mount fails,
+  preventing failed mounts from leaving stale registry entries behind.
+- Fixed SSR signal patches for mounted Flow signals so exact paths such as
+  `cart.total` update without serializing an unintended parent `cart` signal.
+- Added `./jsx/jsx-runtime` and `./jsx/jsx-dev-runtime` package exports so
+  `jsxImportSource: "@async/framework/jsx"` resolves under the automatic JSX
+  transform; the base entrypoints default to the runtime profile types.
+- Guarded the Vite plugin bootstrap transform: modules are replaced only when
+  they actually import `@async/framework/jsx*` (comment and string mentions no
+  longer match), replacements are logged, multiple modules collapsed into one
+  virtual bootstrap now warn, and full-rewrite transforms return an empty
+  sourcemap instead of `map: null`.
+- Made the Vite 8 + Rolldown host check use plugin-context metadata
+  (`this.meta.viteVersion` / `this.meta.rolldownVersion`) in `configResolved`
+  instead of treating the resolved config as a host descriptor, and exported
+  `detectViteHost` and `importsAsyncJsx` helpers.
+- Stopped defaulting `server.base` when composing `@hono/vite-dev-server`;
+  `base` is forwarded only when the app sets it, so user-configured Vite
+  `base` values are no longer overridden by default.
+- Declared `vite >= 8` as an optional peer dependency.
+- Reported runtime slice `status` (`available` for `signals`/`events`,
+  `planned` for `async-signals`/`stream`) with a `runtime-slice-planned`
+  warning diagnostic, and documented that planned slices are recorded but not
+  activated by `@async/framework/runtime` yet.
+- Reworked the `vite-jsx-streaming` example onto the buildtime JSX profile so
+  the authoring source matches the shipped type profiles, and documented that
+  the fixture profile is the current source of truth for the emitted plan.
 
 ## 0.15.0 - 2026-06-26
 
