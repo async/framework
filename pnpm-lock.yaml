@@ -22,8 +22,8 @@ importers:
         specifier: 0.10.3
         version: 0.10.3
       '@async/pipeline':
-        specifier: 0.9.25
-        version: 0.9.25
+        specifier: 0.9.34
+        version: 0.9.34
       happy-dom:
         specifier: 20.10.5
         version: 20.10.5
@@ -40,8 +40,8 @@ packages:
     resolution: {integrity: sha512-4IFDQoNepoUqFdCiW0dagKmp4n6siDrPDjf++HUYJeCFrF5rbp2yI28asPxhN2dP8FFXB0EQARTpucUtme23ZQ==}
     engines: {node: '>=24'}
 
-  '@async/pipeline@0.9.25':
-    resolution: {integrity: sha512-pss+rn7lPz01XKJ6IvMrUZn4PUiDDAvLJR3DODAMvpwlf/O2jCzLVMOWP3THb7uG2d//shdDrXu1e8zbywyYcg==}
+  '@async/pipeline@0.9.34':
+    resolution: {integrity: sha512-Lj4k5aSBuOq3+UvAcQq4HxKovoMIxOl8OLEIl+S9DXwALqdJxOfQdbmOmdG16ZfslwmDSJLkiQyckjW78gDZvQ==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -452,7 +452,7 @@ snapshots:
 
   '@async/flow@0.10.3': {}
 
-  '@async/pipeline@0.9.25': {}
+  '@async/pipeline@0.9.34': {}
 
   '@emnapi/core@1.11.1':
     dependencies:
