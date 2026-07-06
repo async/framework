@@ -1,5 +1,5 @@
 // Dashboard.jsx is replaced at build time by @async/framework/vite with a
-// generated bootstrap module, so { plan, report, startAsyncFramework } come
+// virtual bootstrap module, so { plan, report, startAsyncFramework } come
 // from the plugin, not from the authored JSX exports.
 import {
   plan,

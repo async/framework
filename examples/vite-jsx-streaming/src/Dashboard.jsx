@@ -17,7 +17,7 @@ function selectSample() {
 }
 
 // This module declares intent only. The @async/framework/vite plugin replaces
-// it with a generated bootstrap module that exports { plan, report,
+// it with a virtual bootstrap module that exports { plan, report,
 // startAsyncFramework }; the render function below is never executed at
 // runtime in the current build profile.
 export default component(() => (

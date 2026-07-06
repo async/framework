@@ -326,7 +326,7 @@ test("bootstrap transform logs replacements and warns on bootstrap collapse", ()
   const second = plugin.transform.call(context, 'import { component } from "@async/framework/jsx";\nexport const B = component(() => <b />);', "/app/B.jsx");
   assert.equal(second.code, first.code);
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /same generated bootstrap/);
+  assert.match(warnings[0], /same virtual bootstrap/);
 
   // A new build resets the replacement tracking.
   plugin.buildStart.call(context);

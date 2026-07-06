@@ -90,9 +90,9 @@ function createAsyncFrameworkPlugin(options = {}) {
       const moduleId = String(id);
       if (!replacedModules.has(moduleId)) {
         replacedModules.add(moduleId);
-        pluginLog(this, "info", `[async-framework] Replacing "${moduleId}" with the generated bootstrap module. Its own exports are not preserved; the module re-exports { plan, report, startAsyncFramework } from the build profile.`);
+        pluginLog(this, "info", `[async-framework] Replacing "${moduleId}" with the virtual bootstrap module. Its own exports are not preserved; the module re-exports { plan, report, startAsyncFramework } from the build profile.`);
         if (replacedModules.size > 1) {
-          pluginLog(this, "warn", `[async-framework] ${replacedModules.size} modules import @async/framework/jsx and all resolve to the same generated bootstrap. The current build profile supports one bootstrap module per app; keep JSX intent imports in a single entry module. Replaced modules: ${[...replacedModules].join(", ")}.`);
+          pluginLog(this, "warn", `[async-framework] ${replacedModules.size} modules import @async/framework/jsx and all resolve to the same virtual bootstrap. The current build profile supports one bootstrap module per app; keep JSX intent imports in a single entry module. Replaced modules: ${[...replacedModules].join(", ")}.`);
         }
       }
       return {

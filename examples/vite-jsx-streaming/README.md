@@ -5,11 +5,11 @@ Suspense, and Reveal intent while the optimizer selects compact runtime slices.
 
 - `src/Dashboard.jsx` is the authoring source, written against the buildtime
   JSX profile (`@async/framework/jsx/buildtime`). It declares intent only: the
-  Vite plugin replaces the module with a generated bootstrap that exports
+  Vite plugin replaces the module with a virtual bootstrap that exports
   `{ plan, report, startAsyncFramework }`, and the authored render function is
   never executed in the current build profile.
 - `src/streaming-profile.json` is the current optimizer input shape used by the
-  Vite plugin. Source-derived profile generation is a later layer, so this
+  Vite plugin. Source-derived profile emission is a later layer, so this
   fixture is the source of truth for the emitted plan today — if you change
   `Dashboard.jsx`, update the fixture to match.
 - `src/main.js` imports the plugin bootstrap from the JSX file and starts the
