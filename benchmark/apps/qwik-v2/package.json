@@ -37,7 +37,7 @@
   "devDependencies": {
     "@qwik.dev/core": "2.0.0-beta.36",
     "@qwik.dev/router": "2.0.0-beta.36",
-    "vite": "7.3.5",
+    "vite": "8.0.16",
     "vite-tsconfig-paths": "^6.1.1"
   }
 }

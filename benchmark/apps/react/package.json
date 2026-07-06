@@ -24,12 +24,12 @@
     "url": "https://github.com/async/framework.git"
   },
   "devDependencies": {
-    "@babel/core": "7.26.0",
+    "@babel/core": "7.29.6",
     "@babel/preset-env": "7.26.0",
     "@babel/preset-react": "7.26.3",
     "babel-loader": "9.2.1",
-    "terser-webpack-plugin": "5.3.10",
-    "webpack": "5.97.1",
+    "terser-webpack-plugin": "5.6.1",
+    "webpack": "5.107.2",
     "webpack-cli": "5.1.4"
   },
   "dependencies": {
