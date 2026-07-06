@@ -466,12 +466,20 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   }
 
   function scanScope(scope, scanOptions = {}) {
-    reviveScopes(scope, scanOptions);
-    bindSignalAttributes(scope, scanOptions);
-    bindClassAttributes(scope, scanOptions);
-    bindEventAttributes(scope, scanOptions);
-    bindBoundaries(scope, scanOptions);
-    bindComponentAttributes(scope, scanOptions);
+    // Collect the scope's elements once with a single TreeWalk and share the
+    // list across the passes that only read/annotate existing elements
+    // (revive, signals, classes, events, boundaries, component hosts). Only
+    // pseudo-events run on a fresh walk, since component mounting above may
+    // have added children they need to see. This replaces ~8 querySelectorAll
+    // traversals with 2 walks.
+    const elements = elementsIn(scope, scanOptions);
+    const shared = { ...scanOptions, elements };
+    reviveScopes(scope, shared);
+    bindSignalAttributes(scope, shared);
+    bindClassAttributes(scope, shared);
+    bindEventAttributes(scope, shared);
+    bindBoundaries(scope, shared);
+    bindComponentAttributes(scope, shared);
     runPseudoEvents(scope, scanOptions);
   }
 
@@ -1057,52 +1065,41 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   }
 
   function runPseudoEvents(scope, scanOptions) {
+    // One walk handling all three pseudo-events per element (was three walks).
+    // Each is independent and idempotent, so per-element ordering is identical
+    // to the previous separate passes.
     for (const element of elementsIn(scope, scanOptions)) {
       if (readAttribute(element, attributeConfig, "on", "mount") != null) {
         warnMountPseudoEventAlias();
       }
-      const refs = readPseudoRefs(element, ["attach", "mount"]);
-      if (refs.length === 0) {
-        continue;
+      const attachRefs = readPseudoRefs(element, ["attach", "mount"]);
+      if (attachRefs.length > 0 && !mountedElements.has(element)) {
+        mountedElements.add(element);
+        for (const ref of attachRefs) {
+          scheduleLifecycle(element, () => runPseudo(element, ref), `attach:${ref}`);
+        }
       }
-      if (mountedElements.has(element)) {
-        continue;
-      }
-      mountedElements.add(element);
-      for (const ref of refs) {
-        scheduleLifecycle(element, () => runPseudo(element, ref), `attach:${ref}`);
-      }
-    }
 
-    for (const element of elementsIn(scope, scanOptions)) {
-      const ref = readAttribute(element, attributeConfig, "on", "visible");
-      if (ref == null) {
-        continue;
+      const visibleRef = readAttribute(element, attributeConfig, "on", "visible");
+      if (visibleRef != null && !visibleElements.has(element)) {
+        visibleElements.add(element);
+        addCleanup(observeVisible(element, () => scheduleLifecycle(element, () => runPseudo(element, visibleRef), `visible:${visibleRef}`)), element);
       }
-      if (visibleElements.has(element)) {
-        continue;
-      }
-      visibleElements.add(element);
-      addCleanup(observeVisible(element, () => scheduleLifecycle(element, () => runPseudo(element, ref), `visible:${ref}`)), element);
-    }
 
-    for (const element of elementsIn(scope, scanOptions)) {
-      const ref = readAttribute(element, attributeConfig, "on", "intersect");
-      if (ref == null) {
-        continue;
+      const intersectRef = readAttribute(element, attributeConfig, "on", "intersect");
+      if (intersectRef != null) {
+        const options = readIntersectionOptions(element);
+        const key = `intersect:${intersectRef}:${serializeIntersectionOptions(options)}`;
+        const bound = intersectionBindings.get(element) ?? new Set();
+        if (!bound.has(key)) {
+          bound.add(key);
+          intersectionBindings.set(element, bound);
+          addCleanup(observeIntersection(element, (event) => runPseudo(element, intersectRef, event), {
+            ...options,
+            key
+          }), element);
+        }
       }
-      const options = readIntersectionOptions(element);
-      const key = `intersect:${ref}:${serializeIntersectionOptions(options)}`;
-      const bound = intersectionBindings.get(element) ?? new Set();
-      if (bound.has(key)) {
-        continue;
-      }
-      bound.add(key);
-      intersectionBindings.set(element, bound);
-      addCleanup(observeIntersection(element, (event) => runPseudo(element, ref, event), {
-        ...options,
-        key
-      }), element);
     }
   }
 
@@ -1743,8 +1740,28 @@ function selectAll(scope, selector, options = {}) {
   return elements;
 }
 
+// Enumerate every element under `scope` with a single TreeWalker instead of
+// querySelectorAll("*"), which avoids materializing a NodeList per pass and
+// lets callers share one walk. Equivalent set to querySelectorAll("*") plus
+// the optional root. Falls back to selectAll where TreeWalker is unavailable.
+function walkElements(scope, options = {}) {
+  if (!scope) return [];
+  const doc = scope.nodeType === 9 ? scope : scope.ownerDocument;
+  if (!doc?.createTreeWalker) return selectAll(scope, "*", options);
+  const elements = [];
+  if (options.includeRoot !== false && scope.nodeType === 1) {
+    elements.push(scope);
+  }
+  const walker = doc.createTreeWalker(scope, 0x1 /* NodeFilter.SHOW_ELEMENT */);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    elements.push(node);
+  }
+  return elements;
+}
+
 function elementsIn(scope, options) {
-  return selectAll(scope, "*", options);
+  // A pre-collected list (options.elements) lets one walk serve several passes.
+  return options?.elements !== undefined ? options.elements : walkElements(scope, options);
 }
 
 function findBoundary(root, boundaryId, attributeConfig) {
