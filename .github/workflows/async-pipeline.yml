@@ -62,14 +62,14 @@ jobs:
 
       - name: Restore Async task cache
         id: async-cache-restore
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: restore
           manifest: .async/actions/cache/publish-cache-manifest.json
           trust: read-only
 
       - name: Run pipeline task release-evidence
-        uses: async/actions/run@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/run@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run-task release-evidence"
           check-generated: false
@@ -78,47 +78,47 @@ jobs:
           CI: true
 
       - name: Plan release package
-        uses: async/actions/doctor@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/doctor@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: plan
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "pnpm dlx github:async/release#v0.1.5"
+          release-command: "pnpm dlx github:async/release#v0.1.6"
         env:
           CI: true
 
       - name: Inspect release package
-        uses: async/actions/doctor@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/doctor@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: inspect
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "pnpm dlx github:async/release#v0.1.5"
+          release-command: "pnpm dlx github:async/release#v0.1.6"
         env:
           CI: true
 
       - name: Check release changelog
-        uses: async/actions/doctor@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/doctor@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: changelog
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "pnpm dlx github:async/release#v0.1.5"
+          release-command: "pnpm dlx github:async/release#v0.1.6"
         env:
           CI: true
 
       - name: Render release notes
-        uses: async/actions/doctor@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/doctor@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: notes
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "pnpm dlx github:async/release#v0.1.5"
+          release-command: "pnpm dlx github:async/release#v0.1.6"
         env:
           CI: true
 
       - name: Create or update GitHub Release
-        uses: async/actions/publish@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/publish@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           package-path: "./dist"
           mode: github-release
@@ -130,7 +130,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish GitHub Packages mirror
-        uses: async/actions/publish@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/publish@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           package-path: "./dist"
           mode: github-packages
@@ -142,7 +142,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish npm package
-        uses: async/actions/publish@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/publish@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           package-path: "./dist"
           mode: npm
@@ -155,12 +155,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
 
       - name: Run release doctor
-        uses: async/actions/doctor@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/doctor@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: doctor
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "pnpm dlx github:async/release#v0.1.5"
+          release-command: "pnpm dlx github:async/release#v0.1.6"
           network: live
         env:
           CI: true
@@ -168,7 +168,7 @@ jobs:
 
       - name: Save Async task cache
         if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: save
           manifest: .async/actions/cache/publish-cache-manifest.json
@@ -202,14 +202,14 @@ jobs:
 
       - name: Restore Async task cache
         id: async-cache-restore
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: restore
           manifest: .async/actions/cache/release-doctor-cache-manifest.json
           trust: read-only
 
       - name: Run pipeline task pack
-        uses: async/actions/run@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/run@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run-task pack"
           check-generated: false
@@ -218,12 +218,12 @@ jobs:
           CI: true
 
       - name: Run release doctor
-        uses: async/actions/doctor@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/doctor@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: doctor
           package-path: "./dist"
           evidence-dir: .async/release
-          release-command: "pnpm dlx github:async/release#v0.1.5"
+          release-command: "pnpm dlx github:async/release#v0.1.6"
           network: live
         env:
           CI: true
@@ -231,7 +231,7 @@ jobs:
 
       - name: Save Async task cache
         if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: save
           manifest: .async/actions/cache/release-doctor-cache-manifest.json
@@ -262,14 +262,14 @@ jobs:
 
       - name: Restore Async task cache
         id: async-cache-restore
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: restore
           manifest: .async/actions/cache/verify-cache-manifest.json
           trust: read-only
 
       - name: Run pipeline job
-        uses: async/actions/run@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/run@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run verify"
           check-generated: false
@@ -279,7 +279,7 @@ jobs:
 
       - name: Save Async task cache
         if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: save
           manifest: .async/actions/cache/verify-cache-manifest.json
@@ -310,14 +310,14 @@ jobs:
 
       - name: Restore Async task cache
         id: async-cache-restore
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: restore
           manifest: .async/actions/cache/docs.site-cache-manifest.json
           trust: read-only
 
       - name: Run Pages target
-        uses: async/actions/run@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/run@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           command: "pnpm async-pipeline github check && pnpm async-pipeline run-task docs.site"
           check-generated: false
@@ -327,14 +327,14 @@ jobs:
 
       - name: Save Async task cache
         if: ${{ success() && github.event_name != 'pull_request' && steps.async-cache-restore.outputs.cache-hit != 'true' }}
-        uses: async/actions/cache@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/cache@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: save
           manifest: .async/actions/cache/docs.site-cache-manifest.json
           trust: read-write
 
       - name: Upload Pages artifact
-        uses: async/actions/pages@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/pages@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           mode: static
           path: ".async/pages"
@@ -353,7 +353,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: async/actions/pages@ae78d0fe7cc4bb00907c275bc7bab4317a02fe17 # v0.1.23
+        uses: async/actions/pages@ff415041176eaffaa2ba19363fe371188f52ee1f # v0.1.24
         with:
           upload: false
           deploy: true
