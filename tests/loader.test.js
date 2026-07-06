@@ -14,6 +14,19 @@ import {
   signal
 } from "../src/index.js";
 
+async function waitForText({ document, selector, text, timeoutMs = 200, intervalMs = 1 }) {
+  const deadline = Date.now() + timeoutMs;
+  let current;
+  do {
+    current = document.querySelector(selector)?.textContent;
+    if (current === text) {
+      return;
+    }
+    await delay(intervalMs);
+  } while (Date.now() < deadline);
+  assert.equal(current, text);
+}
+
 test("Loader binds text, values, attributes, classes, and input writes", async () => {
   const window = new Window();
   const { document } = window;
@@ -266,8 +279,7 @@ test("Loader renders async boundaries through loading, ready, and error template
   Loader({ root: document.body, signals }).start();
 
   assert.equal(document.querySelector(".loading").textContent, "Loading");
-  await delay(10);
-  assert.equal(document.querySelector("h1").textContent, "Keyboard");
+  await waitForText({ document, selector: "h1", text: "Keyboard" });
 });
 
 test("Loader treats async-suspense as boundary markup without custom element registration", async () => {
@@ -290,8 +302,7 @@ test("Loader treats async-suspense as boundary markup without custom element reg
   Loader({ root: document.body, signals }).start();
 
   assert.equal(document.querySelector(".loading").textContent, "Loading");
-  await delay(10);
-  assert.equal(document.querySelector("async-suspense h1").textContent, "Keyboard");
+  await waitForText({ document, selector: "async-suspense h1", text: "Keyboard" });
 });
 
 test("Loader dispatches async:error for missing delegated handlers", async () => {
