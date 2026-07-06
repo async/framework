@@ -729,6 +729,8 @@ test("source package metadata owns the minimal public export spec", () => {
     "./router",
     "./server",
     "./jsx",
+    "./jsx/jsx-runtime",
+    "./jsx/jsx-dev-runtime",
     "./jsx/runtime",
     "./jsx/runtime/jsx-runtime",
     "./jsx/runtime/jsx-dev-runtime",
@@ -741,6 +743,8 @@ test("source package metadata owns the minimal public export spec", () => {
     "./runtime/events",
     "./package.json"
   ]);
+  assert.equal(manifest.peerDependencies.vite, ">=8");
+  assert.equal(manifest.peerDependenciesMeta.vite.optional, true);
   assert.equal(manifest.devDependencies.terser, "5.48.0");
   assert.equal(manifest.devDependencies.typescript, "5.9.3");
 });
@@ -754,6 +758,8 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
     "./router",
     "./server",
     "./jsx",
+    "./jsx/jsx-runtime",
+    "./jsx/jsx-dev-runtime",
     "./jsx/runtime",
     "./jsx/runtime/jsx-runtime",
     "./jsx/runtime/jsx-dev-runtime",
@@ -783,6 +789,8 @@ test("publish staging metadata keeps package artifacts at the tarball root", () 
   assert.equal(publishManifest.exports["./router"].import, "./router.js");
   assert.equal(publishManifest.exports["./server"].import, "./server.js");
   assert.equal(publishManifest.exports["./jsx"].import, "./jsx.js");
+  assert.equal(publishManifest.exports["./jsx/jsx-runtime"].import, "./jsx/jsx-runtime.js");
+  assert.equal(publishManifest.exports["./jsx/jsx-dev-runtime"].import, "./jsx/jsx-dev-runtime.js");
   assert.equal(publishManifest.exports["./jsx/runtime"].import, "./jsx/runtime.js");
   assert.equal(publishManifest.exports["./jsx/runtime/jsx-runtime"].import, "./jsx/runtime/jsx-runtime.js");
   assert.equal(publishManifest.exports["./jsx/runtime/jsx-dev-runtime"].import, "./jsx/runtime/jsx-dev-runtime.js");
@@ -852,6 +860,9 @@ test("package file list only publishes generated framework artifacts", () => {
   assert.ok(publishManifest.files.includes("jsx/buildtime/jsx-dev-runtime.js"));
   assert.ok(publishManifest.files.includes("jsx/buildtime/jsx-dev-runtime.d.ts"));
   assert.ok(publishManifest.files.includes("jsx/jsx-runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/jsx-runtime.d.ts"));
+  assert.ok(publishManifest.files.includes("jsx/jsx-dev-runtime.js"));
+  assert.ok(publishManifest.files.includes("jsx/jsx-dev-runtime.d.ts"));
   assert.ok(publishManifest.files.includes("vite.js"));
   assert.ok(publishManifest.files.includes("vite.d.ts"));
   assert.ok(publishManifest.files.includes("build-profile.js"));

@@ -94,7 +94,7 @@ use this profile:
 
 ```bash
 pnpm add hono
-pnpm add -D vite @hono/vite-dev-server
+pnpm add -D vite@^8 @hono/vite-dev-server
 ```
 
 ```js
@@ -196,8 +196,11 @@ belongs to the host until Async adds an explicit build target contract.
 
 See [`examples/vite-hono`](./examples/vite-hono) for a local Hono app and
 client build setup. See [`examples/vite-jsx-streaming`](./examples/vite-jsx-streaming)
-for the Vite JSX optimizer lane that hides bootstrap setup and selects the
-stream runtime slice from Suspense and Reveal intent.
+for the Vite JSX optimizer lane that hides bootstrap setup and plans the
+stream runtime slice from Suspense and Reveal intent. Slice selection reports
+`signals` and `events` as `available` today; `async-signals` and `stream` are
+reported as `planned` until their runtime entrypoints ship, so streaming
+boundaries are recorded but not yet activated by `@async/framework/runtime`.
 
 ## CDN
 

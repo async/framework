@@ -29,14 +29,16 @@ export function asyncFramework(options = {}) {
 }
 
 function createAsyncFrameworkPlugin(options = {}) {
-  const host = normalizeViteHost(options.host);
-  validateViteRolldownHost(host);
+  if (options.host != null) {
+    validateViteRolldownHost(normalizeViteHost(options.host));
+  }
   const profile = createBuildProfileReport(options.fixture ?? {}, {
     mode: options.mode ?? "development"
   });
   const report = options.layer == null
     ? profile.report
     : { ...profile.report, layer: options.layer };
+  const replacedModules = new Set();
 
   return {
     name: "async-framework",
@@ -56,8 +58,18 @@ function createAsyncFrameworkPlugin(options = {}) {
       }
       return Object.keys(partial).length > 0 ? partial : null;
     },
-    configResolved(config) {
-      validateViteRolldownHost(normalizeViteHost(options.host ?? config));
+    configResolved() {
+      if (options.host != null) {
+        validateViteRolldownHost(normalizeViteHost(options.host));
+        return;
+      }
+      const detected = detectViteHost(this?.meta);
+      if (detected) {
+        validateViteRolldownHost(detected);
+      }
+    },
+    buildStart() {
+      replacedModules.clear();
     },
     resolveId(id) {
       if (id === VIRTUAL_PLAN_ID) {
@@ -72,12 +84,20 @@ function createAsyncFrameworkPlugin(options = {}) {
       return null;
     },
     transform(code, id) {
-      if (!isJsxModule(id) || !usesAsyncJsx(code)) {
+      if (!isJsxModule(id) || !importsAsyncJsx(code)) {
         return null;
+      }
+      const moduleId = String(id);
+      if (!replacedModules.has(moduleId)) {
+        replacedModules.add(moduleId);
+        pluginLog(this, "info", `[async-framework] Replacing "${moduleId}" with the generated bootstrap module. Its own exports are not preserved; the module re-exports { plan, report, startAsyncFramework } from the build profile.`);
+        if (replacedModules.size > 1) {
+          pluginLog(this, "warn", `[async-framework] ${replacedModules.size} modules import @async/framework/jsx and all resolve to the same generated bootstrap. The current build profile supports one bootstrap module per app; keep JSX intent imports in a single entry module. Replaced modules: ${[...replacedModules].join(", ")}.`);
+        }
       }
       return {
         code: emitBootstrapModule(profile),
-        map: null
+        map: { mappings: "" }
       };
     },
     getAsyncFrameworkReport() {
@@ -122,12 +142,115 @@ export function normalizeViteHost(host = {}) {
   };
 }
 
+export function detectViteHost(meta) {
+  if (!meta || typeof meta !== "object") {
+    return undefined;
+  }
+  const viteVersion = meta.viteVersion == null ? undefined : String(meta.viteVersion);
+  const rolldownVersion = meta.rolldownVersion == null ? undefined : String(meta.rolldownVersion);
+  if (viteVersion === undefined && rolldownVersion === undefined) {
+    return undefined;
+  }
+  const major = Number.parseInt(viteVersion ?? "", 10);
+  const engine = rolldownVersion !== undefined || (Number.isFinite(major) && major >= 8)
+    ? "rolldown"
+    : "rollup";
+  return {
+    name: "vite",
+    version: viteVersion ?? "8.0.0",
+    engine
+  };
+}
+
+function pluginLog(context, level, message) {
+  if (context && typeof context[level] === "function") {
+    context[level](message);
+  }
+}
+
 function isJsxModule(id) {
   return /\.(?:jsx|tsx)$/.test(String(id));
 }
 
-function usesAsyncJsx(source) {
-  return /@async\/framework\/jsx/.test(source);
+const ASYNC_JSX_SPECIFIER = String.raw`["']@async\/framework\/jsx(?:\/[\w./-]*)?["']`;
+const ASYNC_JSX_IMPORT_PATTERNS = [
+  // import defaultExport, { named } from "@async/framework/jsx/..."; export { x } from "...";
+  new RegExp(String.raw`\bfrom\s*${ASYNC_JSX_SPECIFIER}`),
+  // side-effect import "@async/framework/jsx/...";
+  new RegExp(String.raw`\bimport\s*${ASYNC_JSX_SPECIFIER}`),
+  // dynamic import("@async/framework/jsx/...")
+  new RegExp(String.raw`\bimport\s*\(\s*${ASYNC_JSX_SPECIFIER}\s*\)`)
+];
+
+export function importsAsyncJsx(source) {
+  const code = stripJsComments(String(source));
+  return ASYNC_JSX_IMPORT_PATTERNS.some((pattern) => pattern.test(code));
+}
+
+function stripJsComments(source) {
+  let out = "";
+  let index = 0;
+  let state = "code";
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (state === "code") {
+      if (char === "/" && next === "/") {
+        state = "line";
+        index += 2;
+        continue;
+      }
+      if (char === "/" && next === "*") {
+        state = "block";
+        index += 2;
+        continue;
+      }
+      if (char === "'") {
+        state = "single";
+      } else if (char === '"') {
+        state = "double";
+      } else if (char === "`") {
+        state = "template";
+      }
+      out += char;
+      index += 1;
+      continue;
+    }
+    if (state === "line") {
+      if (char === "\n") {
+        state = "code";
+        out += char;
+      }
+      index += 1;
+      continue;
+    }
+    if (state === "block") {
+      if (char === "*" && next === "/") {
+        state = "code";
+        out += " ";
+        index += 2;
+        continue;
+      }
+      if (char === "\n") {
+        out += char;
+      }
+      index += 1;
+      continue;
+    }
+    if (char === "\\") {
+      out += char + (next ?? "");
+      index += 2;
+      continue;
+    }
+    if ((state === "single" && char === "'")
+      || (state === "double" && char === '"')
+      || (state === "template" && char === "`")) {
+      state = "code";
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
 }
 
 function normalizeHonoServerOptions(server) {
@@ -146,15 +269,16 @@ function normalizeHonoServerOptions(server) {
   const {
     entry = "src/server.js",
     injectClientScript = true,
-    base = "/",
     ...rest
   } = value;
 
+  // `base` is intentionally not defaulted: @hono/vite-dev-server treats any
+  // defined `base` as an explicit Vite base override. It only flows through
+  // (via rest) when the app author sets it.
   return {
     ...rest,
     entry,
-    injectClientScript,
-    base
+    injectClientScript
   };
 }
 

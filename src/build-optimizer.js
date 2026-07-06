@@ -27,6 +27,15 @@ export const RUNTIME_SLICE_NAMES = Object.freeze([
   "stream"
 ]);
 
+// Slices with a shipped runtime entrypoint (see
+// specs/framework/11-runtime-slice-entrypoints.md). "async-signals" and
+// "stream" are planned: the optimizer records the requirement, but
+// `@async/framework/runtime` cannot activate them yet.
+export const AVAILABLE_RUNTIME_SLICE_NAMES = Object.freeze([
+  "signals",
+  "events"
+]);
+
 const omittedRuntimeSystems = Object.freeze([
   "no-build-loader",
   "router",
@@ -631,16 +640,26 @@ export function selectRuntimeSlices(featureArtifacts = {}, options = {}) {
   const slices = [];
 
   if (hasSignals) {
-    slices.push({ name: "signals", reason: "signal source artifact is non-empty" });
+    slices.push({ name: "signals", status: sliceStatus("signals"), reason: "signal source artifact is non-empty" });
   }
   if (hasEvents) {
-    slices.push({ name: "events", reason: "event symbol artifact is non-empty" });
+    slices.push({ name: "events", status: sliceStatus("events"), reason: "event symbol artifact is non-empty" });
   }
   if (hasAsyncSignals) {
-    slices.push({ name: "async-signals", reason: "async signal source records require status/version state" });
+    slices.push({ name: "async-signals", status: sliceStatus("async-signals"), reason: "async signal source records require status/version state" });
   }
   if (hasStream) {
-    slices.push({ name: "stream", reason: "Suspense or Reveal artifacts require stream boundary coordination" });
+    slices.push({ name: "stream", status: sliceStatus("stream"), reason: "Suspense or Reveal artifacts require stream boundary coordination" });
+  }
+
+  for (const slice of slices) {
+    if (slice.status === "planned") {
+      addDiagnostic(diagnostics, "runtime-slice-planned", `Runtime slice "${slice.name}" is required by the source profile but has no shipped runtime entrypoint yet; its records are reported but not activated by @async/framework/runtime.`, {
+        severity: "warning",
+        pass: "runtime-slice-selection",
+        value: slice.name
+      });
+    }
   }
 
   const entrypoint = chooseRuntimeEntrypoint({ hasSignals, hasEvents, hasAsyncSignals, hasStream });
@@ -861,6 +880,10 @@ function ownershipReason(owner) {
     return "signal is created inside component instance scope";
   }
   return "signal ownership is relative to the current owner";
+}
+
+function sliceStatus(name) {
+  return AVAILABLE_RUNTIME_SLICE_NAMES.includes(name) ? "available" : "planned";
 }
 
 function normalizeEventProfile(profile) {

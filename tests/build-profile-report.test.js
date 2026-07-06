@@ -9,6 +9,8 @@ import {
 } from "../src/build-profile.js";
 import {
   asyncFramework,
+  detectViteHost,
+  importsAsyncJsx,
   normalizeAsyncFrameworkLayer,
   validateViteRolldownHost
 } from "../src/vite.js";
@@ -28,6 +30,18 @@ test("build profile report selects runtime slices without app hub fallback", () 
     "async-signals",
     "stream"
   ]);
+  assert.deepEqual(profile.report.runtime.slices.map((slice) => slice.status), [
+    "available",
+    "available",
+    "planned",
+    "planned"
+  ]);
+  assert.deepEqual(
+    profile.diagnostics
+      .filter((diagnostic) => diagnostic.code === "runtime-slice-planned")
+      .map((diagnostic) => [diagnostic.severity, diagnostic.value]),
+    [["warning", "async-signals"], ["warning", "stream"]]
+  );
   assert.ok(profile.report.runtime.omitted.some((entry) => entry.system === "no-build-loader"));
   assert.deepEqual(profile.report.runtime.fallbacks, []);
   assert.equal(profile.report.generatedLocatorCount, 5);
@@ -165,8 +179,27 @@ test("Vite plugin composes Hono dev server when server options are enabled", asy
   assert.equal(honoPlugin.name, "fake-hono-dev-server");
   assert.deepEqual(honoPlugin.options, {
     entry: "src/server.js",
+    injectClientScript: true
+  });
+});
+
+test("Vite plugin forwards server.base only when the app sets it", async () => {
+  const [, honoPluginPromise] = asyncFramework({
+    server: {
+      base: "/admin"
+    },
+    _importModule: async () => ({
+      default(options) {
+        return { name: "fake-hono-dev-server", options };
+      }
+    })
+  });
+
+  const honoPlugin = await honoPluginPromise;
+  assert.deepEqual(honoPlugin.options, {
+    entry: "src/server.js",
     injectClientScript: true,
-    base: "/"
+    base: "/admin"
   });
 });
 
@@ -204,4 +237,100 @@ test("build profile plugin rejects unsupported hosts before output is trusted", 
     () => asyncFramework({ fixture, host: { name: "vite", version: "8.0.0", engine: "rollup" } }),
     /Rolldown/
   );
+});
+
+test("configResolved validates the host from plugin-context metadata", () => {
+  const plugin = asyncFramework({ fixture });
+
+  // Vite exposes viteVersion (and rolldownVersion under Rolldown) on plugin
+  // context meta; a resolved config object carries no host fields.
+  assert.throws(
+    () => plugin.configResolved.call({ meta: { viteVersion: "7.2.0" } }, { command: "serve" }),
+    /Vite 8\+/
+  );
+  plugin.configResolved.call({ meta: { viteVersion: "8.0.16", rolldownVersion: "1.2.3" } }, {});
+  plugin.configResolved.call({ meta: { viteVersion: "8.0.16" } }, {});
+  // Without metadata the check stays permissive instead of guessing.
+  plugin.configResolved.call({ meta: {} }, { command: "serve", mode: "development", base: "/" });
+  plugin.configResolved({ command: "serve", mode: "development", base: "/" });
+});
+
+test("detectViteHost reads plugin-context metadata shapes", () => {
+  assert.equal(detectViteHost(undefined), undefined);
+  assert.equal(detectViteHost({}), undefined);
+  assert.deepEqual(detectViteHost({ viteVersion: "8.0.16", rolldownVersion: "1.2.3" }), {
+    name: "vite",
+    version: "8.0.16",
+    engine: "rolldown"
+  });
+  assert.deepEqual(detectViteHost({ viteVersion: "8.1.0" }), {
+    name: "vite",
+    version: "8.1.0",
+    engine: "rolldown"
+  });
+  assert.deepEqual(detectViteHost({ viteVersion: "7.1.4" }), {
+    name: "vite",
+    version: "7.1.4",
+    engine: "rollup"
+  });
+  assert.deepEqual(detectViteHost({ viteVersion: "7.1.4", rolldownVersion: "1.0.0" }), {
+    name: "vite",
+    version: "7.1.4",
+    engine: "rolldown"
+  });
+});
+
+test("bootstrap transform requires a real @async/framework/jsx import", () => {
+  const plugin = asyncFramework({ fixture });
+
+  assert.equal(importsAsyncJsx('import { component } from "@async/framework/jsx";'), true);
+  assert.equal(importsAsyncJsx("import { signal } from '@async/framework/jsx/buildtime'"), true);
+  assert.equal(importsAsyncJsx('export { component } from "@async/framework/jsx";'), true);
+  assert.equal(importsAsyncJsx('import "@async/framework/jsx";'), true);
+  assert.equal(importsAsyncJsx('const mod = await import("@async/framework/jsx/runtime");'), true);
+  assert.equal(importsAsyncJsx('import {\n  component,\n  signal\n} from "@async/framework/jsx/buildtime";'), true);
+  // Comment, pragma, and bare string mentions must not trigger replacement.
+  assert.equal(importsAsyncJsx("// migrated from @async/framework/jsx last year"), false);
+  assert.equal(importsAsyncJsx("/** @jsxImportSource @async/framework/jsx/runtime */"), false);
+  assert.equal(importsAsyncJsx('const specifier = "@async/framework/jsx";'), false);
+  assert.equal(importsAsyncJsx('// import { component } from "@async/framework/jsx";'), false);
+
+  const commentOnly = "// migrated from @async/framework/jsx last year\nexport default function App() { return <div>real app</div>; }";
+  assert.equal(plugin.transform(commentOnly, "/app/src/App.jsx"), null);
+
+  const nonJsxFile = 'import { component } from "@async/framework/jsx";';
+  assert.equal(plugin.transform(nonJsxFile, "/app/src/module.js"), null);
+});
+
+test("bootstrap transform logs replacements and warns on bootstrap collapse", () => {
+  const plugin = asyncFramework({ fixture });
+  const infos = [];
+  const warnings = [];
+  const context = {
+    info: (message) => infos.push(String(message)),
+    warn: (message) => warnings.push(String(message))
+  };
+
+  plugin.buildStart.call(context);
+  const first = plugin.transform.call(context, 'import { component } from "@async/framework/jsx";\nexport const A = component(() => <a />);', "/app/A.jsx");
+  assert.match(first.code, /startAsyncFramework/);
+  assert.deepEqual(first.map, { mappings: "" });
+  assert.equal(infos.length, 1);
+  assert.match(infos[0], /Replacing "\/app\/A\.jsx"/);
+  assert.equal(warnings.length, 0);
+
+  // Re-transforming the same module does not repeat the log.
+  plugin.transform.call(context, 'import { component } from "@async/framework/jsx";\nexport const A = component(() => <a />);', "/app/A.jsx");
+  assert.equal(infos.length, 1);
+
+  const second = plugin.transform.call(context, 'import { component } from "@async/framework/jsx";\nexport const B = component(() => <b />);', "/app/B.jsx");
+  assert.equal(second.code, first.code);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /same generated bootstrap/);
+
+  // A new build resets the replacement tracking.
+  plugin.buildStart.call(context);
+  plugin.transform.call(context, 'import { component } from "@async/framework/jsx";', "/app/A.jsx");
+  assert.equal(infos.length, 3);
+  assert.equal(warnings.length, 1);
 });

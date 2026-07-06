@@ -34,13 +34,17 @@
   "jsdelivr": "./browser.umd.min.js",
   "peerDependencies": {
     "@hono/vite-dev-server": ">=0.26.0",
-    "hono": ">=4"
+    "hono": ">=4",
+    "vite": ">=8"
   },
   "peerDependenciesMeta": {
     "@hono/vite-dev-server": {
       "optional": true
     },
     "hono": {
+      "optional": true
+    },
+    "vite": {
       "optional": true
     }
   },
@@ -99,6 +103,16 @@
       "types": "./jsx.d.ts",
       "import": "./jsx.js",
       "default": "./jsx.js"
+    },
+    "./jsx/jsx-runtime": {
+      "types": "./jsx/jsx-runtime.d.ts",
+      "import": "./jsx/jsx-runtime.js",
+      "default": "./jsx/jsx-runtime.js"
+    },
+    "./jsx/jsx-dev-runtime": {
+      "types": "./jsx/jsx-dev-runtime.d.ts",
+      "import": "./jsx/jsx-dev-runtime.js",
+      "default": "./jsx/jsx-dev-runtime.js"
     },
     "./jsx/runtime": {
       "types": "./jsx/runtime.d.ts",

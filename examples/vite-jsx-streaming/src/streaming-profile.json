@@ -5,14 +5,21 @@
       {
         "id": "src/Dashboard.jsx",
         "target": "browser",
-        "imports": ["@async/framework/jsx"]
+        "imports": [
+          "@async/framework/jsx/buildtime"
+        ]
       }
     ],
     "frameworkImports": [
       {
         "sourceId": "src/Dashboard.jsx",
-        "module": "@async/framework/jsx",
-        "names": ["component", "signal", "Suspense", "Reveal"],
+        "module": "@async/framework/jsx/buildtime",
+        "names": [
+          "component",
+          "signal",
+          "Suspense",
+          "Reveal"
+        ],
         "supported": true
       }
     ],
@@ -57,7 +64,9 @@
       {
         "sourceId": "profile",
         "sourceShape": "async-function",
-        "reads": ["profileId"],
+        "reads": [
+          "profileId"
+        ],
         "owner": "shared-module",
         "latest": true,
         "pending": true,
@@ -67,7 +76,9 @@
       {
         "sourceId": "timeline",
         "sourceShape": "async-function",
-        "reads": ["profileId"],
+        "reads": [
+          "profileId"
+        ],
         "owner": "shared-module",
         "latest": true,
         "pending": true,
@@ -82,7 +93,14 @@
         "propName": "onClick",
         "handler": "selectSample",
         "commands": [
-          ["setSignal", "count", ["constant", 1]]
+          [
+            "setSignal",
+            "count",
+            [
+              "constant",
+              1
+            ]
+          ]
         ],
         "emissionMode": "inline"
       }
@@ -93,14 +111,18 @@
         "sourceOrder": 0,
         "fallbackId": "profile:fallback",
         "finalId": "profile:content",
-        "asyncSourceIds": ["profile"]
+        "asyncSourceIds": [
+          "profile"
+        ]
       },
       {
         "boundaryId": "timeline",
         "sourceOrder": 1,
         "fallbackId": "timeline:fallback",
         "finalId": "timeline:content",
-        "asyncSourceIds": ["timeline"]
+        "asyncSourceIds": [
+          "timeline"
+        ]
       }
     ],
     "revealPolicies": [
@@ -108,8 +130,14 @@
         "groupId": "dashboard:reveal",
         "order": "forwards",
         "tail": "collapsed",
-        "boundaryIds": ["profile", "timeline"],
-        "arrivalOrder": ["timeline", "profile"]
+        "boundaryIds": [
+          "profile",
+          "timeline"
+        ],
+        "arrivalOrder": [
+          "timeline",
+          "profile"
+        ]
       }
     ],
     "serverCalls": [],
@@ -120,7 +148,8 @@
       "[data-async-id='count']",
       "[data-async-id='profile']",
       "[data-async-id='timeline']"
-    ]
+    ],
+    "jsxProfile": "buildtime"
   },
   "runtimePlan": {
     "version": 1,
@@ -133,13 +162,37 @@
     ],
     "signals": {
       "version": 1,
-      "values": [["count", 0]],
-      "bindings": [[2, "text", "count"]]
+      "values": [
+        [
+          "count",
+          0
+        ]
+      ],
+      "bindings": [
+        [
+          2,
+          "text",
+          "count"
+        ]
+      ]
     },
     "events": {
       "version": 1,
       "events": [
-        [1, "click", [["setSignal", "count", ["constant", 1]]]]
+        [
+          1,
+          "click",
+          [
+            [
+              "setSignal",
+              "count",
+              [
+                "constant",
+                1
+              ]
+            ]
+          ]
+        ]
       ],
       "handlers": {}
     }

@@ -33,6 +33,8 @@ test("automatic JSX runtime entrypoints are importable from generated dist packa
     await symlink(distRoot, join(root, "node_modules", "@async", "framework"), "dir");
     await writeFile(join(root, "check.mjs"), `
       const specifiers = [
+        "@async/framework/jsx/jsx-runtime",
+        "@async/framework/jsx/jsx-dev-runtime",
         "@async/framework/jsx/runtime/jsx-runtime",
         "@async/framework/jsx/runtime/jsx-dev-runtime",
         "@async/framework/jsx/buildtime/jsx-runtime",

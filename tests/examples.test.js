@@ -81,11 +81,46 @@ test("Vite JSX streaming example selects stream runtime through optimizer profil
     "async-signals",
     "stream"
   ]);
+  assert.deepEqual(profile.report.runtime.slices.map((slice) => slice.status), [
+    "available",
+    "available",
+    "planned",
+    "planned"
+  ]);
   assert.equal(profile.report.stream.suspenseBoundaryCount, 2);
   assert.equal(profile.report.stream.reveal.byOrder.forwards, 1);
   assert.match(transformed.code, /startAsyncFramework/);
   assert.match(transformed.code, /virtual:async-framework\/generated-plan/);
   assert.doesNotMatch(transformed.code, /@async\/framework\/jsx/);
+});
+
+test("Vite JSX streaming fixture stays aligned with the authored source and HTML", () => {
+  const exampleRoot = resolve(examplesRoot, "vite-jsx-streaming");
+  const html = readFileSync(resolve(exampleRoot, "index.html"), "utf8");
+  const jsxSource = readFileSync(resolve(exampleRoot, "src", "Dashboard.jsx"), "utf8");
+
+  // The fixture is the source of truth for the emitted plan until
+  // source-derived profile generation lands; keep it aligned with the files
+  // it claims to describe.
+  for (const locator of streamingProfile.semanticGraph.locators) {
+    const match = locator.match(/^\[data-async-id='([^']+)'\]$/);
+    assert.ok(match, `unsupported locator shape: ${locator}`);
+    assert.ok(
+      html.includes(`data-async-id="${match[1]}"`),
+      `fixture locator ${locator} missing from index.html`
+    );
+    assert.ok(
+      jsxSource.includes(`data-async-id="${match[1]}"`),
+      `fixture locator ${locator} missing from Dashboard.jsx`
+    );
+  }
+
+  for (const frameworkImport of streamingProfile.sourceInventory.frameworkImports) {
+    assert.ok(
+      jsxSource.includes(`from "${frameworkImport.module}"`),
+      `fixture framework import ${frameworkImport.module} missing from Dashboard.jsx`
+    );
+  }
 });
 
 for (const name of staticExamples) {
