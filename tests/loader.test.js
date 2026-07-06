@@ -6,6 +6,7 @@ import {
   component,
   createHandlerRegistry,
   createComponentRegistry,
+  createScheduler,
   createServerRegistry,
   createSignalRegistry,
   defineAttributeConfig,
@@ -14,17 +15,14 @@ import {
   signal
 } from "../src/index.js";
 
-async function waitForText({ document, selector, text, timeoutMs = 200, intervalMs = 1 }) {
-  const deadline = Date.now() + timeoutMs;
-  let current;
-  do {
-    current = document.querySelector(selector)?.textContent;
-    if (current === text) {
-      return;
-    }
-    await delay(intervalMs);
-  } while (Date.now() < deadline);
-  assert.equal(current, text);
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
 }
 
 test("Loader binds text, values, attributes, classes, and input writes", async () => {
@@ -270,16 +268,23 @@ test("Loader renders async boundaries through loading, ready, and error template
     </section>
   `;
 
+  const scheduler = createScheduler({ strategy: "manual" });
   const signals = createSignalRegistry();
+  const product = deferred();
+  const loader = Loader({ root: document.body, signals, scheduler });
   signals.asyncSignal("product", async function () {
-    await delay(5, this.abort);
-    return { title: "Keyboard" };
+    return product.promise;
   });
 
-  Loader({ root: document.body, signals }).start();
+  loader.start();
 
   assert.equal(document.querySelector(".loading").textContent, "Loading");
-  await waitForText({ document, selector: "h1", text: "Keyboard" });
+  await scheduler.flush();
+  product.resolve({ title: "Keyboard" });
+  await product.promise;
+  await Promise.resolve();
+  await scheduler.flush();
+  assert.equal(document.querySelector("h1").textContent, "Keyboard");
 });
 
 test("Loader treats async-suspense as boundary markup without custom element registration", async () => {
@@ -293,16 +298,23 @@ test("Loader treats async-suspense as boundary markup without custom element reg
     </async-suspense>
   `;
 
+  const scheduler = createScheduler({ strategy: "manual" });
   const signals = createSignalRegistry();
+  const product = deferred();
+  const loader = Loader({ root: document.body, signals, scheduler });
   signals.asyncSignal("product", async function () {
-    await delay(5, this.abort);
-    return { title: "Keyboard" };
+    return product.promise;
   });
 
-  Loader({ root: document.body, signals }).start();
+  loader.start();
 
   assert.equal(document.querySelector(".loading").textContent, "Loading");
-  await waitForText({ document, selector: "async-suspense h1", text: "Keyboard" });
+  await scheduler.flush();
+  product.resolve({ title: "Keyboard" });
+  await product.promise;
+  await Promise.resolve();
+  await scheduler.flush();
+  assert.equal(document.querySelector("async-suspense h1").textContent, "Keyboard");
 });
 
 test("Loader dispatches async:error for missing delegated handlers", async () => {
