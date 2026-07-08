@@ -337,15 +337,21 @@ export function createApp(appOrDefinition = Async, options = {}) {
       return runtime;
     },
 
-    async render(url) {
+    async render(url, renderOptions = {}) {
       assertActive();
+      // document: false returns the raw route fragment without the boundary
+      // section or snapshot script — for server route partial envelopes where
+      // the swap target is an already-activated document.
+      const wrapDocument = renderOptions.document !== false;
       configureServerContext({ cache: serverCache });
       signals._setContext?.({ server, cache: serverCache, scheduler });
       const matched = routes.match(url);
       if (!matched) {
         await scheduler.flush();
         return {
-          html: renderDocument("", { status: 404, signals, browserCache, boundary: options.boundary ?? "route", attributes }),
+          html: wrapDocument
+            ? renderDocument("", { status: 404, signals, browserCache, boundary: options.boundary ?? "route", attributes })
+            : "",
           status: 404,
           signals: signals.snapshot(),
           cache: { browser: browserCache.snapshot() }
@@ -381,7 +387,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
 
       const status = result.status ?? 200;
       return {
-        html: renderDocument(result.html, { status, signals, browserCache, boundary: result.boundary ?? options.boundary ?? "route", attributes }),
+        html: wrapDocument
+          ? renderDocument(result.html, { status, signals, browserCache, boundary: result.boundary ?? options.boundary ?? "route", attributes })
+          : result.html ?? "",
         status,
         signals: signals.snapshot(),
         cache: { browser: browserCache.snapshot() }
@@ -475,6 +483,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
     }
     router = router ?? createRouter({
       mode: options.mode ?? "ssr",
+      urlMode: options.urlMode ?? "path",
+      fallback: options.fallback ?? "error",
+      scroll: options.scroll ?? "auto",
       root,
       boundary: options.boundary ?? "route",
       routes,
@@ -484,7 +495,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
       cache: browserCache,
       partials,
       scheduler,
-      attributes
+      attributes,
+      ...(options.routerOptions ?? {})
     });
     runtime.router = router;
     runtime.loader.router = router;

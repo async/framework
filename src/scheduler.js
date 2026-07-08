@@ -21,6 +21,9 @@ export function createScheduler(options = {}) {
     : typeof globalThis.requestIdleCallback === "function"
       ? globalThis.requestIdleCallback.bind(globalThis)
       : undefined;
+  // Upper bound on waiting for an animation frame before committing anyway —
+  // hidden tabs suspend frames entirely. ~3 frames at 60fps.
+  const frameFallbackMs = options.frameFallbackMs ?? 50;
   let destroyed = false;
   let flushing = false;
   let scheduled = false;
@@ -391,7 +394,22 @@ export function createScheduler(options = {}) {
 
   async function waitForPhase(phase) {
     if (phase === "commit" && requestFrame) {
-      await new Promise((resolve) => requestFrame(() => resolve()));
+      // Browsers suspend animation frames in hidden tabs; commits (and any
+      // navigation awaiting them) must still make progress there. Race the
+      // frame against a timeout so visible tabs stay frame-aligned and hidden
+      // tabs fall back to timer cadence instead of freezing.
+      await new Promise((resolve) => {
+        let settled = false;
+        const settle = () => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve();
+          }
+        };
+        const timer = setTimeout(settle, frameFallbackMs);
+        requestFrame(settle);
+      });
       return;
     }
     if (phase === "background" && requestIdle) {

@@ -2098,3 +2098,27 @@ function captureWarnings(fn) {
   }
   return warnings;
 }
+
+test("SSR render with document: false returns the raw route fragment", async () => {
+  const app = defineApp({
+    partial: {
+      "product.page"({ id }) {
+        return html`<h1>Product ${id}</h1>`;
+      }
+    },
+    route: {
+      "/products/:id": defineRoute("product.page")
+    }
+  });
+  const runtime = createApp(app, { target: "server" });
+  const wrapped = await runtime.render("/products/sku-1");
+  const raw = await runtime.render("/products/sku-1", { document: false });
+
+  assert.match(wrapped.html, /async:boundary="route"/);
+  assert.match(wrapped.html, /async:snapshot/);
+  assert.equal(raw.status, 200);
+  assert.doesNotMatch(raw.html, /async:boundary/);
+  assert.doesNotMatch(raw.html, /async:snapshot/);
+  assert.match(raw.html, /<h1>Product sku-1<\/h1>/);
+  runtime.destroy();
+});

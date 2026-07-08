@@ -166,10 +166,14 @@ Routes are matched against normalized URL paths.
 | `/products` | `/products` | `{}` |
 | `/products/:id` | `/products/sku-1` | `{ id: "sku-1" }` |
 | `/docs/:section/:page` | `/docs/runtime/router` | `{ section: "runtime", page: "router" }` |
+| `/repo/tree/*rest` | `/repo/tree/feature/deep/path` | `{ rest: "feature/deep/path" }` |
 | `*` | any unmatched path | `{}` |
 
-Specific routes rank ahead of dynamic routes, and wildcard routes rank last.
-Malformed encoded params are preserved instead of crashing navigation.
+Specific routes rank ahead of dynamic routes, splat routes rank below
+single-segment params, and wildcard routes rank last. A `*name` splat segment
+must be the last segment of its pattern and captures the remaining path
+segments (decoded per segment) as one param. Malformed encoded params are
+preserved instead of crashing navigation.
 
 Query strings are available through `router.query`:
 
@@ -202,6 +206,104 @@ defineRoute({
 
 The matched definition is published at `router.route`, so handlers and signals
 can branch on route metadata without reparsing the URL.
+
+Matched routes can also force native document navigation — useful for
+downloads or raw endpoints that live under an otherwise-routed URL space:
+
+```js
+defineRoute({ render: "document" })
+```
+
+## Server Route Partials
+
+Server-rendered apps keep their HTML on the server. Mark routes with
+`server: true` and client navigation fetches the fragment instead of rendering
+a local partial:
+
+```js
+Async.use({
+  route: {
+    "/": defineRoute({ server: true }),
+    "/:org/:name/tree/*rest": defineRoute({ server: true })
+  }
+});
+
+Async.start({
+  mode: "spa",
+  boundary: "page",
+  fallback: "document",
+  root: document
+});
+```
+
+Navigation to a server route fetches the target URL with
+`Accept: application/x-async-partial` and an `x-async-boundary` request header
+naming the boundary the transition plan wants filled. The server responds with
+a wire server envelope:
+
+```json
+{
+  "__async_server_result__": 1,
+  "title": "History · async/framework",
+  "html": "<main>…</main>",
+  "signals": { "commit.count": 3 }
+}
+```
+
+The envelope flows through the same pipeline as local partial output: `signals`
+and browser cache patches apply first, `html` swaps into the plan boundary (or
+the envelope's own `boundary` override), `redirect` follows the router redirect
+path, and a string `title` updates `document.title`. HTTP redirects followed by
+the fetch update router state and browser history to the final URL.
+
+With `fallback: "document"`, a response that is not an envelope (or a failed
+fetch) falls back to native document navigation, so a server that does not
+recognize the Accept header degrades to a normal page load.
+
+`createRouter({ fetch })` overrides the window fetch for tests or custom
+transports; the router never reaches for ambient `globalThis.fetch`.
+
+## Incremental Adoption And Fallback
+
+`fallback: "document"` makes unmatched navigation leave the app natively
+instead of recording `router.error`. Register the views you want client-side;
+every other same-origin link keeps working as a normal document load. The
+router refuses to document-assign the current browser URL, so an unmatched
+startup URL cannot reload-loop.
+
+## Master-Detail Navigation
+
+List/detail views keyed by a query param (a commit picker, an inbox, a file
+list) want two navigation grains: changing the *view* re-renders everything,
+changing the *selection* should only re-render the detail region. Declare a
+`viewKey` function for view identity and a `subBoundary` for the detail
+region:
+
+```js
+Async.use({
+  route: {
+    "/:org/:name/commits/*ref": defineRoute({
+      server: true,
+      viewKey: ({ params }) => `commits:${params.org}/${params.name}/${params.ref}`,
+      subBoundary: "history-detail"
+    })
+  }
+});
+```
+
+```html
+<section async:boundary="page">
+  <div class="rail">…commit list…</div>
+  <div async:boundary="history-detail">…selected commit…</div>
+</section>
+```
+
+Selecting a commit navigates to `?commit=<sha>` on the same view: the router
+fetches the same URL with `x-async-boundary: history-detail`, the server
+returns only the detail fragment (optionally with `boundary` set in the
+envelope), and the rail — including its scroll position — stays mounted.
+Switching ref changes the computed `viewKey`, so the full page boundary
+re-renders. Back/forward navigation replays the same plans.
 
 ## Router Modes
 
@@ -445,9 +547,13 @@ or move side effects behind explicit user actions.
 Before writing custom navigation code, check whether the built-in router covers
 the need:
 
-- URL params and wildcard fallback: route patterns.
+- URL params, splat segments, and wildcard fallback: route patterns.
 - Static-host navigation: `urlMode: "hash"`.
 - Client-rendered route content: `mode: "csr"` or `mode: "spa"`.
+- Server-rendered route content: `defineRoute({ server: true })` over
+  `mode: "spa"` with `fallback: "document"`.
+- List/detail selection state in the query string: `viewKey` function plus
+  `subBoundary`.
 - URL-backed dashboard state: `mode: "signals"`.
 - High-frequency state refreshes: nested boundaries with `swap(...)` config
   types for bound, unchanged-aware, or batched updates.

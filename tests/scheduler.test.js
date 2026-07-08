@@ -478,3 +478,25 @@ test("microtask scheduler flushes automatically", async () => {
   await delay(0);
   assert.equal(flushed, true);
 });
+
+test("frame-timed commits fall back to a timeout when animation frames are suspended", async () => {
+  // Hidden browser tabs suspend requestAnimationFrame entirely; commits must
+  // still make progress. This rAF never fires.
+  const scheduler = createScheduler({
+    requestAnimationFrame: () => {},
+    frameFallbackMs: 10
+  });
+  assert.equal(scheduler.timing.commit, "frame");
+
+  let committed = false;
+  const commit = scheduler.commit(() => {
+    committed = true;
+  });
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("commit stalled: no frame fallback")), 2000)
+  );
+  await Promise.race([commit, timeout]);
+
+  assert.equal(committed, true);
+  scheduler.destroy();
+});

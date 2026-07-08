@@ -6,6 +6,7 @@ import {
   createCacheRegistry,
   createHandlerRegistry,
   createRouter,
+  createScheduler,
   createSignalRegistry,
   defineRoute,
   delay,
@@ -1396,3 +1397,420 @@ function serverEnvelope(fields = {}) {
     ...fields
   };
 }
+
+// ---------------------------------------------------------------------------
+// Splat patterns, document fallback, server route partials, master-detail.
+
+function fakePartialResponse(envelope, overrides = {}) {
+  return {
+    ok: true,
+    status: 200,
+    redirected: false,
+    url: "",
+    json: async () => envelope,
+    ...overrides
+  };
+}
+
+test("route matching captures multi-segment splat params and ranks them above wildcards", () => {
+  const routes = createRouteRegistry({
+    "*": route("fallback.page"),
+    "/:org/:name/tree/*rest": route("tree.page"),
+    "/:org/:name/commits/*rest": route("commits.page"),
+    "/:org/:name/commit/:sha": route("commit.page")
+  });
+
+  const tree = routes.match("http://app.test/async/framework/tree/feature/deep/path");
+  assert.equal(tree.pattern, "/:org/:name/tree/*rest");
+  assert.deepEqual(tree.params, { org: "async", name: "framework", rest: "feature/deep/path" });
+
+  const encoded = routes.match("http://app.test/async/framework/commits/feat%2Fone/two");
+  assert.deepEqual(encoded.params.rest, "feat/one/two");
+
+  const commit = routes.match("http://app.test/async/framework/commit/abc123");
+  assert.equal(commit.pattern, "/:org/:name/commit/:sha");
+
+  const unmatched = routes.match("http://app.test/totally/elsewhere");
+  assert.equal(unmatched.pattern, "*");
+});
+
+test("splat segments must terminate the pattern", () => {
+  assert.throws(() => createRouteRegistry({ "/a/*rest/b": route("x") }), /must be the last segment/);
+});
+
+test("SPA router with document fallback assigns unmatched URLs natively", async () => {
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1>sku-1</h1></section>`;
+  const assigned = [];
+  window.location.assign = (href) => assigned.push(String(href));
+
+  const router = createRouter({
+    mode: "spa",
+    fallback: "document",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({ "/products/:id": route("product.page") }),
+    partials: createPartialRegistry({ "product.page": ({ id }) => `<h1>${id}</h1>` })
+  }).start();
+
+  await router.navigate("/raw/download/path");
+  assert.deepEqual(assigned, ["http://app.test/raw/download/path"]);
+  assert.equal(router.signals.get("router.error"), null);
+
+  router.destroy();
+});
+
+test("document fallback refuses to reassign the current URL", async () => {
+  const window = new Window({ url: "http://app.test/not-registered" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+  const assigned = [];
+  window.location.assign = (href) => assigned.push(String(href));
+
+  const router = createRouter({
+    mode: "spa",
+    fallback: "document",
+    root: document.body,
+    routes: createRouteRegistry({ "/products/:id": route("product.page") }),
+    partials: createPartialRegistry({ "product.page": ({ id }) => `<h1>${id}</h1>` })
+  }).start();
+
+  await router.navigate("/not-registered");
+  assert.deepEqual(assigned, []);
+  assert.match(String(router.signals.get("router.error")?.message), /No route matched/);
+
+  router.destroy();
+});
+
+test("render document routes navigate natively even when matched", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"></section>`;
+  const assigned = [];
+  window.location.assign = (href) => assigned.push(String(href));
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/archive/*rest": defineRoute({ render: "document" })
+    }),
+    partials: createPartialRegistry({ "home.page": () => "<h1>Home</h1>" })
+  }).start();
+
+  await router.navigate("/archive/v1.0.zip");
+  assert.deepEqual(assigned, ["http://app.test/archive/v1.0.zip"]);
+
+  router.destroy();
+});
+
+test("SPA router fetches server route partials and applies the envelope", async () => {
+  const window = new Window({ url: "http://app.test/async/framework/tree/main" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="page"><h1 id="page-title">tree</h1></section>`;
+  const scrolls = [];
+  window.scrollTo = (x, y) => scrolls.push([x, y]);
+
+  const requests = [];
+  const router = createRouter({
+    mode: "spa",
+    fallback: "document",
+    root: document.body,
+    boundary: "page",
+    fetch: async (url, init) => {
+      requests.push({ url: String(url), headers: init.headers });
+      return fakePartialResponse(serverEnvelope({
+        title: "History · async/framework",
+        html: `<h1 id="page-title">history</h1>`,
+        signals: { "repo.tab": "commits" }
+      }), { url: String(url) });
+    },
+    routes: createRouteRegistry({
+      "/:org/:name/tree/*rest": defineRoute({ server: true }),
+      "/:org/:name/commits/*rest": defineRoute({ server: true })
+    })
+  }).start();
+  router.signals.ensure("repo", {});
+
+  const result = await router.navigate("/async/framework/commits/main");
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "http://app.test/async/framework/commits/main");
+  assert.match(requests[0].headers.accept, /application\/x-async-partial/);
+  assert.equal(requests[0].headers["x-async-boundary"], "page");
+  assert.equal(result.__async_server_result__, 1);
+  assert.equal(document.querySelector("#page-title").textContent, "history");
+  assert.equal(router.signals.get("repo.tab"), "commits");
+  assert.equal(document.title, "History · async/framework");
+  assert.equal(window.location.href, "http://app.test/async/framework/commits/main");
+  assert.deepEqual(scrolls, [[0, 0]]);
+
+  router.destroy();
+});
+
+test("server route partials follow HTTP redirects into router state and history", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="page"><h1 id="page-title">home</h1></section>`;
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "page",
+    fetch: async () => fakePartialResponse(
+      serverEnvelope({ html: `<h1 id="page-title">tree main</h1>` }),
+      { redirected: true, url: "http://app.test/async/framework/tree/main" }
+    ),
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/:org/:name": defineRoute({ server: true }),
+      "/:org/:name/tree/*rest": defineRoute({ server: true })
+    }),
+    partials: createPartialRegistry({ "home.page": () => "<h1>Home</h1>" })
+  }).start();
+
+  await router.navigate("/async/framework");
+
+  assert.equal(document.querySelector("#page-title").textContent, "tree main");
+  assert.equal(router.signals.get("router.path"), "/async/framework/tree/main");
+  assert.deepEqual(router.signals.get("router.params"), { org: "async", name: "framework", rest: "main" });
+  assert.equal(window.location.href, "http://app.test/async/framework/tree/main");
+
+  router.destroy();
+});
+
+test("server route partials fall back to document navigation for non-envelope responses", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="page"><h1 id="page-title">home</h1></section>`;
+  const assigned = [];
+  window.location.assign = (href) => assigned.push(String(href));
+
+  const router = createRouter({
+    mode: "spa",
+    fallback: "document",
+    root: document.body,
+    boundary: "page",
+    fetch: async (url) => fakePartialResponse("<!doctype html><html></html>", {
+      url: String(url),
+      json: async () => {
+        throw new Error("not json");
+      }
+    }),
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/legacy/:id": defineRoute({ server: true })
+    }),
+    partials: createPartialRegistry({ "home.page": () => "<h1>Home</h1>" })
+  }).start();
+
+  await router.navigate("/legacy/42");
+
+  assert.deepEqual(assigned, ["http://app.test/legacy/42"]);
+  assert.equal(document.querySelector("#page-title").textContent, "home");
+  assert.equal(router.signals.get("router.error"), null);
+
+  router.destroy();
+});
+
+test("server route partials surface fetch failures as router errors without document fallback", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="page"></section>`;
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "page",
+    fetch: async () => fakePartialResponse(null, { ok: false, status: 500 }),
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/broken": defineRoute({ server: true })
+    }),
+    partials: createPartialRegistry({ "home.page": () => "<h1>Home</h1>" })
+  }).start();
+
+  await assert.rejects(() => router.navigate("/broken"), /failed with 500/);
+  assert.match(String(router.signals.get("router.error")?.message), /failed with 500/);
+
+  router.destroy();
+});
+
+test("same-view server routes with a subBoundary fetch and swap only the detail region", async () => {
+  const window = new Window({ url: "http://app.test/async/framework/commits/main" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="page">
+      <div id="rail">rail</div>
+      <div async:boundary="history-detail"><p id="detail">first commit</p></div>
+    </section>
+  `;
+
+  const requests = [];
+  const commitsRoute = defineRoute({
+    server: true,
+    viewKey: ({ params }) => `commits:${params.org}/${params.name}/${params.rest}`,
+    subBoundary: "history-detail"
+  });
+  const router = createRouter({
+    mode: "spa",
+    fallback: "document",
+    root: document.body,
+    boundary: "page",
+    fetch: async (url, init) => {
+      requests.push({ url: String(url), boundary: init.headers["x-async-boundary"] });
+      if (init.headers["x-async-boundary"] === "history-detail") {
+        return fakePartialResponse(serverEnvelope({
+          boundary: "history-detail",
+          html: `<p id="detail">commit ${new URL(String(url)).searchParams.get("commit")}</p>`
+        }), { url: String(url) });
+      }
+      return fakePartialResponse(serverEnvelope({
+        html: `<div id="rail">rail v2</div><div async:boundary="history-detail"><p id="detail">head of v2</p></div>`
+      }), { url: String(url) });
+    },
+    routes: createRouteRegistry({ "/:org/:name/commits/*rest": commitsRoute })
+  }).start();
+
+  // Same view (same org/name/rest): only the detail boundary refreshes.
+  await router.navigate("/async/framework/commits/main?commit=abc1234");
+  assert.deepEqual(requests.at(-1), {
+    url: "http://app.test/async/framework/commits/main?commit=abc1234",
+    boundary: "history-detail"
+  });
+  assert.equal(document.querySelector("#detail").textContent, "commit abc1234");
+  assert.equal(document.querySelector("#rail").textContent, "rail");
+  assert.equal(window.location.href, "http://app.test/async/framework/commits/main?commit=abc1234");
+  assert.deepEqual(router.signals.get("router.query"), { commit: "abc1234" });
+
+  // Another selection keeps using the detail boundary.
+  await router.navigate("/async/framework/commits/main?commit=def5678");
+  assert.equal(document.querySelector("#detail").textContent, "commit def5678");
+  assert.equal(document.querySelector("#rail").textContent, "rail");
+
+  // A different ref is a different view: the full page boundary refreshes.
+  await router.navigate("/async/framework/commits/feature/x");
+  assert.deepEqual(requests.at(-1), {
+    url: "http://app.test/async/framework/commits/feature/x",
+    boundary: "page"
+  });
+  assert.equal(document.querySelector("#rail").textContent, "rail v2");
+  assert.equal(document.querySelector("#detail").textContent, "head of v2");
+
+  // And the new view keeps master-detail behavior for its own selections.
+  await router.navigate("/async/framework/commits/feature/x?commit=fff0000");
+  assert.deepEqual(requests.at(-1), {
+    url: "http://app.test/async/framework/commits/feature/x?commit=fff0000",
+    boundary: "history-detail"
+  });
+  assert.equal(document.querySelector("#rail").textContent, "rail v2");
+  assert.equal(document.querySelector("#detail").textContent, "commit fff0000");
+
+  router.destroy();
+});
+
+test("server route prefetch returns the envelope without applying it", async () => {
+  const window = new Window({ url: "http://app.test/" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="page"><h1 id="page-title">home</h1></section>`;
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "page",
+    fetch: async (url) => fakePartialResponse(serverEnvelope({ html: "<h1>preview</h1>" }), { url: String(url) }),
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/preview/:id": defineRoute({ server: true })
+    }),
+    partials: createPartialRegistry({ "home.page": () => "<h1>Home</h1>" })
+  }).start();
+
+  const preview = await router.prefetch("/preview/9");
+
+  assert.equal(preview.__async_server_result__, 1);
+  assert.equal(preview.html, "<h1>preview</h1>");
+  assert.equal(document.querySelector("#page-title").textContent, "home");
+  assert.equal(window.location.href, "http://app.test/");
+  // Router state still describes the mounted route, not the prefetched one.
+  assert.equal(router.signals.get("router.path"), "/");
+
+  router.destroy();
+});
+
+test("SPA navigation completes with frame-timed commits (no batch deadlock)", async () => {
+  // Real browsers schedule commits on animation frames; automatic flushes are
+  // suppressed inside scheduler.batch(...). Navigation must not await commit
+  // completion inside a batch or it deadlocks. Node commits synchronously, so
+  // this test forces frame timing explicitly.
+  const window = new Window({ url: "http://app.test/products/sku-1" });
+  const { document } = window;
+  document.body.innerHTML = `<section async:boundary="route"><h1 id="route-title">sku-1</h1></section>`;
+
+  const scheduler = createScheduler({ requestAnimationFrame: (cb) => setTimeout(() => cb(Date.now()), 0) });
+  assert.equal(scheduler.timing.commit, "frame");
+
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    scheduler,
+    routes: createRouteRegistry({ "/products/:id": route("product.page") }),
+    partials: createPartialRegistry({ "product.page": ({ id }) => `<h1 id="route-title">${id}</h1>` })
+  }).start();
+
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("navigation deadlocked awaiting frame-timed commit")), 3000)
+  );
+  await Promise.race([router.navigate("/products/sku-2"), timeout]);
+
+  assert.equal(document.querySelector("#route-title").textContent, "sku-2");
+  assert.equal(window.location.href, "http://app.test/products/sku-2");
+
+  router.destroy();
+  scheduler.destroy();
+});
+
+test("frame-timed server route partials swap the sub-boundary without deadlock", async () => {
+  const window = new Window({ url: "http://app.test/r/n/commits/main" });
+  const { document } = window;
+  document.body.innerHTML = `
+    <section async:boundary="page">
+      <div id="rail">rail</div>
+      <div async:boundary="history-detail"><p id="detail">first</p></div>
+    </section>
+  `;
+
+  const scheduler = createScheduler({ requestAnimationFrame: (cb) => setTimeout(() => cb(Date.now()), 0) });
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "page",
+    scheduler,
+    fetch: async (url) => fakePartialResponse(serverEnvelope({
+      boundary: "history-detail",
+      html: `<p id="detail">commit ${new URL(String(url)).searchParams.get("commit")}</p>`
+    }), { url: String(url) }),
+    routes: createRouteRegistry({
+      "/:org/:name/commits/*rest": defineRoute({
+        server: true,
+        viewKey: ({ params }) => `c:${params.org}/${params.name}/${params.rest}`,
+        subBoundary: "history-detail"
+      })
+    })
+  }).start();
+
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("sub-boundary navigation deadlocked")), 3000)
+  );
+  await Promise.race([router.navigate("/r/n/commits/main?commit=abc1234"), timeout]);
+
+  assert.equal(document.querySelector("#detail").textContent, "commit abc1234");
+  assert.equal(document.querySelector("#rail").textContent, "rail");
+  assert.equal(window.location.href, "http://app.test/r/n/commits/main?commit=abc1234");
+
+  router.destroy();
+  scheduler.destroy();
+});

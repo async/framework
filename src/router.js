@@ -23,7 +23,11 @@ export const route = defineRoute;
 
 const routerModes = new Set(["csr", "spa", "signals", "ssr", "mpa"]);
 const routerUrlModes = new Set(["path", "hash"]);
-const routeRenderModes = new Set(["auto", "partial", "signals", "none"]);
+const routerFallbackModes = new Set(["error", "document"]);
+const routeRenderModes = new Set(["auto", "partial", "signals", "none", "document"]);
+const serverPartialAccept = "application/x-async-partial";
+const serverPartialBoundaryHeader = "x-async-boundary";
+const documentNavigationResult = Symbol("@async/framework.documentNavigation");
 const emptyHtmlWarnings = new Set();
 
 export function createRouteRegistry(initialMap = {}, options = {}) {
@@ -72,7 +76,10 @@ export function createRouteRegistry(initialMap = {}, options = {}) {
         }
         const params = {};
         candidate.keys.forEach((key, index) => {
-          params[key] = safeDecodeURIComponent(match[index + 1] ?? "");
+          const value = match[index + 1] ?? "";
+          params[key.name] = key.splat
+            ? value.split("/").map(safeDecodeURIComponent).join("/")
+            : safeDecodeURIComponent(value);
         });
         return {
           pattern: candidate.pattern,
@@ -131,6 +138,9 @@ export function createRouter(options = {}) {
   const {
     mode = "ssr",
     urlMode = "path",
+    fallback = "error",
+    scroll = "auto",
+    fetch: fetchOption,
     root,
     boundary = "route",
     routes = createRouteRegistry(),
@@ -144,6 +154,7 @@ export function createRouter(options = {}) {
   } = options;
   assertRouterMode(mode);
   assertRouterUrlMode(urlMode);
+  assertRouterFallback(fallback);
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = loader?.signals ?? createSignalRegistry();
@@ -174,6 +185,8 @@ export function createRouter(options = {}) {
   const api = {
     mode,
     urlMode,
+    fallback,
+    scroll,
     root: rootNode,
     boundary,
     routes,
@@ -225,6 +238,10 @@ export function createRouter(options = {}) {
         return Promise.resolve(null);
       }
       const matched = api.match(url);
+      if (matched?.route?.server) {
+        return fetchServerPartial(resolveUrl(url), { boundary: routeBoundary(matched) }, prefetchNavigation())
+          .then((result) => (result === documentNavigationResult ? null : result));
+      }
       if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
         return partials.render(matched.route.partial, matched.params, {
           ...contextFor(matched),
@@ -240,11 +257,15 @@ export function createRouter(options = {}) {
       const matched = api.match(target);
       const plan = planTransition(target, matched, options);
       if (plan.kind === "document") {
-        documentRef.defaultView?.location?.assign?.(browserUrlForRoute(target).href);
+        documentNavigate(target);
         return null;
       }
 
       if (!matched) {
+        if (fallback === "document" && canDocumentNavigate(target)) {
+          documentNavigate(target);
+          return null;
+        }
         beginNavigation(target, null);
         setNoRouteError(target);
         return null;
@@ -337,24 +358,44 @@ export function createRouter(options = {}) {
     setMatchedRouterState(target, matched, { pending: true, error: null });
 
     try {
-      if (!matched.route?.partial || !partials?.resolve?.(matched.route.partial)) {
-        const error = new Error(`Route "${target.pathname}" does not have a registered partial.`);
-        if (isActiveNavigation(navigation)) {
-          setRouterState({ pending: false, error });
+      let result;
+      if (matched.route?.server === true) {
+        result = await fetchServerPartial(target, plan, navigation);
+        if (!isActiveNavigation(navigation)) {
+          return null;
         }
-        return null;
+        if (result === documentNavigationResult) {
+          setRouterState({ pending: false, error: null });
+          documentNavigate(target);
+          return null;
+        }
+      } else {
+        if (!matched.route?.partial || !partials?.resolve?.(matched.route.partial)) {
+          const error = new Error(`Route "${target.pathname}" does not have a registered partial.`);
+          if (isActiveNavigation(navigation)) {
+            setRouterState({ pending: false, error });
+          }
+          return null;
+        }
+        result = await partials.render(matched.route.partial, matched.params, contextFor(matched, navigation));
       }
-
-      const result = await partials.render(matched.route.partial, matched.params, contextFor(matched, navigation));
       if (!isActiveNavigation(navigation)) {
         return null;
       }
-      await applyNavigationResult(result, target, options, navigation, plan);
+      // A server partial fetch may have followed HTTP redirects; router state,
+      // history, and the route snapshot must describe the final URL.
+      const effectiveTarget = navigation.redirected ?? target;
+      const effectiveMatched = navigation.redirected ? api.match(effectiveTarget) ?? matched : matched;
+      await applyNavigationResult(result, effectiveTarget, options, navigation, plan);
       if (!isActiveNavigation(navigation)) {
         return null;
       }
-      activeRouteSnapshot = routeSnapshot(target, matched, plan);
-      setRouterState({ pending: false, error: null });
+      activeRouteSnapshot = routeSnapshot(effectiveTarget, effectiveMatched, plan);
+      if (navigation.redirected) {
+        setMatchedRouterState(effectiveTarget, effectiveMatched, { pending: false, error: null });
+      } else {
+        setRouterState({ pending: false, error: null });
+      }
       return result;
     } catch (error) {
       if (!isActiveNavigation(navigation)) {
@@ -388,35 +429,64 @@ export function createRouter(options = {}) {
     if (!isActiveNavigation(navigation)) {
       return;
     }
-    await schedulerInstance.batch(async () => {
-      await applyServerResult(result, {
-        signals: signalRegistry,
-        loader: loaderInstance,
-        router: api,
-        cache,
-        scheduler: schedulerInstance,
-        abort: navigation?.abort
-      });
-      if (!isActiveNavigation(navigation)) {
-        return;
-      }
-      if (result && Object.hasOwn(result, "html") && result.html === undefined) {
-        warnEmptyPartialHtml(plan?.boundary ?? boundary);
-      }
-      if (shouldSwapRouteResult(result)) {
-        const swapped = loaderInstance.swap(plan?.boundary ?? boundary, result.html);
-        await loaderInstance._whenCommitted?.(swapped);
-      }
+    // Never await commit completion inside scheduler.batch(...): automatic
+    // flushes are suppressed while a batch is open, and frame-timed commits
+    // only settle on flush — awaiting them in-batch deadlocks navigation in
+    // real browsers (node test environments commit synchronously and hide
+    // this). Signal patches coalesce through the microtask flush anyway.
+    await applyServerResult(result, {
+      signals: signalRegistry,
+      loader: loaderInstance,
+      router: api,
+      cache,
+      scheduler: schedulerInstance,
+      abort: navigation?.abort
     });
+    if (!isActiveNavigation(navigation)) {
+      return;
+    }
+    if (result && Object.hasOwn(result, "html") && result.html === undefined) {
+      warnEmptyPartialHtml(plan?.boundary ?? boundary);
+    }
+    if (shouldSwapRouteResult(result)) {
+      const swapped = loaderInstance.swap(plan?.boundary ?? boundary, result.html);
+      await loaderInstance._whenCommitted?.(swapped);
+    }
     await schedulerInstance.flush();
     if (!isActiveNavigation(navigation)) {
       return;
+    }
+    if (typeof result?.title === "string" && documentRef) {
+      documentRef.title = result.title;
     }
     if (result?.redirect || options.history === false) {
       syncObservedHistory(target);
       return;
     }
     updateBrowserHistory(target, options);
+    if (scroll !== false && !options.replace && didSwapNavigationResult(result)) {
+      scrollAfterNavigation(target);
+    }
+  }
+
+  function didSwapNavigationResult(result) {
+    return Boolean(
+      result &&
+        (shouldSwapRouteResult(result) ||
+          (result.boundary && Object.hasOwn(result, "html") && result.html !== undefined && result.status !== 204))
+    );
+  }
+
+  function scrollAfterNavigation(target) {
+    const view = documentRef.defaultView;
+    if (target.hash) {
+      const anchor = documentRef.getElementById?.(safeDecodeURIComponent(target.hash.slice(1)));
+      if (anchor?.scrollIntoView) {
+        anchor.scrollIntoView();
+        return;
+      }
+    }
+    view?.scrollTo?.(0, 0);
   }
 
   function contextFor(matched, navigation) {
@@ -432,6 +502,80 @@ export function createRouter(options = {}) {
       scheduler: schedulerInstance,
       abort: navigation?.abort
     };
+  }
+
+  // Fetches the matched route's fragment from the server: same target URL,
+  // negotiated with the async partial Accept header plus the boundary the
+  // transition plan wants filled. The server answers with a wire server
+  // envelope ({ __async_server_result__: 1, html, signals, ... }) which flows
+  // through the same applyNavigationResult path as local partial output.
+  async function fetchServerPartial(target, plan, navigation) {
+    const view = documentRef.defaultView;
+    const fetchFn = fetchOption ?? (typeof view?.fetch === "function" ? view.fetch.bind(view) : null);
+    if (typeof fetchFn !== "function") {
+      throw new Error('Server route partials require a window fetch or a createRouter "fetch" option.');
+    }
+    let response;
+    try {
+      response = await fetchFn(browserUrlForRoute(target).href, {
+        headers: {
+          accept: `${serverPartialAccept}, application/json`,
+          [serverPartialBoundaryHeader]: plan?.boundary ?? boundary
+        },
+        credentials: "same-origin",
+        signal: navigation?.abort
+      });
+    } catch (error) {
+      if (navigation?.abort?.aborted) {
+        return null;
+      }
+      if (fallback === "document") {
+        return documentNavigationResult;
+      }
+      throw error;
+    }
+    if (!response.ok) {
+      if (fallback === "document") {
+        return documentNavigationResult;
+      }
+      throw new Error(`Server partial for "${target.pathname}" failed with ${response.status}.`);
+    }
+    let result;
+    try {
+      result = await response.json();
+    } catch (cause) {
+      if (fallback === "document") {
+        return documentNavigationResult;
+      }
+      throw new Error(`Server partial for "${target.pathname}" returned invalid JSON.`, { cause });
+    }
+    if (!result || typeof result !== "object" || !result.__async_server_result__) {
+      if (fallback === "document") {
+        return documentNavigationResult;
+      }
+      throw new Error(`Server partial for "${target.pathname}" did not return a server envelope.`);
+    }
+    if (navigation && response.redirected && response.url) {
+      const redirected = resolveUrl(response.url);
+      if (redirected.href !== target.href) {
+        navigation.redirected = redirected;
+      }
+    }
+    return result;
+  }
+
+  function prefetchNavigation() {
+    return { abort: undefined, redirected: null };
+  }
+
+  function documentNavigate(target) {
+    documentRef.defaultView?.location?.assign?.(browserUrlForRoute(target).href);
+  }
+
+  // Guards fallback document navigation against reload loops: assigning the
+  // browser's current URL would re-run startup against the same unmatched URL.
+  function canDocumentNavigate(target) {
+    return browserUrlForRoute(target).href !== currentBrowserUrl().href;
   }
 
   function beginNavigation(target, matched) {
@@ -585,6 +729,15 @@ export function createRouter(options = {}) {
         target
       };
     }
+    if (routeRenderMode(matched) === "document") {
+      return {
+        kind: "document",
+        reason: "route-render",
+        boundary: planBoundary,
+        match: matched,
+        target
+      };
+    }
     if (!options.force && isSameRouteSnapshot(target, matched, planBoundary)) {
       return {
         kind: "noop",
@@ -614,6 +767,17 @@ export function createRouter(options = {}) {
       };
     }
     if (!options.force && renderMode !== "partial" && isSameView(matched, planBoundary)) {
+      // Master-detail routes: same view, new URL state. With a subBoundary the
+      // route re-renders only its detail region; otherwise state-only.
+      if (matched.route?.subBoundary) {
+        return {
+          kind: "partial",
+          reason: "same-view-sub",
+          boundary: matched.route.subBoundary,
+          match: matched,
+          target
+        };
+      }
       return {
         kind: "signals",
         reason: "same-view",
@@ -637,7 +801,9 @@ export function createRouter(options = {}) {
       pattern: matched?.pattern ?? null,
       route: matched?.route ?? null,
       params: matched?.params ?? {},
-      boundary: plan.boundary ?? routeBoundary(matched),
+      // Always the route-level boundary: a same-view-sub plan swaps a nested
+      // boundary, but view identity comparisons stay on the route boundary.
+      boundary: routeBoundary(matched) ?? plan.boundary,
       viewKey: routeViewKey(matched)
     };
   }
@@ -671,7 +837,12 @@ export function createRouter(options = {}) {
   }
 
   function routeViewKey(matched) {
-    return matched?.route?.viewKey ?? null;
+    const viewKey = matched?.route?.viewKey;
+    if (typeof viewKey === "function") {
+      const computed = viewKey(matched);
+      return computed == null ? null : String(computed);
+    }
+    return viewKey ?? null;
   }
 
   function assertActive() {
@@ -740,8 +911,18 @@ function assertRouteDefinition(definition) {
   if (definition.boundary != null && (typeof definition.boundary !== "string" || definition.boundary.length === 0)) {
     throw new TypeError("Route boundary must be a non-empty string.");
   }
-  if (definition.viewKey != null && (typeof definition.viewKey !== "string" || definition.viewKey.length === 0)) {
-    throw new TypeError("Route viewKey must be a non-empty string.");
+  if (definition.subBoundary != null && (typeof definition.subBoundary !== "string" || definition.subBoundary.length === 0)) {
+    throw new TypeError("Route subBoundary must be a non-empty string.");
+  }
+  if (
+    definition.viewKey != null &&
+    typeof definition.viewKey !== "function" &&
+    (typeof definition.viewKey !== "string" || definition.viewKey.length === 0)
+  ) {
+    throw new TypeError("Route viewKey must be a non-empty string or a function of the route match.");
+  }
+  if (definition.server != null && typeof definition.server !== "boolean") {
+    throw new TypeError("Route server must be a boolean.");
   }
 }
 
@@ -754,11 +935,18 @@ function compilePattern(pattern) {
     return { regex: /^\/$/, keys };
   }
 
-  const source = pattern
-    .split("/")
-    .map((segment) => {
+  const segments = pattern.split("/");
+  const source = segments
+    .map((segment, index) => {
+      if (segment.length > 1 && segment.startsWith("*")) {
+        if (index !== segments.length - 1) {
+          throw new TypeError(`Splat segment "${segment}" must be the last segment of "${pattern}".`);
+        }
+        keys.push({ name: segment.slice(1), splat: true });
+        return "(.+)";
+      }
       if (segment.startsWith(":")) {
-        keys.push(segment.slice(1));
+        keys.push({ name: segment.slice(1), splat: false });
         return "([^/]+)";
       }
       return escapeRegExp(segment);
@@ -825,6 +1013,12 @@ function assertRouterUrlMode(mode) {
   }
 }
 
+function assertRouterFallback(fallback) {
+  if (!routerFallbackModes.has(fallback)) {
+    throw new TypeError(`Unknown router fallback "${fallback}".`);
+  }
+}
+
 function warnEmptyPartialHtml(boundary) {
   const key = String(boundary);
   if (emptyHtmlWarnings.has(key)) {
@@ -877,6 +1071,9 @@ function routeScore(pattern) {
     .reduce((score, segment) => {
       if (segment === "*") {
         return score;
+      }
+      if (segment.startsWith("*")) {
+        return score + 1;
       }
       if (segment.startsWith(":")) {
         return score + 2;
