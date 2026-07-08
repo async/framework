@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.16.0 - 2026-07-08
+
+- Added server route partials: `defineRoute({ server: true })` makes CSR/SPA
+  navigation fetch the target URL with `Accept: application/x-async-partial`
+  (plus an `x-async-boundary` request header naming the boundary the
+  transition plan wants filled) and apply the returned wire server envelope
+  (`{ __async_server_result__: 1, html, signals, cache, boundary, redirect,
+  title }`) through the existing navigation pipeline. HTTP redirects followed
+  by the fetch update router state, the route snapshot, and browser history to
+  the final URL. `createRouter(...)` accepts a `fetch` option to override the
+  window fetch (tests, custom transports); ambient `globalThis.fetch` is never
+  used. `prefetch(...)` returns the fetched envelope without applying it.
+- Added a router `fallback` option (`"error"` default, `"document"`): with
+  `fallback: "document"`, unmatched navigation in client modes performs native
+  document navigation instead of dead-ending in `router.error`, enabling
+  incremental SPA adoption over server-rendered apps. Assigning the current
+  browser URL is refused to prevent reload loops. Server-partial responses
+  that are not envelopes (or fail) also fall back to document navigation in
+  this mode.
+- Added `render: "document"` route definitions: matched routes can force
+  native document navigation (downloads, raw endpoints) while staying
+  registered.
+- Added multi-segment splat patterns: `/:org/:name/tree/*rest` captures the
+  remaining segments (decoded per segment) as `params.rest`. Splat segments
+  must terminate the pattern and rank above `*` wildcard routes and below
+  single-segment params.
+- Added master-detail navigation: `viewKey` may now be a function of the route
+  match, and routes may declare `subBoundary`. A same-view navigation (same
+  computed `viewKey`) on a route with `subBoundary` renders/fetches into that
+  nested boundary instead of going state-only, so query-driven detail panes
+  (e.g. `?commit=<sha>`) swap without touching the surrounding view. Route
+  snapshots keep comparing view identity on the route-level boundary.
+- Partial results with a string `title` now update `document.title`, and
+  client navigations that swapped content scroll to the top (or to the URL
+  hash target) unless the router is created with `scroll: false`.
+- `Async.start(...)` now forwards `urlMode`, `fallback`, and `scroll` to the
+  runtime router and accepts a `routerOptions` object for the remaining
+  `createRouter(...)` options.
+- Server runtime `render(url, { document: false })` returns the raw route
+  fragment without the boundary section or snapshot script, for building
+  server route partial envelopes whose swap target is an already-activated
+  document.
+- Fixed a navigation deadlock in CSR/SPA modes with frame-timed commits (real
+  browsers): `applyNavigationResult` awaited boundary commit completion inside
+  `scheduler.batch(...)`, where automatic flushes are suppressed, so route
+  swaps could stall indefinitely and never update `document.title`, history,
+  or `router.pending`. Commit awaits now happen outside the batch. Node test
+  environments commit synchronously, which is why the suite never caught it;
+  new regression tests force frame timing.
+- Frame-timed commits now race the animation frame against a timeout
+  (`frameFallbackMs`, default 50ms): browsers suspend `requestAnimationFrame`
+  in hidden tabs, which froze boundary commits — and anything awaiting them,
+  including router navigation — until the tab became visible again. Visible
+  tabs stay frame-aligned; hidden tabs fall back to timer cadence.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 259,693 B (259.7 KB / 0.260 MB), gzip 49,336 B (49.3 KB / 0.049 MB), br 40,621 B (40.6 KB / 0.041 MB) -> `browser.min.js` raw 108,501 B (108.5 KB / 0.109 MB), gzip 31,770 B (31.8 KB / 0.032 MB), br 27,913 B (27.9 KB / 0.028 MB); delta raw -151,192 B (-151.2 KB / -0.151 MB), gzip -17,566 B (-17.6 KB / -0.018 MB), br -12,708 B (-12.7 KB / -0.013 MB).
+
 ## 0.15.3 - 2026-07-06
 
 - Memoized attribute-prefix normalization by config identity so activation
