@@ -6,6 +6,21 @@ import {
   emitGeneratedPlanModule
 } from "./build-profile.js";
 
+// Framework entrypoints excluded from Vite dependency optimization by
+// default (see the config hook below). Exported so apps and tests can extend
+// or assert against the list.
+export const frameworkOptimizeDepsExclude = Object.freeze([
+  "@async/framework",
+  "@async/framework/browser",
+  "@async/framework/router",
+  "@async/framework/flow",
+  "@async/framework/stream",
+  "@async/framework/jsx",
+  "@async/framework/jsx/jsx-runtime",
+  "@async/framework/jsx/jsx-dev-runtime",
+  "@async/framework/jsx/runtime"
+]);
+
 export function asyncFramework(options = {}) {
   const normalizedLayer = normalizeAsyncFrameworkLayer(options.layer);
   const serverOptions = normalizeHonoServerOptions(options.server);
@@ -55,6 +70,16 @@ function createAsyncFrameworkPlugin(options = {}) {
       }
       if (options.client && env.mode === "client") {
         partial.build = createClientBuildConfig(config.build, options.client);
+      }
+      // Keep the framework out of Vite's dependency optimizer. The published
+      // entrypoints are already flat ESM bundles, so prebundling buys nothing
+      // — and its cache does not watch file:/link: dependency contents, which
+      // serves stale framework code to apps developing against a local
+      // checkout until node_modules/.vite is deleted by hand.
+      if (options.optimizeFrameworkDeps !== true) {
+        partial.optimizeDeps = {
+          exclude: [...frameworkOptimizeDepsExclude]
+        };
       }
       return Object.keys(partial).length > 0 ? partial : null;
     },
