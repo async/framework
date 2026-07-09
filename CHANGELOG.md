@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.18.1 - 2026-07-09
+
+- Reorganized the README into a compact guide and moved the deeper material
+  into focused docs for install/load, app registries, server calls, SSR
+  activation, streaming boundaries, entrypoints, and Vite/Hono setup.
+- Updated the layer docs and specs to use L0-L7 abstraction layers
+  consistently, including clearer L0 server-led HTML, native forms/actions,
+  and optional enhancement boundaries.
+- Added `examples/hateoas-actions`: a Hono-rendered HATEOAS account flow where
+  links and native form verbs remain the source of truth, while Async enhances
+  the returned fragments into `async:boundary` swaps.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 261,003 B (261.0 KB / 0.261 MB), gzip 49,799 B (49.8 KB / 0.050 MB), br 41,084 B (41.1 KB / 0.041 MB) -> `browser.min.js` raw 108,690 B (108.7 KB / 0.109 MB), gzip 31,875 B (31.9 KB / 0.032 MB), br 28,013 B (28.0 KB / 0.028 MB); delta raw -152,313 B (-152.3 KB / -0.152 MB), gzip -17,924 B (-17.9 KB / -0.018 MB), br -13,071 B (-13.1 KB / -0.013 MB).
+
 ## 0.18.0 - 2026-07-08
 
 - BREAKING: unified lifecycle vocabulary on "attach" and removed the "mount"
