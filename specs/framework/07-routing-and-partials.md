@@ -38,7 +38,7 @@ integration:
   `Async.router.ready()` for app-level router access that queues until the
   runtime router exists.
 - `Async.router.loader.*` for queued access to the active router loader's swap,
-  refresh, scan, and mount APIs.
+  refresh, scan, and attach APIs.
 - Runtime integration layer: `createRouter({ mode, urlMode, root, boundary,
   loader })` for custom runtime wiring that already owns materialized runtime
   registries.
@@ -66,7 +66,7 @@ Route records may include:
 - `render`: `"auto"`, `"partial"`, `"signals"`, `"none"`, or `"document"`.
   `"document"` forces native document navigation for matched routes such as
   downloads or raw endpoints.
-- `viewKey`: stable mounted view identity for same-view signal navigation. May
+- `viewKey`: stable attached view identity for same-view signal navigation. May
   be a string or a function of the route match; function results compare as
   strings.
 - `subBoundary`: nested boundary for same-view master-detail navigation. When
@@ -92,7 +92,7 @@ Router modes:
   navigation uses the transition planner.
 - `spa`: existing HTML may contain route content and later navigation uses the
   transition planner.
-- `signals`: existing HTML stays mounted while navigation updates router
+- `signals`: existing HTML stays attached while navigation updates router
   signals and browser history only.
 - `ssr`: the document is server-rendered and browser navigation stays native.
 - `mpa`: any document source and browser navigation stays native.
@@ -158,7 +158,7 @@ Routing resume behavior:
 - SPA mode may use existing route HTML as the initial state, then own later
   local navigation.
 - Route boundary swaps must rescan inserted protocol attributes.
-- Route-only navigation must preserve mounted DOM and update router state
+- Route-only navigation must preserve attached DOM and update router state
   without requiring noop partials.
 - Route-only shells may bind view boundaries to `router.*` signal reads so
   same-tick route state changes coalesce into one unchanged-aware refresh.

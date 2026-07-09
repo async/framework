@@ -131,7 +131,7 @@ partial declarations in the same registry path as signals, handlers,
 components, cache entries, and server calls. `Async.router.navigate(...)` and
 `Async.router.prefetch(...)` queue until the runtime router exists.
 `Async.router.loader.*` gives the same queued access to the active router
-loader's swap, refresh, scan, and mount APIs.
+loader's swap, refresh, scan, and attach APIs.
 
 ```js
 Async.start({
@@ -301,7 +301,7 @@ Async.use({
 Selecting a commit navigates to `?commit=<sha>` on the same view: the router
 fetches the same URL with `x-async-boundary: history-detail`, the server
 returns only the detail fragment (optionally with `boundary` set in the
-envelope), and the rail — including its scroll position — stays mounted.
+envelope), and the rail — including its scroll position — stays attached.
 Switching ref changes the computed `viewKey`, so the full page boundary
 re-renders. Back/forward navigation replays the same plans.
 
@@ -311,7 +311,7 @@ re-renders. Back/forward navigation replays the same plans.
 | --- | --- | --- | --- |
 | `csr` | Client renders a local partial into an empty boundary | Client renders and swaps | A no-build page owns route content on the client |
 | `spa` | Existing route HTML may already be present | Client renders and swaps | SSR or static HTML should stay visible until navigation |
-| `signals` | Existing HTML stays mounted | Router updates signals and history only | A shell renderer reacts to URL state itself |
+| `signals` | Existing HTML stays attached | Router updates signals and history only | A shell renderer reacts to URL state itself |
 | `ssr` | Server-rendered document activates | Browser navigation stays native | Navigation belongs to the server |
 | `mpa` | Any document source | Browser navigation stays native | Traditional multi-page navigation |
 

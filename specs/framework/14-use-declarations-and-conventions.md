@@ -176,7 +176,7 @@ module policy decides whether the second install warns, is ignored, or fails.
 
 Facades such as `Async.loader` and `Async.router` may queue named actions before
 their concrete owner exists. The facade must expose explicit methods such as
-`ready`, `scan`, `swap`, `mount`, `navigate`, and `prefetch`; it must not route
+`ready`, `scan`, `swap`, `attach`, `navigate`, and `prefetch`; it must not route
 hot paths through a `Proxy`. Once the owner is active, queued actions flush in
 order and later calls dispatch directly to the concrete owner.
 

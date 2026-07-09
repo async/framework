@@ -204,7 +204,7 @@ Non-goals for the initial signal slice:
 - No generic `signal:*` attribute scanning.
 - No async signals.
 - No inline binding registry.
-- No component mount lifecycle.
+- No component attach lifecycle.
 - No route, cache, server, partial, or boundary integration.
 - No automatic input-to-signal writer. Input writing belongs to the events
   slice because it installs event listeners.

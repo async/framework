@@ -51,4 +51,4 @@ No-build components can receive explicit template children from a direct child t
 </section>
 ```
 
-The loader captures the children template before the component mounts, then scans inserted content after render.
+The loader captures the children template before the component attaches, then scans inserted content after render.

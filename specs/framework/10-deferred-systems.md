@@ -76,7 +76,7 @@ System 2 systems must lower into explicit protocol records:
   path for binding, scheduling, snapshot restore, or browser protocol records.
 - Browser apps that author Flow declarations import from
   `@async/framework/flow`; the default browser entrypoint may preserve the
-  registry shape without carrying Flow mounting code.
+  registry shape without carrying Flow attachment code.
 
 ## Resume Contract
 

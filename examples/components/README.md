@@ -5,8 +5,8 @@ class bindings, and attribute bindings.
 
 Key files:
 
-- `index.html` provides the `#app` mount point.
-- `main.js` defines and mounts the `Toggle` component.
+- `index.html` provides the `#app` host element.
+- `main.js` defines and attaches the `Toggle` component.
 
 Start from the repo root:
 

@@ -32,7 +32,7 @@ The runtime exposes:
 - `Async.inspectRoots()` and `Async.inspectRuntime()` for diagnostics that do
   not expose the runtime as the public singleton API.
 - `Async.loader.ready()`, `Async.loader.scan(...)`,
-  `Async.loader.swap(...)`, `Async.loader.mount(...)`, and
+  `Async.loader.swap(...)`, `Async.loader.attach(...)`, and
   `Async.loader.inspect()` for promise-returning loader work that may be issued
   before a browser root has been attached.
 - `runtime.registry` and `Async.registry` for inspection.
@@ -76,7 +76,7 @@ Runtime activation must support resumed documents:
 
 - A browser runtime can start with an existing document and snapshot.
 - A rootless runtime can prepare registries before the root exists.
-- The app-level loader facade can queue scan, swap, and mount operations until
+- The app-level loader facade can queue scan, swap, and attach operations until
   a concrete runtime loader exists.
 - Attaching a root scans existing protocol attributes and connects them to the
   runtime registries.

@@ -896,8 +896,8 @@ aggregate form `class:="buttonClasses"` also remains supported.
 ### Command Events
 
 `on:*` works with any native DOM event name. `on:attach` and `on:visible` are
-reserved component lifecycle pseudo-events with cleanup support. `on:mount`
-remains as a compatibility alias for `on:attach` and warns when used.
+reserved component lifecycle pseudo-events with cleanup support. `on:mount` was
+removed; stale markup warns and does not run.
 When an `on:attach` handler installs listeners, observers, timers, or DOM
 helpers, return a cleanup function. Boundary swaps destroy the old subtree and
 run returned cleanup functions before inserting the next fragment.
@@ -1143,7 +1143,7 @@ Router modes:
 | --- | --- | --- | --- |
 | `csr` | Client renders local partial into boundary | Client renders local partial and swaps | A no-build page owns route content on the client |
 | `spa` | Existing HTML may already contain route | Client renders local partial and swaps | SSR or static HTML should stay visible until navigation |
-| `signals` | Existing HTML stays mounted | Updates `router.*` signals and history only | A shell renderer reacts to URL state itself |
+| `signals` | Existing HTML stays attached | Updates `router.*` signals and history only | A shell renderer reacts to URL state itself |
 | `ssr` | Server-rendered document plus snapshot activation | Browser navigates normally | Navigation belongs to the server |
 | `mpa` | Any document source | Browser navigates normally | Traditional multi-page navigation |
 
@@ -1304,7 +1304,7 @@ const snapshot = readSnapshot(document);
 
 `Async.loader` is a promise-returning facade for script-friendly loader work
 that may run before the app has attached a root. Calls to `scan`, `swap`, and
-`mount` queue until `Async.start({ root })` or `Async.attachRoot(root)` creates
+`attach` queue until `Async.start({ root })` or `Async.attachRoot(root)` creates
 the concrete runtime loader:
 
 ```js
@@ -1362,7 +1362,7 @@ const Toggle = component(function Toggle() {
 });
 
 const loader = Loader({ root: document });
-loader.mount(document.querySelector("#app"), Toggle);
+loader.attach(document.querySelector("#app"), Toggle);
 ```
 
 Component helpers:
@@ -1381,9 +1381,8 @@ Component helpers:
 | `this.suspense(signalRef, views)` | Async boundary template helper |
 | `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
 | `this.onAttach(fn)` | Fragment attach lifecycle fallback |
-| `this.onMount(fn)` | Compatibility alias for `this.onAttach(fn)` that warns when used |
 | `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
-| `this.on("intersect", options?, fn)` | Continuous intersection lifecycle for the mounted component scope |
+| `this.on("intersect", options?, fn)` | Continuous intersection lifecycle for the attached component scope |
 | `this.intersect(element, options?, fn)` | Component-owned continuous intersection observer for a direct element |
 
 `this.suspense(...)` is sugar for Loader boundaries:
@@ -1472,22 +1471,22 @@ children:
 ```
 
 The loader captures only a direct child `<template async:children>` before
-mounting the registered component. Ordinary host content is not implicitly
+attaching the registered component. Ordinary host content is not implicitly
 captured, and the template content is inserted and scanned only if the
 component interpolates `children`.
 
 Do not pass `children` in the props object when also using the third argument.
 Default children are consumed once by interpolation; use `this.slot(...)` for
-post-mount replacement and use ordinary props when the child needs data from the
+post-attach replacement and use ordinary props when the child needs data from the
 caller.
 
-Component-scoped signals and handlers are unregistered when the mounted
-fragment is destroyed. `loader.swap(...)` cleans up old DOM bindings and mounted
+Component-scoped signals and handlers are unregistered when the attached
+fragment is destroyed. `loader.swap(...)` cleans up old DOM bindings and attached
 component fragments under the swapped boundary before inserting the new HTML.
 
 Lifecycle fallbacks are scoped to the component fragment that registered them.
-A component mounted directly with `loader.mount(target, Component)` receives the
-mount target. A child rendered through `this.render(Child)` receives its own
+A component attached directly with `loader.attach(target, Component)` receives the
+attach target. A child rendered through `this.render(Child)` receives its own
 single element root when one exists. If the child returns text or multiple root
 nodes, the fallback target is the nearest containing element. `this.onVisible`
 and `this.on("intersect", ...)` observe the same scoped target.

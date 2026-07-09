@@ -23,4 +23,4 @@ const Toggle = component(function Toggle() {
 });
 
 const loader = Loader({ root: document });
-loader.mount(document.querySelector("#app"), Toggle);
+loader.attach(document.querySelector("#app"), Toggle);

@@ -63,7 +63,7 @@ do not become refresh dependencies unless the render function reads the signal
 itself or the path is listed in `deps`.
 
 `Async.loader.scan(...)`, `Async.loader.swap(...)`, `Async.loader.refresh(...)`,
-and `Async.loader.mount(...)` are promise-returning app-level facade methods.
+and `Async.loader.attach(...)` are promise-returning app-level facade methods.
 They queue until a concrete runtime loader exists. `Async.loader.swap(...)` and
 refresh calls that perform swaps resolve only after the scheduled commit,
 inserted-DOM scan and binding, and post-commit flush complete.
@@ -112,12 +112,12 @@ DOM resume means existing HTML becomes live by scanning:
 - Preserved `on:attach` nodes skip re-attach unless the swap uses
   `attach: "rebind"`. The loader warns in development when morph preserves an
   `on:attach` node but removes listener-bearing descendants.
-- `async:component` mounts a registered component into an element during scan.
+- `async:component` attaches a registered component into an element during scan.
 - A direct child `<template async:children>` under an `async:component` host is
   captured as explicit source children before the component replaces the host
   children. Ordinary host content is not captured implicitly.
 - Loader facade queues preserve operation order before bootstrap and flush into
-  normal scan, swap, and mount behavior after root attachment.
+  normal scan, swap, and attach behavior after root attachment.
 - Repeated scans are idempotent for already-bound event and signal attributes.
 
 ## Invariants
@@ -140,7 +140,7 @@ DOM resume means existing HTML becomes live by scanning:
 - Invalid command chains fail before partially running unsupported commands.
 - Server commands reject raw DOM locals before transport.
 - `async:children` on a non-template direct child of an `async:component` host
-  throws before mounting the component.
+  throws before attaching the component.
 - Multiple direct child `<template async:children>` nodes under one
   `async:component` host throw before choosing a source.
 - Destroyed loaders reject scanning and swapping.

@@ -36,8 +36,6 @@ Component helpers include:
 - `this.on(event, fn)` with `attach`, `visible`, `intersect`, and `destroy`
   behavior.
 - `this.onAttach(fn)` and `this.onVisible(fn)` lifecycle helpers.
-- `this.onMount(fn)` remains a compatibility alias for `this.onAttach(fn)` and
-  warns when used.
 - `this.intersect(element, options, fn)` for direct element observation.
 
 Components return HTML-compatible values. Promise-returning components are not
@@ -51,7 +49,7 @@ children callback directly.
 
 Registered no-build component hosts may pass default children with a direct
 child `<template async:children>`. The loader captures that template before
-mounting the component and passes it through the same children fragment
+attaching the component and passes it through the same children fragment
 contract. Ordinary host inner HTML is never captured implicitly.
 
 Children fragments are lazy when supplied as factories, caller-lexical through
@@ -60,8 +58,8 @@ and cleaned up with the consuming component fragment. Supplying both
 `props.children` and the third `this.render(...)` argument is invalid.
 
 Lifecycle fallback hooks are scoped to the component fragment that registered
-them. A component mounted directly with `loader.mount(target, Component)`
-receives the mount target. A child rendered through `this.render(Child)`
+them. A component attached directly with `loader.attach(target, Component)`
+receives the attach target. A child rendered through `this.render(Child)`
 receives its own single element root when one exists. If the child returns text
 or multiple root nodes, the fallback target is the nearest containing element.
 `this.onVisible(...)` and `this.on("intersect", ...)` observe the same scoped
@@ -90,15 +88,15 @@ Components emit the same protocol as hand-authored HTML:
   stay in one scoped path.
 - Captured `<template async:children>` content is inserted and scanned only when
   the component interpolates `children`.
-- Slots mount a child component into an attached DOM target and may recompute
-  props from signals without exposing loader mounting to application code.
+- Slots attach a child component into an attached DOM target and may recompute
+  props from signals without exposing loader attachment to application code.
 
 ## Resume Contract
 
 Components must not be required to rerun to activate server-rendered DOM:
 
 - Protocol attributes inside component output are the resume surface.
-- Scoped cleanup metadata must be associated with mounted fragments when the
+- Scoped cleanup metadata must be associated with attached fragments when the
   component rendered in the browser.
 - Future compiler layers may precompute component protocol artifacts for
   already-rendered DOM instead of calling component bodies on browser resume.
@@ -110,7 +108,7 @@ Components must not be required to rerun to activate server-rendered DOM:
 - Component output does not cause a component rerender loop.
 - Default children do not create a parent rerender path or runtime JSX node
   array.
-- Default children and slots are separate primitives: children are mount-time
+- Default children and slots are separate primitives: children are attach-time
   projection; slots are explicit attached child replacement.
 - Slot updates are explicit child component replacement, not parent rerendering.
 - Component-local state and handlers are unregistered on fragment cleanup.
@@ -130,14 +128,14 @@ Components must not be required to rerun to activate server-rendered DOM:
 - Consuming the same children fragment twice fails instead of duplicating
   handler IDs or cleanup records.
 - Non-template direct `async:children` markers and multiple direct children
-  templates under one `async:component` host fail before mount.
+  templates under one `async:component` host fail before attach.
 - Observer-less environments report unsupported intersection behavior through
   the defined fallback path.
 
 ## Acceptance Criteria
 
 - A component can create scoped local signals and handlers, render them into
-  protocol attributes, and update DOM after mounting.
+  protocol attributes, and update DOM after attachment.
 - Attach, visible, intersect, and destroy hooks run in deterministic scheduler
   phases.
 - Component cleanup removes scoped handlers, scoped signals, inline bindings,

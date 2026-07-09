@@ -32,9 +32,9 @@ Package surfaces include:
 - `@async/framework/browser` for browser runtime APIs.
 - `@async/framework/stream` for opt-in browser streaming boundary receivers.
 - `@async/framework/flow` for opt-in browser Flow authoring helpers and Flow
-  runtime mounting.
+  runtime attachment.
 - `@async/framework/router` for opt-in browser route helpers, route registries,
-  and router runtime mounting.
+  and router runtime attachment.
 - `@async/framework/server` for server-capable APIs.
 - `@async/framework/jsx` for the current build-required JSX authoring helpers.
 - `@async/framework/vite` for the current Vite 8+ with Rolldown build-required

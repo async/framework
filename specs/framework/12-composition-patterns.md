@@ -10,7 +10,7 @@ into one `children` escape hatch.
 | --- | --- | --- |
 | Default children | The caller supplies content and the callee places it once. | The callee must pass row, state, or option data into the content. |
 | Component-valued props | The caller chooses reusable markup and the callee renders it with explicit props. | The callsite wants one-off static projection. |
-| Slots | A local child component changes after mount and old child cleanup must run. | The content is static mount-time projection. |
+| Slots | A local child component changes after attach and old child cleanup must run. | The content is static attach-time projection. |
 | Partials and boundaries | Server, route, stream, or async work owns replacement. | Local component composition is enough. |
 
 Named regions, scoped templates, and source-level outlets are not current
@@ -85,7 +85,7 @@ for protocol attributes.
 
 ## Slots And Boundaries
 
-Use `this.slot(...)` for local post-mount child replacement. Use partials and
+Use `this.slot(...)` for local post-attach child replacement. Use partials and
 boundaries when server, route, stream, or async work owns replacement.
 
 ### L1
