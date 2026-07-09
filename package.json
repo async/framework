@@ -1,6 +1,6 @@
 {
   "name": "@async/framework",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "No-build Loader app runtime with browser and server entrypoints, signals, command events, route partials, cache split, SSR activation, and streaming boundaries.",
   "type": "module",
   "private": true,

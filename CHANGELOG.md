@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.17.0 - 2026-07-08
+
+- Memoized boundary-element lookup in the loader: `loader.swap(...)` resolved
+  its boundary id by walking the entire document on every swap (visible as a
+  full-document traversal per History selection); the element is now cached
+  weakly per id and re-resolved only when it leaves the document or loses its
+  boundary id.
+- Activation now scans a scope with a single tree traversal: pseudo-event
+  dispatch (attach/visible/intersect) reuses the shared element collection
+  instead of a second walk. Component-mounted children keep their own nested
+  scan.
+- The Vite plugin excludes the framework entrypoints from
+  `optimizeDeps` (opt out with `optimizeFrameworkDeps: true`): the published
+  entrypoints are flat ESM bundles, and Vite's prebundle cache does not watch
+  `file:`/`link:` dependency contents — local framework rebuilds were served
+  stale until `node_modules/.vite` was deleted by hand.
+- Navigation failures from intercepted links, forms, and history events are
+  now logged with `console.error` (they have no caller to reject to), and
+  unmatched navigation without `fallback: "document"` logs a `console.warn`
+  with guidance — previously both failed silently.
+- Added a commit stall watchdog: `loader._whenCommitted(...)` warns
+  (`commitStallWarningMs`, default 2000ms, `0`/`false` disables) when a
+  boundary commit has not settled, naming the await-inside-`scheduler.batch`
+  deadlock composition so it is diagnosable instead of a silent freeze.
+- `router.prefetch(...)` on `server: true` routes now caches the fetched
+  envelope briefly (`prefetchTtlMs` option, default 5000ms); the next
+  navigation with a matching URL and boundary consumes it single-use instead
+  of refetching.
+- Added `tests/performance/`: deterministic hot-path performance contracts
+  (activation scan traversal counts, attribute-config memoization, swap
+  rescan scoping, scheduler/signal write coalescing, single frame wait per
+  commit batch, router fast-path work counts) plus a hot-path registry
+  (`tests/performance/hot-paths.json`). A coverage guardrail keeps the
+  registry, the `// @hot-paths:` headers in contract tests, and the
+  `test.performance` pipeline task inputs in sync, so changes to a registered
+  hot-path source automatically re-run the suite. The swap-rescan contracts
+  caught the boundary-lookup walk fixed above.
+- Categorized the test tree into suites — `tests/unit/`, `tests/runtime/`,
+  `tests/router/`, `tests/server/`, `tests/timing/`, `tests/performance/`,
+  `tests/build/`, and `tests/examples/` — with matching `test:<suite>`
+  scripts (see `tests/README.md`). Added a dedicated `tests/timing/` suite covering
+  rendering and `requestAnimationFrame` gotchas under explicit frame-timed
+  schedulers: suspended-frame fallbacks, exactly-once frame/fallback races,
+  FIFO commit ordering, commits scheduled inside open batches, loader swaps
+  with rebinding and ordering, handler-initiated swaps, signal/swap
+  coalescing, and router navigation (local partials, server partials with
+  sub-boundaries, suspended frames, popstate).
+- Bundle size from bundled TypeScript source: `browser.ts` raw 261,577 B (261.6 KB / 0.262 MB), gzip 50,018 B (50.0 KB / 0.050 MB), br 41,211 B (41.2 KB / 0.041 MB) -> `browser.min.js` raw 108,975 B (109.0 KB / 0.109 MB), gzip 32,004 B (32.0 KB / 0.032 MB), br 28,111 B (28.1 KB / 0.028 MB); delta raw -152,602 B (-152.6 KB / -0.153 MB), gzip -18,014 B (-18.0 KB / -0.018 MB), br -13,100 B (-13.1 KB / -0.013 MB).
+
 ## 0.16.0 - 2026-07-08
 
 - Added server route partials: `defineRoute({ server: true })` makes CSR/SPA
@@ -54,52 +103,7 @@
   in hidden tabs, which froze boundary commits — and anything awaiting them,
   including router navigation — until the tab became visible again. Visible
   tabs stay frame-aligned; hidden tabs fall back to timer cadence.
-- Memoized boundary-element lookup in the loader: `loader.swap(...)` resolved
-  its boundary id by walking the entire document on every swap (visible as a
-  full-document traversal per History selection); the element is now cached
-  weakly per id and re-resolved only when it leaves the document or loses its
-  boundary id.
-- Activation now scans a scope with a single tree traversal: pseudo-event
-  dispatch (attach/visible/intersect) reuses the shared element collection
-  instead of a second walk. Component-mounted children keep their own nested
-  scan.
-- The Vite plugin excludes the framework entrypoints from
-  `optimizeDeps` (opt out with `optimizeFrameworkDeps: true`): the published
-  entrypoints are flat ESM bundles, and Vite's prebundle cache does not watch
-  `file:`/`link:` dependency contents — local framework rebuilds were served
-  stale until `node_modules/.vite` was deleted by hand.
-- Navigation failures from intercepted links, forms, and history events are
-  now logged with `console.error` (they have no caller to reject to), and
-  unmatched navigation without `fallback: "document"` logs a `console.warn`
-  with guidance — previously both failed silently.
-- Added a commit stall watchdog: `loader._whenCommitted(...)` warns
-  (`commitStallWarningMs`, default 2000ms, `0`/`false` disables) when a
-  boundary commit has not settled, naming the await-inside-`scheduler.batch`
-  deadlock composition so it is diagnosable instead of a silent freeze.
-- `router.prefetch(...)` on `server: true` routes now caches the fetched
-  envelope briefly (`prefetchTtlMs` option, default 5000ms); the next
-  navigation with a matching URL and boundary consumes it single-use instead
-  of refetching.
-- Added `tests/performance/`: deterministic hot-path performance contracts
-  (activation scan traversal counts, attribute-config memoization, swap
-  rescan scoping, scheduler/signal write coalescing, single frame wait per
-  commit batch, router fast-path work counts) plus a hot-path registry
-  (`tests/performance/hot-paths.json`). A coverage guardrail keeps the
-  registry, the `// @hot-paths:` headers in contract tests, and the
-  `test.performance` pipeline task inputs in sync, so changes to a registered
-  hot-path source automatically re-run the suite. The swap-rescan contracts
-  caught the boundary-lookup walk fixed above.
-- Categorized the test tree into suites — `tests/unit/`, `tests/runtime/`,
-  `tests/router/`, `tests/server/`, `tests/timing/`, `tests/performance/`,
-  `tests/build/`, and `tests/examples/` — with matching `test:<suite>`
-  scripts (see `tests/README.md`). Added a dedicated `tests/timing/` suite covering
-  rendering and `requestAnimationFrame` gotchas under explicit frame-timed
-  schedulers: suspended-frame fallbacks, exactly-once frame/fallback races,
-  FIFO commit ordering, commits scheduled inside open batches, loader swaps
-  with rebinding and ordering, handler-initiated swaps, signal/swap
-  coalescing, and router navigation (local partials, server partials with
-  sub-boundaries, suspended frames, popstate).
-- Bundle size from bundled TypeScript source: `browser.ts` raw 261,577 B (261.6 KB / 0.262 MB), gzip 50,018 B (50.0 KB / 0.050 MB), br 41,211 B (41.2 KB / 0.041 MB) -> `browser.min.js` raw 108,975 B (109.0 KB / 0.109 MB), gzip 32,004 B (32.0 KB / 0.032 MB), br 28,111 B (28.1 KB / 0.028 MB); delta raw -152,602 B (-152.6 KB / -0.153 MB), gzip -18,014 B (-18.0 KB / -0.018 MB), br -13,100 B (-13.1 KB / -0.013 MB).
+- Bundle size from bundled TypeScript source: `browser.ts` raw 259,693 B (259.7 KB / 0.260 MB), gzip 49,336 B (49.3 KB / 0.049 MB), br 40,621 B (40.6 KB / 0.041 MB) -> `browser.min.js` raw 108,501 B (108.5 KB / 0.109 MB), gzip 31,770 B (31.8 KB / 0.032 MB), br 27,913 B (27.9 KB / 0.028 MB); delta raw -151,192 B (-151.2 KB / -0.151 MB), gzip -17,566 B (-17.6 KB / -0.018 MB), br -12,708 B (-12.7 KB / -0.013 MB).
 
 ## 0.15.3 - 2026-07-06
 
