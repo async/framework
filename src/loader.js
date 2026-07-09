@@ -7,7 +7,7 @@ import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attri
 
 const inlineBindingPrefix = "__async:inline:";
 
-export function Loader({ root, signals, handlers, server, router, cache, components, attributes, scheduler } = {}) {
+export function Loader({ root, signals, handlers, server, router, cache, components, attributes, scheduler, commitStallWarningMs = 2000 } = {}) {
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
@@ -31,6 +31,10 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   const boundaryCommitChains = new WeakMap();
   const boundaryCommits = new WeakMap();
   const pendingCommits = new Set();
+  // boundary id -> WeakRef(element), validated on every hit (connected + id
+  // intact). Weak so a replaced boundary's detached subtree can be collected
+  // instead of being pinned until the id is next resolved.
+  const boundaryElementCache = new Map();
   let inlineBindingCounter = 0;
   let boundaryBindingCounter = 0;
   let destroyed = false;
@@ -163,8 +167,27 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     },
 
     async _whenCommitted(result) {
-      await whenCommitted(result);
-      return result;
+      // Stall watchdog: commit-completion promises settle on flush, and
+      // automatic flushes are suppressed inside scheduler.batch(...) — so
+      // awaiting one from inside a batch (event handlers run in a batch)
+      // deadlocks. That failure mode is silent; give it a name.
+      if (!commitStallWarningMs) {
+        await whenCommitted(result);
+        return result;
+      }
+      const timer = setTimeout(() => {
+        console.warn?.(
+          `[async/loader] a boundary commit has not settled after ${commitStallWarningMs}ms. ` +
+            "If this await runs inside scheduler.batch(...) or an event handler, it deadlocks — " +
+            "swap fire-and-forget instead, or await outside the batch."
+        );
+      }, commitStallWarningMs);
+      try {
+        await whenCommitted(result);
+        return result;
+      } finally {
+        clearTimeout(timer);
+      }
     }
   };
 
@@ -179,10 +202,21 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   });
 
   function requireBoundary(boundaryId) {
+    // Boundary lookup is on the swap hot path. Resolving the id used to walk
+    // the entire document on every swap; memoize by id and re-walk only when
+    // the cached element left the document or lost its boundary id (e.g. an
+    // outer swap replaced it).
+    const key = String(boundaryId);
+    const cached = boundaryElementCache.get(key)?.deref();
+    if (cached && cached.isConnected && boundaryIdFor(cached, attributeConfig) === key) {
+      return cached;
+    }
     const boundary = findBoundary(rootNode, boundaryId, attributeConfig);
     if (!boundary) {
+      boundaryElementCache.delete(key);
       throw new Error(`Boundary "${boundaryId}" was not found.`);
     }
+    boundaryElementCache.set(key, new WeakRef(boundary));
     return boundary;
   }
 
@@ -467,11 +501,12 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
 
   function scanScope(scope, scanOptions = {}) {
     // Collect the scope's elements once with a single TreeWalk and share the
-    // list across the passes that only read/annotate existing elements
-    // (revive, signals, classes, events, boundaries, component hosts). Only
-    // pseudo-events run on a fresh walk, since component mounting above may
-    // have added children they need to see. This replaces ~8 querySelectorAll
-    // traversals with 2 walks.
+    // list across every pass — revive, signals, classes, events, boundaries,
+    // component hosts, and pseudo-events. Children added by component
+    // mounting do not need a fresh walk here: api.mount(...) runs a nested
+    // api.scan(host) over its rendered subtree (including pseudo-events)
+    // before this pass reaches them, and mounted/visible bookkeeping dedupes
+    // re-visits. This replaces ~8 querySelectorAll traversals with 1 walk.
     const elements = elementsIn(scope, scanOptions);
     const shared = { ...scanOptions, elements };
     reviveScopes(scope, shared);
@@ -480,7 +515,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     bindEventAttributes(scope, shared);
     bindBoundaries(scope, shared);
     bindComponentAttributes(scope, shared);
-    runPseudoEvents(scope, scanOptions);
+    runPseudoEvents(scope, shared);
   }
 
   function bindEventAttributes(scope, scanOptions) {
