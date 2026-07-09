@@ -16,7 +16,8 @@
       "pages": [
         { "title": "Getting Started", "route": "/docs/getting-started", "source": "start/getting-started.md" },
         { "title": "Why Async", "route": "/docs/why-async", "source": "start/why-async.md" },
-        { "title": "Core Concepts", "route": "/docs/core-concepts", "source": "start/core-concepts.md" }
+        { "title": "Core Concepts", "route": "/docs/core-concepts", "source": "start/core-concepts.md" },
+        { "title": "Layers", "route": "/docs/layers", "source": "start/layers.md" }
       ]
     },
     {

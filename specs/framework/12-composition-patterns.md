@@ -22,7 +22,7 @@ the current contract.
 Default children are framework-owned fragments consumed by interpolation. They
 are projection, not callback props.
 
-### L1
+### L1 Interpret
 
 Released:
 
@@ -40,7 +40,7 @@ No-build component hosts can pass default children with an explicit template:
 </section>
 ```
 
-### L1.5
+### L5 Stream
 
 Default children stream with the boundary that contains them. Give the content
 its own `async:boundary` only when it needs independent server, route, stream,
@@ -55,7 +55,7 @@ Component-valued props let the caller choose a component that the callee renders
 with explicit props. This is useful for reusable rows, icons, empty views,
 panels, or editors.
 
-### L1
+### L1 Interpret
 
 Released through ordinary component-valued props:
 
@@ -74,7 +74,7 @@ this.render(List, { rows, Item: ProductRow });
 The callee owns when each child component is rendered. The caller owns the
 component implementation and receives explicit props from the callee.
 
-### L1.5
+### L5 Stream
 
 The presenter prop chooses a component; it does not choose stream order. The
 callee can wrap presenter instances in `async:boundary` elements when each item
@@ -88,7 +88,7 @@ for protocol attributes.
 Use `this.slot(...)` for local post-attach child replacement. Use partials and
 boundaries when server, route, stream, or async work owns replacement.
 
-### L1
+### L1 Interpret
 
 Released local slot:
 
@@ -104,7 +104,7 @@ Released boundary target:
 <section async:boundary="product"></section>
 ```
 
-### L1.5
+### L5 Stream
 
 `this.slot(...)` is local replacement owned by the current component.
 `async:boundary` is the stream target. Boundary patches can apply signal,
@@ -127,7 +127,7 @@ execution channel.
 | Positional children arrays | Explicit prop names. |
 | Mixed slot and children APIs | Slots for replacement, children for projection. |
 
-### L1
+### L1 Interpret
 
 Avoid callable default children:
 
@@ -147,7 +147,7 @@ const Row = component(function Row({ row }) {
 this.render(List, { rows, Item: Row });
 ```
 
-### L1.5
+### L5 Stream
 
 Out-of-order streaming does not make ambiguous composition safer. Put
 `async:boundary` on the rendered content that needs independent patches, but

@@ -25,7 +25,7 @@ convention.
   configurable policy.
 - Preserve queued loader and router facades without adding a `Proxy` to hot
   runtime paths.
-- Give compiler-emitted L2 JSX artifacts the same declaration and convention
+- Give compiler-emitted L4 JSX artifacts the same declaration and convention
   path as no-build apps.
 
 ## Public Contract
@@ -180,14 +180,14 @@ their concrete owner exists. The facade must expose explicit methods such as
 hot paths through a `Proxy`. Once the owner is active, queued actions flush in
 order and later calls dispatch directly to the concrete owner.
 
-## L2 JSX Relationship
+## L4 JSX Relationship
 
-L2 JSX author code groups behavior by meaning. The compiler may emit
+L4 JSX author code groups behavior by meaning. The compiler may emit
 declarations, conventions, and private plans at the points where runtime
 ownership needs them. A JSX component, route file, or server action does not
 need to become a public module container. Its output can lower into the same
-`Async.use(...)`, registry, convention, and start/resolve path used by L1 and
-L1.5 apps.
+`Async.use(...)`, registry, convention, and start/resolve path used by apps
+on the no-compiler rungs.
 
 ## Invariants
 

@@ -27,31 +27,51 @@ root workspace `AGENTS.md` still applies.
 - Preserve the core runtime contract: no VDOM, no hidden hydration/diff/rerender
   path, no implicit fetches during startup, and no server-only state or cache
   contents leaking into browser snapshots.
-- Keep Layer 1 and Layer 1.5 understandable without future compiler layers.
-  L2 or compiler-required work must compile down to the same HTML,
-  registry, snapshot, server-envelope, route-partial, cache, and boundary
-  protocol.
+- Keep the no-compiler rungs (L0-L3, L5) understandable without future
+  compiler layers. Compiler-rung work (L4, L6, L7) must compile down to the
+  same HTML, registry, snapshot, server-envelope, route-partial, cache, and
+  boundary protocol.
 
 ## Framework Shorthand
 
 Use these abbreviations in ADRs, issues, review notes, and Codex prompts:
 
-- `L1`: Layer 1, the no-build browser runtime core. It owns DOM scanning,
-  attribute prefixes, event binding, signals, command handlers, startup, and the
-  smallest usable runtime.
-- `L1.5`: Layer 1.5, the no-build/low-build server and streaming bridge above
-  the runtime core. It owns scheduler ordering, async signal settling, SSR
-  activation, route partials, browser/server cache split, boundary patches,
-  stream sequencing, and reveal/OOS coordination without requiring a compiler.
-- `L2`: Layer 2, the build-required authoring/compiler profile. It owns JSX/TSX
-  authoring, build adapters, optimizer reports, generated plans, generated
-  registries, and chunk/manifest decisions that lower onto L1 and L1.5
-  protocols.
-- `NB`: no-build profile. Author HTML and JavaScript run directly with
-  `Async.start(...)`, default shorthand attributes, and no compiler.
-- `BR`: build-required profile. Author JSX/TSX uses imports such as
-  `@async/framework/jsx`; the compiler/optimizer emits L1/L1.5-compatible
-  output.
+The layer model is the L0-L7 abstraction ladder owned by
+`specs/framework/15-abstraction-layers.md`. Rungs are authoring abstractions;
+capabilities are protocol properties available from the lowest rung the
+protocol allows.
+
+- `L0` Enhance: behavior references on server-owned HTML. Protocol attributes
+  plus a script tag; native/MPA partial swaps; no app model, build, or client
+  router.
+- `L1` Interpret: the runtime-interpreted app model, no build. Registries,
+  `Async.use(...)` conventions, scoped fragment components, lifecycle,
+  scheduler-batched bindings.
+- `L2` Bundle: build as delivery plus client routing and an app server.
+  Bundling must not change protocol semantics; the build stays optional here.
+- `L3` SSR: server-rendered component functions with browser activation from
+  snapshots. No hydration, no rerender. (Not "Resume": resume is the
+  protocol-wide contract, not a rung.)
+- `L4` Transform: JSX/TSX source transforms lowering onto the same protocol,
+  plus co-located server functions extracted at build time. First rung where
+  a build is required.
+- `L5` Stream: progressive documents; boundary fallback and settling; reveal
+  ordering; async signals settling server-side. No compiler required.
+- `L6` Reorder: out-of-order settling automated by the Optimizer: chunks,
+  lazy descriptors, generated plans, runtime slices. The OOS protocol itself
+  is L5-available.
+- `L7` Optimize: whole-program compiler
+  (`specs/framework/16-whole-program-compiler.md`). Specification only.
+- Legacy mapping: pre-2026-07 notes use `L1` for rungs L0-L1, `L1.5` for the
+  server/streaming capability set (now spread across L3 and L5), and `L2` for
+  the compiler rungs (L4, L6, L7). See the legacy table in
+  `specs/framework/15-abstraction-layers.md`.
+- `NB`: no-build profile, covering rungs L0-L3 and L5. Author HTML and
+  JavaScript run directly with `Async.start(...)`, default shorthand
+  attributes, and no compiler.
+- `BR`: build-required profile, covering rungs L4, L6, and L7. Author JSX/TSX
+  uses imports such as `@async/framework/jsx`; the compiler/optimizer emits
+  protocol-compatible output the no-compiler rungs can speak.
 - `OOS`: out-of-order streaming/rendering. Chunks may become ready in a
   different order than source order.
 - `Suspense`: async boundary ownership for fallback and final content.
@@ -59,8 +79,9 @@ Use these abbreviations in ADRs, issues, review notes, and Codex prompts:
   `forwards`, `backwards`, `together`, plus tail visibility.
 - `Plan`: generated or virtual framework plan. In BR it is private compiler
   plumbing, not a hand-written author API.
-- `Optimizer`: the BR compiler pipeline that classifies source, signals,
+- `Optimizer`: the L6 BR compiler pipeline that classifies source, signals,
   ownership, events, Suspense/Reveal, runtime slices, chunks, and plan output.
+  Distinct from the deferred L7 whole-program compiler.
 
 ## Attribute Example Style
 

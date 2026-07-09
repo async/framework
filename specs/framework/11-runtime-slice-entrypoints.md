@@ -7,7 +7,10 @@ optimized built-mode runtime entrypoints under `@async/framework/runtime/*`.
 
 Async's root browser runtime stays the no-build, protocol-first API. Runtime
 slice entrypoints add a second delivery lane for generated or bundled apps that
-already know which protocol records they need.
+already know which protocol records they need. In the
+[15-abstraction-layers.md](./15-abstraction-layers.md) ladder this is L6
+Reorder machinery: plans are Optimizer output first, and slices exist so
+compiled apps pay only for what their plans reference.
 
 The goal is to let built apps pay only for the runtime features they use:
 signals, planned DOM bindings, delegated events, and later router, boundary, or

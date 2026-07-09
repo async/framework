@@ -1,22 +1,27 @@
 # Deferred Systems
 
 Reference file for [Async Framework](../framework.md). This file captures
-System 2 work that should not distort the current System 1 runtime protocol.
+deferred compiler-rung work (System 2: rungs L4, L6, and L7 of
+[15-abstraction-layers.md](./15-abstraction-layers.md)) that should not
+distort the released runtime protocol. The L7 whole-program compiler has its
+own reference file,
+[16-whole-program-compiler.md](./16-whole-program-compiler.md).
 
 ## Purpose
 
 Async needs room for compiler layers, lazy module metadata, deeper
 resumability, richer authoring systems, and a no-bundler module-cache delivery
-model. These future systems are primarily for build-required apps, where
-abstractions improve DX and reduce the mental model required to understand which
-runtime systems a change affects. They must extend the System 1 protocol rather
-than replace it.
+model. These future systems are primarily for build-required apps on the
+compiler rungs, where abstractions improve DX and reduce the mental model
+required to understand which runtime systems a change affects. They must
+extend the protocol the no-compiler rungs speak rather than replace it.
 
 ## Responsibilities
 
 - Name future systems explicitly so current specs do not imply they already
   exist.
-- Preserve Layer 1 and Layer 1.5 behavior while System 2 layers are designed.
+- Preserve no-compiler rung behavior (L0-L3, L5) while compiler-rung systems
+  are designed.
 - Define constraints future compiler output must respect.
 - Keep deferred work from leaking into current public promises prematurely.
 
@@ -24,7 +29,7 @@ than replace it.
 
 Deferred systems may include:
 
-- JSX or TSRX authoring transforms.
+- JSX or TSRX authoring transforms beyond the released `./jsx` helpers (L4).
 - Higher-level app abstractions that hide protocol detail when that reduces
   mental load in larger codebases.
 - Compiler-generated registry descriptors.
@@ -52,11 +57,11 @@ invalid.
 - Diagnostics own failure messages when future authoring forms cannot lower
   safely.
 - Build-required systems may improve DX, but they must not invent a separate
-  hidden runtime model that no-build and Layer 1.5 apps cannot speak.
+  hidden runtime model that apps on the no-compiler rungs cannot speak.
 
 ## Protocol Contract
 
-System 2 systems must lower into explicit protocol records:
+Compiler-rung systems must lower into explicit protocol records:
 
 - Generated HTML must remain scannable.
 - Generated registries must use stable IDs and declaration types.
@@ -80,8 +85,8 @@ System 2 systems must lower into explicit protocol records:
 
 ## Resume Contract
 
-System 2 resume work should improve startup and interaction costs without
-changing the core model:
+Compiler-rung resume work should improve startup and interaction costs
+without changing the core model:
 
 - Component bodies should not need to execute on browser resume for HTML that
   already carries sufficient protocol metadata.
@@ -127,9 +132,9 @@ changing the core model:
 - Resume metadata can be validated without needing original source files.
 - A future no-bundler example can prove the browser requests only the modules
   needed by active protocol records and invalidates stale code correctly.
-- A no-build app, a Layer 1.5 server/streaming app, and a compiler-generated
-  System 2 app can share the same loader, signals, server, router, cache, and
-  boundary systems.
+- A no-build app, an L3/L5 server and streaming app, and a compiler-generated
+  app from the compiler rungs can share the same loader, signals, server,
+  router, cache, and boundary systems.
 - Deferred decisions are reopened in specs before implementation commits to a
   public behavior.
 

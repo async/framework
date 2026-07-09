@@ -142,3 +142,10 @@ Published artifacts must support resume and streaming:
   use browser module caching and stable invalidation records to request only the
   current modules or code needed for active behavior, avoiding stale code while
   still allowing bundled delivery when useful.
+- Moving `asyncFramework(...)` to the needs-based config defined in the Build
+  Config Direction of
+  [15-abstraction-layers.md](./15-abstraction-layers.md): entries declare
+  render targets, named flags declare transforms, the derived rung is
+  reported rather than declared, and the numeric `layer` option is deprecated
+  with a shim. Final option names get a small ADR with the implementation
+  change.

@@ -4,13 +4,20 @@ Async has a small set of runtime concepts that compose across no-build pages, se
 
 ## Layers
 
-| Shorthand | Role | Requirement |
-| --- | --- | --- |
-| L1 | Browser runtime core | No build step |
-| L1.5 | App, server, router, cache, and streaming bridge | Light server integration |
-| L2 | JSX and optimizer profile | Build step required |
+Async's layer model is an abstraction ladder: rungs are authoring abstractions, capabilities are protocol properties available from the lowest rung the protocol allows.
 
-L1 and L1.5 are useful without L2. L2 is an authoring layer that lowers onto the same runtime contracts.
+| Rung | Name | Adds | Requires |
+| --- | --- | --- | --- |
+| L0 | Enhance | Behavior references on server-owned HTML | Script tag |
+| L1 | Interpret | Runtime app model: registries, components, lifecycle | No build |
+| L2 | Bundle | Build as delivery, client routing, app server | Build optional |
+| L3 | SSR | Server-rendered components with activation | Server |
+| L4 | Transform | JSX/TSX lowering, co-located server functions | Build |
+| L5 | Stream | Progressive documents, reveal ordering | Streaming server |
+| L6 | Reorder | Optimizer-generated plans, chunks, runtime slices | Optimizer |
+| L7 | Optimize | Whole-program compiler | Spec only |
+
+The no-compiler rungs (L0-L3, L5) are useful without the compiler rungs (L4, L6, L7); compiler output lowers onto the same runtime contracts. See the [Layers guide](#/docs/layers) for the full ladder.
 
 ## Registries
 

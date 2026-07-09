@@ -22,7 +22,7 @@ Async is for apps that want direct HTML, explicit state, and server-friendly fra
 
 Async fits pages that need progressive reactive islands, server-backed actions, route fragments, streamed HTML, or a small runtime surface that can be understood from the markup.
 
-It is also a foundation for higher authoring layers. Build-required JSX and compiler tooling should lower to the same HTML protocol, registries, route partials, and boundary patches.
+It is also the base of an abstraction ladder anchored to eras of framework history — from htmx-style enhancement (L0) up through JSX transforms (L4) and a future whole-program compiler (L7). Build-required JSX and compiler tooling lower to the same HTML protocol, registries, route partials, and boundary patches, and capabilities land at the lowest rung the protocol allows: out-of-order streaming works from a no-build script tag. See the [Layers guide](#/docs/layers).
 
 ## Useful tradeoff
 

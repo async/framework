@@ -43,10 +43,11 @@ Async.start({ root: document });
 
 ## What It Is
 
-`@async/framework` is the L1 runtime plus the first L1.5 app/server and
+`@async/framework` ships the no-compiler rungs of the abstraction ladder
+(L0-L3, L5): the browser runtime, app/server integration, SSR activation, and
 streaming primitives. It keeps the runtime small and explicit:
 
-- No build step for L1 consumers.
+- No build step on the no-compiler rungs.
 - No virtual DOM, diff path, hydration runtime, or component rerender loop.
 - Signals are the state boundary.
 - `Async.use(...)` registers app declarations before or after startup.
@@ -59,23 +60,41 @@ streaming primitives. It keeps the runtime small and explicit:
 - Boundaries can be swapped out of order and rescanned, which keeps server
   streaming and partial HTML replacement simple.
 
-Higher layers can add JSX lowering, TypeScript, chunk manifests, compiler-owned
-server/client splits, and intent-first authoring later. They should compile down
-to the same runtime registries and HTML protocol.
+The compiler rungs (L4 Transform, L6 Reorder, L7 Optimize) add JSX lowering,
+TypeScript, chunk manifests, compiler-owned server/client splits, and
+intent-first authoring. They compile down to the same runtime registries and
+HTML protocol.
 
 ## Layers
 
-Async is designed as layers, so each level can stay useful without forcing the
-next level on every app.
+Async's layer model is an abstraction ladder. Each rung is anchored to an era
+of framework history and named by the abstraction it adds between the author
+and the runtime protocol. Rungs are authoring abstractions; capabilities are
+protocol properties that land at the lowest rung the protocol allows.
 
-| Shorthand | Name | Requirement | Purpose |
-| --- | --- | --- | --- |
-| L1 | Runtime bootloader | No build. CDN or direct ESM import. | Signals, async signals, scheduler, handlers, command events, lifecycle pseudo-events, scoped fragments, and boundary swaps. |
-| L1.5 | App/server and streaming bridge | Light server integration. No app compiler required. | `Async.use(...)`, router modes, server function proxy, partial declarations, SSR output, browser activation, split browser/server cache, and streamed boundary patches. |
-| L2 | Build-required authoring and compiler profile | Build step required. | JSX, ESM, and TypeScript authoring, optimizer reports, generated plans, generated registries, chunks, manifests, and future resumability records that lower onto L1 and L1.5 protocols. |
+| Rung | Name | Era anchor | Adds | Requires |
+| --- | --- | --- | --- | --- |
+| L0 | Enhance | jQuery/Backbone; htmx | Behavior references on server-owned HTML | Script tag |
+| L1 | Interpret | angular.js: runtime, no build | Runtime-interpreted app model: registries, components, lifecycle | Script tag or ESM |
+| L2 | Bundle | Built SPAs | Build as delivery, client routing, app server | Build optional |
+| L3 | SSR | React-without-JSX + SSR server | Server-rendered components with activation, no hydration | Server; build optional |
+| L4 | Transform | React+JSX; Qwik-style `server$` | JSX/TSX transforms, co-located server functions | Build |
+| L5 | Stream | Streaming SSR; Suspense | Progressive documents, boundary reveal ordering | Streaming server |
+| L6 | Reorder | RSC; islands | Out-of-order settling automated by the Optimizer | Optimizer |
+| L7 | Optimize | React Compiler; TSRX | Whole-program compilation | Spec only today |
 
-The package in this repository intentionally focuses on L1 and L1.5. L2 is a
-higher authoring surface, not an extra runtime requirement for plain HTML apps.
+Because capabilities are protocol properties, they arrive earlier than their
+era anchors did: out-of-order streaming works from a no-build CDN script (L5
+protocol; L6 only automates it), SSR activates without hydration at L3, and
+server functions are callable from L0 through explicit envelopes. Rungs also
+compose within one document — an L2-bundled SPA can host an L0-enhanced form
+next to an L5-streamed boundary — and patterns like islands are rung
+combinations, not rungs.
+
+This package ships the no-compiler rungs (L0-L3, L5) plus the first
+compiler-rung surfaces (`./jsx`, `./vite`, `./runtime/*`). The owning
+contract is
+[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md).
 
 ## Install
 
@@ -88,9 +107,10 @@ and package lifecycle tooling. Browser consumers import ESM directly.
 
 ## Vite And Hono
 
-The Vite entry can run a Hono app as the local development server while keeping
-the browser runtime at L1. Install the optional Hono dev packages in apps that
-use this profile:
+The Vite entry can run a Hono app as the local development server while the
+browser stays on the no-build runtime (L1 Interpret; the build is L2 Bundle
+delivery). Install the optional Hono dev packages in apps that use this
+profile:
 
 ```bash
 pnpm add hono
@@ -105,7 +125,6 @@ import { asyncFramework } from "@async/framework/vite";
 export default defineConfig({
   plugins: [
     asyncFramework({
-      layer: 1,
       server: {
         entry: "src/server.js"
       },
@@ -117,6 +136,15 @@ export default defineConfig({
   ]
 });
 ```
+
+`asyncFramework(...)` declares needs, not ladder positions: entries declare
+render targets (`server.entry` selects the server lane, `client.entry` the
+browser build lane), and transforms are detected from imports — `.jsx`/`.tsx`
+modules importing `@async/framework/jsx` opt into the JSX bootstrap (L4). The
+legacy `layer` option only annotates the build report; it is scheduled for
+replacement by the needs-based config in
+[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md),
+so omit it.
 
 During local development, run Vite:
 
@@ -155,7 +183,7 @@ app.get("/", (context) => {
 export default app;
 ```
 
-The client entry stays ordinary L1 framework code:
+The client entry stays ordinary no-build runtime code:
 
 ```js
 // src/client.js
@@ -214,10 +242,10 @@ production:
 | `browser.min.js` | ESM | Compact browser module bundle |
 | `browser.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
 | `browser.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
-| `browser.ts` | Bundled browser TypeScript source | TS-aware runtimes and higher-layer tooling |
+| `browser.ts` | Bundled browser TypeScript source | TS-aware runtimes and compiler-rung tooling |
 | `browser.d.ts` | Type declarations | TypeScript declarations for the browser API |
 | `server.js` | ESM | Server-capable Node.js bundle |
-| `framework.ts` | Bundled server-capable TypeScript source | TS-aware runtimes and higher-layer tooling |
+| `framework.ts` | Bundled server-capable TypeScript source | TS-aware runtimes and compiler-rung tooling |
 | `framework.d.ts` | Type declarations | TypeScript declarations for the server-capable API |
 
 ```html
@@ -304,8 +332,9 @@ You can also use an import map so app code imports `@async/framework` by name:
 
 ## Advanced Build-Step Runtime
 
-Layer 1 still works with no build step. A build step can optimize the same
-runtime by emitting SSR HTML plus compact registry descriptors. The browser can
+The no-build rungs keep working without a build step. A build step can
+optimize the same runtime by emitting SSR HTML plus compact registry
+descriptors. The browser can
 start in the document head, apply snapshots, and wait for a root to appear:
 
 ```html
@@ -409,8 +438,8 @@ For declarative async boundaries, use `<async-suspense>` or keep using
 </async-suspense>
 ```
 
-The build layer can hide `createBoundaryReceiver(...)` setup, but streaming is
-still explicit boundary patches: boundary id, sequence number, HTML, signal
+The compiler rungs can hide `createBoundaryReceiver(...)` setup, but streaming
+is still explicit boundary patches: boundary id, sequence number, HTML, signal
 patches, and browser-cache patches. Async does not ship a component resume graph.
 
 ## Core API
@@ -658,8 +687,8 @@ signals.set("product.title", "Headphones");
 
 ### Scheduler
 
-The scheduler is the Layer 1.5 ordering engine. Signal writes are still
-synchronous:
+The scheduler is the runtime ordering engine behind bindings, SSR activation,
+and streaming. Signal writes are still synchronous:
 
 ```js
 signals.set("count", 3);
@@ -696,7 +725,7 @@ await scheduler.flush();
 ```
 
 Most apps do not need to call the scheduler directly. It is exposed for tests,
-custom runtimes, streaming receivers, and higher layers that need explicit flush
+custom runtimes, streaming receivers, and higher rungs that need explicit flush
 boundaries.
 
 ### Async Signals
@@ -1024,7 +1053,7 @@ For app code, register routes and partials through the app registry:
 - `Async.use({ route, partial })` plus `Async.start({ mode, boundary })` for app
   hub setup.
 
-Most apps should start at that layer and only move down when they need a more
+Most apps should start at that level and only move down when they need a more
 specific routing shape:
 
 | If the app is doing this | Use this pattern |
@@ -1811,17 +1840,19 @@ then runs release doctor.
 
 ## Status
 
-The core runtime is intentionally small. Build-required JSX has optimizer
+The core runtime is intentionally small. Build-required JSX (L4) has optimizer
 artifacts for event, signal, stream, and children-fragment lowering, while full
 compiler emission, lazy chunk manifests, TSRX lowering, server resource
-compilation, and higher-level resumability metadata remain later layers. See
+compilation, and higher-level resumability metadata remain compiler-rung work
+(L6 and L7). See
 `specs/framework/12-composition-patterns.md` for composition pattern guidance
 and planned source forms.
 
 ## Async And htmx
 
 Async and htmx are both HTML-first and avoid a virtual DOM, but they optimize
-for different boundaries.
+for different boundaries. In ladder terms, htmx-style hypermedia is the L0
+Enhance rung — and in Async it stays available at every rung above.
 
 | Area | htmx | Async |
 | --- | --- | --- |
@@ -1829,10 +1860,10 @@ for different boundaries.
 | State | Server-owned hypermedia state; browser state is intentionally minimal. | Browser signal registry plus server signal patches and cache snapshots. |
 | Server interaction | DOM attributes describe HTTP verbs, targets, and swaps. | `server.*(...)` commands call registered server functions and apply returned effects. |
 | Routing | Usually server navigation or htmx-boosted navigation. | CSR, SPA, SSR, SSR-SPA, and MPA router modes built around partial boundaries. |
-| Components | Server-rendered HTML fragments. | Scoped fragment functions today; higher layers can compile JSX/TSRX later. |
-| Build story | No build by default. | Layer 1 is no-build/CDN; higher layers can add build or compiler steps. |
+| Components | Server-rendered HTML fragments. | Scoped fragment functions today; the compiler rungs add JSX/TSRX authoring. |
+| Build story | No build by default. | Rungs L0-L3 and L5 are no-build/CDN; the compiler rungs (L4, L6, L7) add build or compiler steps. |
 
 Use htmx when the server should own most interaction through hypermedia and
 HTTP swaps. Use Async when you want an HTML-first runtime that also has local
 signals, async resources, registered browser/server handlers, route partials,
-and a path to higher compiler layers without changing the Layer 1 protocol.
+and a path up the compiler rungs without changing the protocol.
