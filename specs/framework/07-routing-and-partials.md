@@ -177,7 +177,14 @@ Routing resume behavior:
 - Hash URL mode preserves plain section anchors as native jumps without
   mutating router state.
 - Malformed encoded params are handled without crashing the router.
-- Prefetch does not mutate router state, history, or DOM.
+- Prefetch does not mutate router state, history, or DOM. Server route
+  prefetch results may be cached briefly and consumed, single use, by the
+  next navigation with a matching URL and boundary; expired or mismatched
+  entries fall back to a navigation fetch.
+- Navigation failures with no caller to reject to (intercepted links, forms,
+  history events) are reported to the console in addition to `router.error`
+  and the `async:error` event; unmatched navigation without document fallback
+  warns with guidance.
 - Same-URL navigation skips route state writes, partial rendering, boundary
   swaps, and duplicate history writes.
 - `force: true` refreshes a stable view through the partial path in CSR and SPA

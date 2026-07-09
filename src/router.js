@@ -141,6 +141,7 @@ export function createRouter(options = {}) {
     fallback = "error",
     scroll = "auto",
     fetch: fetchOption,
+    prefetchTtlMs = 5000,
     root,
     boundary = "route",
     routes = createRouteRegistry(),
@@ -175,6 +176,9 @@ export function createRouter(options = {}) {
     });
   const ownsLoader = !loader;
   const cleanups = new Set();
+  // Server-route prefetch results, keyed by resolved URL. Entries are single
+  // use: the next matching navigation consumes one instead of refetching.
+  const serverPrefetchCache = new Map();
   let started = false;
   let destroyed = false;
   let navigationVersion = 0;
@@ -239,8 +243,21 @@ export function createRouter(options = {}) {
       }
       const matched = api.match(url);
       if (matched?.route?.server) {
-        return fetchServerPartial(resolveUrl(url), { boundary: routeBoundary(matched) }, prefetchNavigation())
-          .then((result) => (result === documentNavigationResult ? null : result));
+        const target = resolveUrl(url);
+        const requestBoundary = routeBoundary(matched);
+        const navigation = prefetchNavigation();
+        return fetchServerPartial(target, { boundary: requestBoundary }, navigation).then((result) => {
+          if (result === documentNavigationResult || result == null) {
+            return null;
+          }
+          serverPrefetchCache.set(target.href, {
+            result,
+            redirected: navigation.redirected ?? null,
+            boundary: requestBoundary,
+            expires: Date.now() + prefetchTtlMs
+          });
+          return result;
+        });
       }
       if (matched?.route?.partial && partials?.resolve?.(matched.route.partial)) {
         return partials.render(matched.route.partial, matched.params, {
@@ -288,6 +305,7 @@ export function createRouter(options = {}) {
       }
       destroyed = true;
       activeNavigation?.controller.abort(new Error("Router has been destroyed."));
+      serverPrefetchCache.clear();
       for (const cleanup of cleanups) {
         cleanup();
       }
@@ -360,7 +378,15 @@ export function createRouter(options = {}) {
     try {
       let result;
       if (matched.route?.server === true) {
-        result = await fetchServerPartial(target, plan, navigation);
+        const prefetched = takePrefetched(target, plan);
+        if (prefetched) {
+          result = prefetched.result;
+          if (prefetched.redirected) {
+            navigation.redirected = prefetched.redirected;
+          }
+        } else {
+          result = await fetchServerPartial(target, plan, navigation);
+        }
         if (!isActiveNavigation(navigation)) {
           return null;
         }
@@ -568,6 +594,23 @@ export function createRouter(options = {}) {
     return { abort: undefined, redirected: null };
   }
 
+  // Single-use prefetch consumption: fresh, boundary-matching entries replace
+  // the navigation fetch; everything else is dropped.
+  function takePrefetched(target, plan) {
+    const entry = serverPrefetchCache.get(target.href);
+    if (!entry) {
+      return null;
+    }
+    serverPrefetchCache.delete(target.href);
+    if (entry.expires < Date.now()) {
+      return null;
+    }
+    if (entry.boundary !== (plan?.boundary ?? boundary)) {
+      return null;
+    }
+    return entry;
+  }
+
   function documentNavigate(target) {
     documentRef.defaultView?.location?.assign?.(browserUrlForRoute(target).href);
   }
@@ -617,6 +660,9 @@ export function createRouter(options = {}) {
 
   function setNoRouteError(url) {
     const error = new Error(`No route matched ${url.pathname}${url.search}`);
+    console.warn?.(
+      `[async/router] ${error.message} — register the route, or start the router with fallback: "document" to let unmatched URLs navigate natively.`
+    );
     setMatchedRouterState(url, null, {
       pending: false,
       error
@@ -638,6 +684,10 @@ export function createRouter(options = {}) {
       if (destroyed) {
         return;
       }
+      // Event-driven navigation has no caller to reject to — surface the
+      // failure instead of leaving a silently dead link. Programmatic
+      // router.navigate(...) rejections stay with their caller.
+      console.error?.("[async/router] navigation failed:", error);
       setRouterState({
         pending: false,
         error

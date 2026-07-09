@@ -530,6 +530,13 @@ const preview = await Async.router.prefetch("/products/sku-1");
 Prefetch can still execute partial code. Keep partial prefetch work idempotent
 or move side effects behind explicit user actions.
 
+For `server: true` routes, prefetch fetches the envelope and caches it briefly
+(`prefetchTtlMs`, default 5000ms). The next navigation to the same URL and
+boundary consumes the cached envelope instead of refetching — prefetch on
+hover, navigate on click, pay for one request. Entries are single use and
+expire silently; a stale or boundary-mismatched entry falls back to a normal
+navigation fetch.
+
 ## Troubleshooting
 
 | Symptom | Check |
