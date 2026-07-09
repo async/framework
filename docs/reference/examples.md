@@ -11,10 +11,13 @@ The repository includes small examples for the main runtime surfaces.
 | `examples/components` | Scoped fragment components and lifecycle hooks |
 | `examples/streaming` | Boundary swaps with rescanned handlers |
 | `examples/server-call` | Command events calling server functions |
+| `examples/hateoas-actions` | Hono-rendered HATEOAS links and forms enhanced into partial swaps |
 | `examples/router` | CSR first render and local route boundary swaps |
 | `examples/partials` | Server-rendered partial fragments |
 | `examples/cache` | Browser and server cache declarations |
 | `examples/ssr` | Server render output and browser activation snapshot |
+| `examples/vite-hono` | Hono-backed Vite dev server plus client asset build |
+| `examples/vite-jsx-streaming` | JSX optimizer bootstrap with stream runtime slice selection |
 | `examples/size` | Scenario-size fixtures for runtime slices |
 
 ## Verify examples

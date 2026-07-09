@@ -24,6 +24,7 @@ Then open the example URL, such as
 | [components](./components/README.md) | Scoped fragment components and lifecycle hooks | `http://127.0.0.1:4173/examples/components/` |
 | [streaming](./streaming/README.md) | Boundary swaps with rescanned handlers | `http://127.0.0.1:4173/examples/streaming/` |
 | [server-call](./server-call/README.md) | Command events calling server functions | `http://127.0.0.1:4173/examples/server-call/` |
+| [hateoas-actions](./hateoas-actions/README.md) | Hono-rendered HATEOAS links and forms enhanced into partial swaps | `pnpm start` |
 | [router](./router/README.md) | CSR first render and local route boundary swaps | `http://127.0.0.1:4173/examples/router/` |
 | [partials](./partials/README.md) | Server-rendered partial fragments | `http://127.0.0.1:4173/examples/partials/` |
 | [cache](./cache/README.md) | Browser and server cache declarations | `http://127.0.0.1:4173/examples/cache/` |

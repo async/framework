@@ -12,8 +12,9 @@ import streamingProfile from "../../examples/vite-jsx-streaming/src/streaming-pr
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const examplesRoot = resolve(root, "examples");
 const staticExamples = ["counter", "product", "components", "streaming", "server-call", "router", "partials", "cache", "ssr"];
+const serverExamples = ["hateoas-actions"];
 const viteExamples = ["vite-hono", "vite-jsx-streaming"];
-const topLevelExamples = [...staticExamples, ...viteExamples, "size"];
+const topLevelExamples = [...staticExamples, ...serverExamples, ...viteExamples, "size"];
 
 test("examples index links every top-level example directory", () => {
   const readme = readFileSync(resolve(examplesRoot, "README.md"), "utf8");
@@ -46,6 +47,31 @@ test("Vite examples include package, config, and source entrypoints", () => {
     assert.equal(existsSync(resolve(dir, "vite.config.js")), true, `${name} config missing`);
     assert.equal(existsSync(resolve(dir, "src")), true, `${name} source directory missing`);
   }
+});
+
+test("server examples include package and server entrypoints", () => {
+  for (const name of serverExamples) {
+    const dir = resolve(examplesRoot, name);
+    assert.equal(existsSync(resolve(dir, "README.md")), true, `${name} README missing`);
+    assert.equal(existsSync(resolve(dir, "package.json")), true, `${name} package missing`);
+    assert.equal(existsSync(resolve(dir, "server.js")), true, `${name} server missing`);
+    assert.equal(existsSync(resolve(dir, "main.js")), true, `${name} browser entry missing`);
+  }
+});
+
+test("HATEOAS actions example keeps links and forms as hypermedia controls", () => {
+  const server = readFileSync(resolve(examplesRoot, "hateoas-actions", "server.js"), "utf8");
+  const client = readFileSync(resolve(examplesRoot, "hateoas-actions", "main.js"), "utf8");
+
+  assert.match(server, /new Hono\(\)/);
+  assert.match(server, /app\.get\("\/src\/\*"/);
+  assert.match(server, /<form method="post" action="\$\{action\}"/);
+  assert.match(server, /on:submit="preventDefault; hateoas\.submit\(\$event\)"/);
+  assert.match(server, /on:click="preventDefault; hateoas\.follow\(\$event\)"/);
+  assert.match(server, /account\.balance >= 0/);
+  assert.match(client, /new URLSearchParams\(new FormData\(form\)\)/);
+  assert.match(client, /application\/x-async-partial/);
+  assert.match(client, /loader\.swap\(boundary/);
 });
 
 test("Vite Hono example uses default server and client plugin setup", () => {
