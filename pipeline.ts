@@ -75,6 +75,22 @@ export default definePipeline({
       run: sh`pnpm test`
     }),
 
+    "test.performance": task({
+      description:
+        "Hot-path performance contracts. Inputs mirror the registered hot-path sources (tests/performance/hot-paths.json), so this task re-runs exactly when a hot path changes.",
+      inputs: [
+        "tests/performance/**",
+        "src/attributes.js",
+        "src/loader.js",
+        "src/scheduler.js",
+        "src/signals.js",
+        "src/router.js",
+        "package.json"
+      ],
+      cache: "file:local",
+      run: sh`pnpm run test:performance`
+    }),
+
     examples: task({
       description: "Validate static example HTML and JavaScript entrypoints.",
       dependsOn: ["test"],

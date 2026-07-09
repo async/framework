@@ -13,7 +13,9 @@ root workspace `AGENTS.md` still applies.
 - Use Node.js 24 or newer and `pnpm` 11. Keep the package ESM-only with `.js`
   source files and explicit `.js` import extensions. Do not add `.mjs` files
   unless a tool explicitly requires one.
-- Main source lives in `src/`; tests live in `tests/*.test.js`; examples live
+- Main source lives in `src/`; tests live in `tests/<suite>/*.test.js`,
+  categorized by suite (`unit`, `runtime`, `router`, `server`, `timing`,
+  `performance`, `build`, `examples` — see `tests/README.md`); examples live
   in `examples/`; docs and system contracts live in `README.md` and `specs/`.
 
 ## Design Sources And Invariants
@@ -114,7 +116,16 @@ pnpm run pipeline:github:check
 
 ## Verification
 
-- Focused behavior check: `node --test tests/<area>.test.js`.
+- Focused behavior check: `node --test tests/<suite>/<area>.test.js`, or a
+  whole suite via `pnpm run test:<suite>` (`unit`, `runtime`, `router`,
+  `server`, `timing`, `performance`, `build`, `examples`).
+- Frame-timing or commit-phase changes must add coverage in `tests/timing/`
+  with an explicit frame-timed scheduler (see `tests/README.md`) — node's
+  synchronous commits hide browser-only failures.
+- Hot-path changes (files registered in `tests/performance/hot-paths.json`)
+  must keep the performance contracts green; new hot paths get a registry
+  entry, a `// @hot-paths:` contract test, and a `test.performance` pipeline
+  input so changes auto-select the suite.
 - Runtime checks: `pnpm test` and `pnpm run bundle:check`.
 - Registry/docs/workflow checks: `pnpm run registry:lint`,
   `pnpm run pipeline:pages`, and `pnpm run release:check`.

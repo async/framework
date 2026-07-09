@@ -1,0 +1,33 @@
+{
+  "$comment": "Hot-path registry. Each entry maps a hot-path source file to the performance contract tests that guard it. hot-path-coverage.test.js enforces this file: sources and contracts must exist, contracts must declare their sources in a `// @hot-paths:` header, and every source listed here must appear in the pipeline.ts `test.performance` task inputs so changes to a hot path automatically re-run this suite. Add an entry when code becomes a hot path; removing one is a conscious decision, not drift.",
+  "hotPaths": [
+    {
+      "source": "src/attributes.js",
+      "reason": "Attribute prefix normalization backs every attribute read in activation scans; it must stay memoized by config identity.",
+      "contracts": ["tests/performance/activation-scan.test.js"]
+    },
+    {
+      "source": "src/loader.js",
+      "reason": "DOM activation scans, boundary lookup, and swap/rescan run on every navigation and state-driven swap.",
+      "contracts": [
+        "tests/performance/activation-scan.test.js",
+        "tests/performance/swap-rescan.test.js"
+      ]
+    },
+    {
+      "source": "src/scheduler.js",
+      "reason": "Every signal write, binding update, and boundary commit flows through flush/commit scheduling.",
+      "contracts": ["tests/performance/scheduler-coalescing.test.js"]
+    },
+    {
+      "source": "src/signals.js",
+      "reason": "Signal reads and writes are per-binding operations; write coalescing keeps DOM work constant per tick.",
+      "contracts": ["tests/performance/scheduler-coalescing.test.js"]
+    },
+    {
+      "source": "src/router.js",
+      "reason": "The transition planner decides the render/fetch/history work paid per navigation.",
+      "contracts": ["tests/performance/router-fast-paths.test.js"]
+    }
+  ]
+}

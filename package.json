@@ -180,8 +180,8 @@
     "bundle:size": "pnpm run bundle && node scripts/bundle-size.js",
     "bundle:size:check": "pnpm run bundle && node scripts/bundle-size.js --check",
     "docs:build": "pnpm run bundle && node scripts/build-pages.js",
-    "examples": "node --test tests/examples.test.js",
-    "examples:check": "node --test tests/examples.test.js",
+    "examples": "node --test tests/examples/examples.test.js",
+    "examples:check": "node --test tests/examples/examples.test.js",
     "pack:check": "pnpm run bundle:check && npm pack ./dist --dry-run --json --ignore-scripts",
     "pipeline:github:check": "async-pipeline github check",
     "pipeline:github:generate": "async-pipeline github generate",
@@ -205,7 +205,15 @@
     "release:sync-descriptions:check": "pnpm run bundle && async-pipeline release sync-descriptions --package ./dist --check",
     "scenario:size": "pnpm run bundle && node scripts/scenario-size.js",
     "scenario:size:check": "pnpm run bundle && node scripts/scenario-size.js --check",
-    "test": "pnpm run bundle && node --test tests/*.test.js"
+    "test": "pnpm run bundle && node --test \"tests/**/*.test.js\"",
+    "test:build": "pnpm run bundle && node --test \"tests/build/*.test.js\"",
+    "test:examples": "node --test \"tests/examples/*.test.js\"",
+    "test:performance": "node --test \"tests/performance/*.test.js\"",
+    "test:router": "node --test \"tests/router/*.test.js\"",
+    "test:runtime": "node --test \"tests/runtime/*.test.js\"",
+    "test:server": "node --test \"tests/server/*.test.js\"",
+    "test:timing": "node --test \"tests/timing/*.test.js\"",
+    "test:unit": "node --test \"tests/unit/*.test.js\""
   },
   "devDependencies": {
     "@async/flow": "0.10.3",
