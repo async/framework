@@ -41,697 +41,86 @@ Async.use({
 Async.start({ root: document });
 ```
 
-## What It Is
+## Why Async
 
-`@async/framework` ships the no-compiler rungs of the abstraction ladder
-(L0-L3, L5): the browser runtime, app/server integration, SSR activation, and
-streaming primitives. It keeps the runtime small and explicit:
+Async keeps the browser path small and explicit:
 
-- No build step on the no-compiler rungs.
-- No virtual DOM, diff path, hydration runtime, or component rerender loop.
+- Native HTML remains the document contract.
 - Signals are the state boundary.
 - `Async.use(...)` registers app declarations before or after startup.
-- Handlers live in a registry and run through delegated DOM events.
-- Async signals use native `AbortSignal` cancellation and suppress stale async
-  completions.
-- A small scheduler batches signal-driven DOM bindings, lifecycle callbacks,
-  effects, and async refreshes without adding a render loop.
+- Handlers run through delegated DOM events.
+- Async signals use native `AbortSignal` cancellation.
 - Browser and server cache declarations are structurally split.
-- Boundaries can be swapped out of order and rescanned, which keeps server
-  streaming and partial HTML replacement simple.
+- Boundaries can be swapped out of order and rescanned.
 
-The compiler rungs (L4 Transform, L6 Reorder, L7 Optimize) add JSX lowering,
-TypeScript, chunk manifests, compiler-owned server/client splits, and
-intent-first authoring. They compile down to the same runtime registries and
-HTML protocol.
+It avoids a virtual DOM, hidden hydration pass, implicit startup fetch,
+component rerender loop, and browser snapshots that leak server-only cache
+contents.
 
-## Layers
+Guide: [docs/start/why-async.md](./docs/start/why-async.md) · Contract:
+[specs/framework/00-system-overview.md](./specs/framework/00-system-overview.md)
 
-Async's layer model is an abstraction ladder. Each rung is anchored to an era
-of framework history and named by the abstraction it adds between the author
-and the runtime protocol. Rungs are authoring abstractions; capabilities are
-protocol properties that land at the lowest rung the protocol allows.
+## The Abstraction Layers
 
-| Rung | Name | Era anchor | Adds | Requires |
+Async uses L0-L7 abstraction layers. Layers describe the authoring surface;
+capabilities are protocol properties that land at the lowest layer the
+protocol allows.
+
+| Layer | Name | Era anchor | Adds | Requires |
 | --- | --- | --- | --- | --- |
-| L0 | Enhance | jQuery/Backbone; htmx | Behavior references on server-owned HTML | Script tag |
+| L0 | Enhance | jQuery/Backbone; htmx | Server-led HTML, native forms/actions, and behavior references on server-owned views | Script tag |
 | L1 | Interpret | angular.js: runtime, no build | Runtime-interpreted app model: registries, components, lifecycle | Script tag or ESM |
 | L2 | Bundle | Built SPAs | Build as delivery, client routing, app server | Build optional |
 | L3 | SSR | React-without-JSX + SSR server | Server-rendered components with activation, no hydration | Server; build optional |
-| L4 | Transform | React+JSX; Qwik-style `server$` | JSX/TSX transforms, co-located server functions | Build |
+| L4 | Transform | React+JSX | JSX/TSX transforms lowering to protocol records | Build |
 | L5 | Stream | Streaming SSR; Suspense | Progressive documents, boundary reveal ordering | Streaming server |
-| L6 | Reorder | RSC; islands | Out-of-order settling automated by the Optimizer | Optimizer |
+| L6 | Reorder | RSC; islands; Qwik-style `server$` | Out-of-order settling, co-located server functions, chunks, and plans automated by the Optimizer | Optimizer |
 | L7 | Optimize | React Compiler; TSRX | Whole-program compilation | Spec only today |
 
-Because capabilities are protocol properties, they arrive earlier than their
-era anchors did: out-of-order streaming works from a no-build CDN script (L5
-protocol; L6 only automates it), SSR activates without hydration at L3, and
-server functions are callable from L0 through explicit envelopes. Rungs also
-compose within one document — an L2-bundled SPA can host an L0-enhanced form
-next to an L5-streamed boundary — and patterns like islands are rung
-combinations, not rungs.
+Layers compose within one document: an L2-bundled SPA can host an L0-enhanced
+form next to an L5-streamed boundary. This package ships the no-compiler layers
+(L0-L3, L5) plus the first compiler-layer surfaces (`./jsx`, `./vite`,
+`./runtime/*`).
 
-This package ships the no-compiler rungs (L0-L3, L5) plus the first
-compiler-rung surfaces (`./jsx`, `./vite`, `./runtime/*`). The owning
-contract is
-[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md).
+Guide: [docs/start/layers.md](./docs/start/layers.md) · Contract:
+[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md)
 
-## Install
+## How It Works
 
-```bash
-pnpm add @async/framework
-```
+The framework is a protocol stack: HTML attributes connect to registered state
+and behavior, server work returns explicit envelopes, route partials and stream
+patches replace named boundaries, and SSR activation resumes already-rendered
+HTML without hydration.
 
-The package is ESM-only and supports Node.js 24 and newer for tests, examples,
-and package lifecycle tooling. Browser consumers import ESM directly.
+### HTML Protocol
 
-## Vite And Hono
+Loader scans regular HTML attributes. The shorthand prefixes are the
+author-facing syntax: `async:`, `signal:`, `on:`, `class:`, and `intersect:`.
 
-The Vite entry can run a Hono app as the local development server while the
-browser stays on the no-build runtime (L1 Interpret; the build is L2 Bundle
-delivery). Install the optional Hono dev packages in apps that use this
-profile:
-
-```bash
-pnpm add hono
-pnpm add -D vite@^8 @hono/vite-dev-server
-```
-
-```js
-// vite.config.js
-import { defineConfig } from "vite";
-import { asyncFramework } from "@async/framework/vite";
-
-export default defineConfig({
-  plugins: [
-    asyncFramework({
-      server: {
-        entry: "src/server.js"
-      },
-      client: {
-        entry: "src/client.js",
-        outDir: "public/static"
-      }
-    })
-  ]
-});
-```
-
-`asyncFramework(...)` declares needs, not ladder positions: entries declare
-render targets (`server.entry` selects the server lane, `client.entry` the
-browser build lane), and transforms are detected from imports — `.jsx`/`.tsx`
-modules importing `@async/framework/jsx` opt into the JSX bootstrap (L4). The
-legacy `layer` option only annotates the build report; it is scheduled for
-replacement by the needs-based config in
-[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md),
-so omit it.
-
-During local development, run Vite:
-
-```json
-{
-  "scripts": {
-    "dev": "vite"
-  }
-}
-```
-
-`asyncFramework({ server })` composes `@hono/vite-dev-server`, serves the
-default-exported Hono app, and leaves Hono's client reload injection enabled.
-The Hono entry owns the HTML shell:
-
-```js
-// src/server.js
-import { Hono } from "hono";
-
-const app = new Hono();
-
-app.get("/", (context) => {
-  const clientScript = import.meta.env?.DEV ? "/src/client.js" : "/static/client.js";
-
-  return context.html(`<!doctype html>
-    <html>
-      <body async:app>
-        <button type="button" on:click="increment">
-          Count: <span signal:text="count"></span>
-        </button>
-        <script type="module" src="${clientScript}"></script>
-      </body>
-    </html>`);
-});
-
-export default app;
-```
-
-The client entry stays ordinary no-build runtime code:
-
-```js
-// src/client.js
-import {
-  Async,
-  createSignal
-} from "@async/framework/browser";
-
-Async.use({
-  signal: {
-    count: createSignal(0)
-  },
-  handler: {
-    increment() {
-      this.signals.update("count", (count) => count + 1);
-    }
-  }
-});
-
-Async.start({ root: document });
-```
-
-For production assets, build only the client bundle:
-
-```json
-{
-  "scripts": {
-    "build": "vite build --mode client"
-  }
-}
-```
-
-The client build emits into `public/static` by default. Vercel serves
-`public/**` as static assets and runs the Hono app through its native Hono
-support when the app is default-exported from an entry such as `src/server.js`.
-There is no `target` option in this profile yet; production platform behavior
-belongs to the host until Async adds an explicit build target contract.
-
-See [`examples/vite-hono`](./examples/vite-hono) for a local Hono app and
-client build setup. See [`examples/vite-jsx-streaming`](./examples/vite-jsx-streaming)
-for the Vite JSX optimizer lane that hides bootstrap setup and plans the
-stream runtime slice from Suspense and Reveal intent. Slice selection reports
-`signals` and `events` as `available` today; `async-signals` and `stream` are
-reported as `planned` until their runtime entrypoints ship, so streaming
-boundaries are recorded but not yet activated by `@async/framework/runtime`.
-
-## CDN
-
-The package ships browser CDN artifacts for UNPKG and can be loaded without a
-build step. Use `@latest` for quick prototypes, and pin an exact version in
-production:
-
-| File | Format | Use |
-| --- | --- | --- |
-| `browser.js` | ESM | Readable browser module bundle |
-| `browser.min.js` | ESM | Compact browser module bundle |
-| `browser.umd.js` | UMD | Readable script-tag/CommonJS-style bundle |
-| `browser.umd.min.js` | UMD | Compact script-tag/CommonJS-style bundle and default CDN file |
-| `browser.ts` | Bundled browser TypeScript source | TS-aware runtimes and compiler-rung tooling |
-| `browser.d.ts` | Type declarations | TypeScript declarations for the browser API |
-| `server.js` | ESM | Server-capable Node.js bundle |
-| `framework.ts` | Bundled server-capable TypeScript source | TS-aware runtimes and compiler-rung tooling |
-| `framework.d.ts` | Type declarations | TypeScript declarations for the server-capable API |
-
-```html
-<main async:container>
-  <button type="button" on:click="increment">+</button>
-  <strong signal:text="count"></strong>
-</main>
-
-<script type="module">
-  import {
-    Async,
-    createSignal
-  } from "https://unpkg.com/@async/framework@latest/browser.js";
-
-  Async.use({
-    signal: {
-      count: createSignal(0)
-    },
-    handler: {
-      increment() {
-        this.signals.update("count", (count) => count + 1);
-      }
-    }
-  });
-
-  Async.start({ root: document });
-</script>
-```
-
-For a plain script tag, use the UMD bundle. In this UMD-only global form,
-`globalThis.Async` is the app hub plus the exported helper functions, with
-`globalThis.AsyncFramework` kept as an alias. Lower-level bootloader code can
-call `Async.Loader(...)` directly.
-
-```html
-<script src="https://unpkg.com/@async/framework@latest/browser.umd.min.js"></script>
-<script>
-  Async.use({
-    signal: {
-      count: Async.createSignal(0)
-    },
-    handler: {
-      increment() {
-        this.signals.update("count", (count) => count + 1);
-      }
-    }
-  });
-
-  Async.start({ root: document });
-</script>
-```
-
-You can also use an import map so app code imports `@async/framework` by name:
-
-```html
-<script type="importmap">
-{
-  "imports": {
-    "@async/framework": "https://unpkg.com/@async/framework@latest/browser.js"
-  }
-}
-</script>
-
-<script type="module">
-  import {
-    Async,
-    createSignal
-  } from "@async/framework";
-
-  Async.use({
-    signal: {
-      count: createSignal(0)
-    },
-    handler: {
-      increment() {
-        this.signals.update("count", (count) => count + 1);
-      }
-    }
-  });
-
-  Async.start({ root: document });
-</script>
-```
-
-## Advanced Build-Step Runtime
-
-The no-build rungs keep working without a build step. A build step can
-optimize the same runtime by emitting SSR HTML plus compact registry
-descriptors. The browser can
-start in the document head, apply snapshots, and wait for a root to appear:
-
-```html
-<script type="importmap">
-{
-  "imports": {
-    "@async/framework": "https://unpkg.com/@async/framework@latest/browser.js"
-  }
-}
-</script>
-
-<script type="application/json" async:snapshot>
-{
-  "signal": {
-    "productId": "sku-1"
-  },
-  "handler": {
-    "cart.add": { "url": "cart.add.js" }
-  },
-  "component": {
-    "ProductCard": { "url": "ProductCard.js" }
-  },
-  "asyncSignal": {
-    "product.load": { "url": "product.load.js" }
-  }
-}
-</script>
-
-<script type="module">
-  import {
-    Async,
-    defineAsyncContainerElement,
-    defineAsyncSuspenseElement,
-    readSnapshot
-  } from "@async/framework";
-
-  Async.start({
-    snapshot: readSnapshot(document),
-    registryAssets: { baseUrl: "_async" }
-  });
-
-  defineAsyncContainerElement();
-  defineAsyncSuspenseElement();
-</script>
-```
-
-`Async.start()` defaults to rootless browser startup. It creates registries,
-applies snapshots, and prepares the scheduler/server proxy context without
-scanning DOM. Attach a root later with `Async.attachRoot(root)` or by using
-`<async-container>`:
-
-```html
-<async-container>
-  <button type="button" on:click="cart.add">Add</button>
-</async-container>
-```
-
-Descriptor URLs are relative to a type folder under `registryAssets.baseUrl`.
-The default is:
-
-```js
-{
-  baseUrl: "_async",
-  paths: {
-    component: "component",
-    handler: "handler",
-    asyncSignal: "asyncSignal",
-    partial: "partial",
-    route: "route"
-  }
-}
-```
-
-So this descriptor:
-
-```json
-{ "url": "ProductCard.js#ProductCard" }
-```
-
-resolves as:
-
-```txt
-/_async/component/ProductCard.js#ProductCard
-```
-
-If `#export` is omitted, Async tries the registry id leaf, then the file
-basename, then `default`.
-
-For declarative async boundaries, use `<async-suspense>` or keep using
-`this.suspense(...)` inside components:
-
-```html
-<async-suspense for="product.load">
-  <template loading>Loading...</template>
-  <template ready>
-    <h1 signal:text="product.load.title"></h1>
-  </template>
-  <template error>
-    <p signal:text="product.load.$error.message"></p>
-  </template>
-</async-suspense>
-```
-
-The compiler rungs can hide `createBoundaryReceiver(...)` setup, but streaming
-is still explicit boundary patches: boundary id, sequence number, HTML, signal
-patches, and browser-cache patches. Async does not ship a component resume graph.
-
-## Core API
-
-For npm consumers, `@async/framework` uses conditional exports: browser-aware
-tooling receives the browser entry, while Node receives the server-capable
-entry. Use explicit subpaths when the target matters.
-The root export also uses condition-specific declarations, so browser-conditioned
-root imports expose the same API as `@async/framework/browser`; server-only APIs
-remain declared on the Node/server entrypoints.
-
-```js
-import {
-  Async,
-  Loader,
-  attributeName,
-  asyncSignal,
-  createApp,
-  createCacheRegistry,
-  createComponentRegistry,
-  createLazyRegistry,
-  component,
-  computed,
-  component,
-  createSignal,
-  createHandlerRegistry,
-  createRegistryStore,
-  createScheduler,
-  createServerProxy,
-  createSignalRegistry,
-  defineAsyncContainerElement,
-  defineAsyncSuspenseElement,
-  defineAttributeConfig,
-  defineApp,
-  defineCache,
-  defineRegistrySnapshot,
-  delay,
-  effect,
-  html,
-  readSnapshot,
-  signal
-} from "@async/framework/browser";
-```
-
-Use feature subpaths when an app needs the larger browser systems:
-
-```js
-import { AsyncStream } from "@async/framework/stream";
-import { Async, defineRoute } from "@async/framework/router";
-import { flow, flowSignal, flowStatus, compose, when, transition } from "@async/framework/flow";
-```
-
-The flow entry re-exports the complete `@async/flow` authoring surface:
-declaration helpers (`flowSignal`, `flowComputed`, `flowAsyncSignal`,
-`flowStatus`), step helpers (`set`, `update`, `when`, `branch`, `guard`,
-`transition`, `dispatch`, `after`, `onError`), condition helpers (`bool`,
-`every`, `some`, `not`, `can`, `matches`, `inspect`), and composition
-(`compose`, `parallel`, `remember`). Apps do not need to install
-`@async/flow` separately.
-
-Server-only APIs live behind the server entry:
-
-```js
-import {
-  createRequestContextStore,
-  createServerRegistry
-} from "@async/framework/server";
-```
-
-`Loader` is the canonical loader factory. `AsyncLoader` remains as a
-compatibility alias for older code.
-
-### App Hub
-
-`Async` is an exported app hub singleton. It is not installed on `globalThis`
-unless you assign it there yourself.
-
-```js
-import {
-  Async,
-  createSignal,
-  defineCache,
-  defineRoute
-} from "@async/framework/router";
-
-Async.use({
-  signal: {
-    count: createSignal(0)
-  },
-  handler: {
-    increment() {
-      this.signals.update("count", (count) => count + 1);
-    }
-  },
-  server: {
-    async "products.get"(id) {
-      return this.cache.getOrSet(`products:${id}`, () => db.products.get(id));
-    }
-  },
-  route: {
-    "/products/:id": defineRoute("product.page")
-  },
-  cache: {
-    browser: {
-      product: defineCache({ ttl: 60_000 })
-    },
-    server: {
-      "products.get": defineCache({ ttl: 30_000 })
-    }
-  }
-});
-
-Async.start({ root: document });
-```
-
-You can also create isolated app hubs and runtimes:
-
-```js
-const app = defineApp();
-app.use("signal", { count: createSignal(0) });
-app.use("handler", {
-  increment() {
-    this.signals.update("count", (count) => count + 1);
-  }
-});
-
-const runtime = createApp(app, { root: document }).start();
-```
-
-Naming rules:
-
-| Shape | Meaning |
+| Attribute | Behavior |
 | --- | --- |
-| `define*` | Declaration or app shape that can be registered before runtime |
-| `create*` | Runtime instance or mutable runtime primitive |
-| `Async.use(...)` | App-level declaration registration |
-| `registry.register(...)` | Low-level registration on a concrete runtime registry |
-| `registry.unregister(...)` | Low-level removal from a concrete runtime registry |
+| `async:container` | Marks a scannable app root |
+| `async:boundary="product"` | Marks a replaceable boundary |
+| `async:snapshot` | Holds serialized startup state |
+| `async:component="Card"` | Mounts a registered component |
+| `on:click="selectProduct"` | Delegated command event |
+| `on:submit="preventDefault; save"` | Sequential command chain |
+| `on:click="server.cart.add(productId)"` | Server command with signal args |
+| `on:intersect="trackSection"` | Continuous intersection lifecycle event |
+| `signal:text="product.title"` | Text binding |
+| `signal:value="productId"` | Form value binding with writeback |
+| `signal:attr:disabled="product.$loading"` | Attribute binding |
+| `class:selected="selected"` | Class toggle from a signal path |
 
-Singular registry keys are canonical: `signal`, `handler`, `server`,
-`partial`, `route`, `component`, and nested `cache.browser` / `cache.server`.
+Guide: [docs/runtime/html-protocol.md](./docs/runtime/html-protocol.md) ·
+Contract: [specs/framework/04-dom-protocol.md](./specs/framework/04-dom-protocol.md)
 
-### Registry Inspection
+### Signals & Async Signals
 
-`Async.registry` is the global inspection surface for registered app pieces.
-Every runtime owns fresh mutable signal and cache state materialized from the
-app declaration store. Concrete registries inside one runtime share that
-runtime's registry view:
-
-```js
-Async.registry.keys("signal");
-Async.registry.entries("route");
-Async.registry.snapshot();
-
-const runtime = Async.start({ root: document });
-
-runtime.registry.keys("handler");
-runtime.signals.registry === runtime.registry;
-runtime.browser.cache.registry === runtime.registry;
-```
-
-Supported inspection types:
-
-```txt
-signal
-handler
-server
-partial
-route
-component
-cache.browser
-cache.server
-cache.browser.entries
-cache.server.entries
-```
-
-Browser runtime inspection exposes server ids as descriptors, not executable
-server functions, and does not expose server cache contents:
-
-```js
-runtime.registry.keys("server");
-runtime.registry.get("server", "products.get");
-// { id: "products.get", kind: "server" }
-
-runtime.registry.snapshot().entries.server;
-// {}
-```
-
-The singleton runtime is intentionally internal. Use app-level methods for
-global lifecycle work, and use `inspectRuntime()` for diagnostics:
-
-```js
-Async.attachRoot(document.body);
-Async.applySnapshot(snapshot);
-
-Async.inspectRuntime();
-// {
-//   active: true,
-//   started: true,
-//   destroyed: false,
-//   target: "browser",
-//   roots: { count: 1, roots: [...] },
-//   loader: { ready: true, pending: 0, root: document.body },
-//   router: false
-// }
-```
-
-`Async.runtime` is not public API. If you need direct instance ownership, keep
-the handle returned from `Async.start(...)` or `createApp(...).start()`.
-
-### Signals
-
-```js
-const signals = createSignalRegistry();
-
-signals.register("count", createSignal(0));
-signals.register("products", createSignal([]));
-
-signals.get("count");
-signals.set("count", 1);
-signals.update("count", (count) => count + 1);
-signals.subscribe("count", (count) => console.log(count));
-signals.ref("count").value;
-signals.unregister("count");
-```
-
-Initializer maps are supported:
-
-```js
-const signals = createSignalRegistry({
-  count: createSignal(0),
-  products: createSignal([])
-});
-```
-
-Nested paths read through the first registered signal id:
-
-```js
-signals.register("product", createSignal({ title: "Keyboard" }));
-signals.get("product.title");
-signals.set("product.title", "Headphones");
-```
-
-`signal(...)` remains a compatibility alias for `createSignal(...)`.
-
-### Scheduler
-
-The scheduler is the runtime ordering engine behind bindings, SSR activation,
-and streaming. Signal writes are still synchronous:
-
-```js
-signals.set("count", 3);
-signals.get("count");
-// 3
-```
-
-DOM bindings, component lifecycle callbacks, component effects, and async signal
-refreshes are scheduled through deterministic phases:
-
-```txt
-binding -> lifecycle -> effect -> async -> post
-```
-
-Browser runtimes use a microtask scheduler by default. Server runtimes use a
-manual scheduler and drain it during `runtime.render(...)`.
-
-```js
-import {
-  createScheduler
-} from "@async/framework";
-
-const scheduler = createScheduler({
-  strategy: "manual"
-});
-
-const runtime = Async.start({
-  root: document,
-  scheduler
-});
-
-signals.set("count", 1);
-await scheduler.flush();
-```
-
-Most apps do not need to call the scheduler directly. It is exposed for tests,
-custom runtimes, streaming receivers, and higher rungs that need explicit flush
-boundaries.
-
-### Async Signals
-
-Async signals add loading state, error state, versions, refresh, and cancel to a
-normal signal value.
+Signals are the state boundary for DOM bindings, handlers, server effects,
+router state, and async resources. Signal writes are synchronous; bindings,
+lifecycle callbacks, effects, and async refreshes are scheduled in deterministic
+phases.
 
 ```js
 const signals = createSignalRegistry({
@@ -739,279 +128,67 @@ const signals = createSignalRegistry({
 });
 
 const product = signals.asyncSignal("product", async function () {
-  const id = this.signals.get("productId");
-  const response = await fetch(`/api/products/${id}`, {
-    signal: this.abort
-  });
-
-  return response.json();
+  return this.server.products.get(this.signals.get("productId"));
 });
 ```
 
-The async function context includes:
+Guide: [docs/runtime/signals.md](./docs/runtime/signals.md) · Contract:
+[specs/framework/03-reactivity-system.md](./specs/framework/03-reactivity-system.md)
 
-| Field | Purpose |
-| --- | --- |
-| `this.signals` | The signal registry |
-| `this.id` | Current async signal id |
-| `this.version` | Run version |
-| `this.abort` | Native `AbortSignal` with non-enumerable `cancel(reason?)` |
-| `this.scheduler` | Current runtime scheduler |
-| `this.refresh()` | Start a new run |
+### App Hub & Registries
 
-`this.abort` can be passed directly to `fetch` or to `delay`:
-
-```js
-await delay(250, this.abort);
-```
-
-If a dependency read through `this.signals.get(...)` changes, the async signal
-reruns and the previous run is aborted.
-
-Dependency reads are captured while the async signal function starts running.
-Read signal dependencies before the first `await`; reads that happen later are
-ordinary reads and do not create refresh subscriptions.
-
-## HTML Protocol
-
-Loader scans regular HTML attributes:
-
-| Attribute | Behavior |
-| --- | --- |
-| `async:container` | Marks a scannable app root |
-| `on:click="selectProduct"` | Delegated command event |
-| `on:submit="preventDefault; save"` | Sequential command chain |
-| `on:click="server.cart.add(productId)"` | Server command with signal args |
-| `on:attach="setup"` | Component root attach lifecycle pseudo-event |
-| `on:visible="trackView"` | Component root visible lifecycle pseudo-event |
-| `on:intersect="trackSection"` | Continuous intersection lifecycle pseudo-event |
-| `intersect:threshold="0,0.5,1"` | Intersection threshold option for `on:intersect` |
-| `intersect:root-margin="-20% 0px -55% 0px"` | Intersection root margin option for `on:intersect` |
-| `intersect:once="true"` | Disconnect `on:intersect` after the first intersecting entry |
-| `signal:text="product.title"` | Text binding |
-| `signal:value="productId"` | Form value binding with writeback |
-| `signal:attr:disabled="product.$loading"` | Attribute binding |
-| `signal:prop:checked="selected"` | DOM property binding |
-| `class:selected="selected"` | Class toggle from a signal path |
-| `signal:class="buttonClasses"` | Class set from a signal value: string, object, or array |
-| `async:boundary="product"` | Async or streamed replacement boundary |
-| `async:loading="product"` | Boundary loading template |
-| `async:ready="product"` | Boundary ready template |
-| `async:error="product"` | Boundary error template |
-
-```html
-<section async:boundary="product">
-  <template async:loading="product">
-    <p>Loading...</p>
-  </template>
-  <template async:ready="product">
-    <h1 signal:text="product.title"></h1>
-  </template>
-  <template async:error="product">
-    <p signal:text="product.$error.message"></p>
-  </template>
-</section>
-```
-
-The default prefixes are `async:`, `signal:`, and `on:`. You can switch to
-data attributes when a host needs that shape:
-
-```js
-Async.start({
-  root: document,
-  attributes: {
-    async: "data-async-",
-    class: "data-class-",
-    intersect: "data-intersect-",
-    signal: "data-signal-",
-    on: "data-on-"
-  }
-});
-```
-
-That maps to `data-async-container`, `data-on-click="save"`,
-`data-signal-text="product.title"`, `data-class-selected="selected"`, and
-`data-intersect-threshold="0.5"`.
-
-Inside `html` templates, signal refs can be passed directly to binding
-attributes:
-
-```js
-const title = this.signal("Keyboard");
-const disabled = this.signal(false);
-const checked = this.signal(true);
-
-return html`
-  <h1 signal:text="${title}"></h1>
-  <button signal:attr:disabled="${disabled}">Save</button>
-  <input type="checkbox" signal:prop:checked="${checked}">
-`;
-```
-
-Use `signal:value` for form value binding with writeback. Use `signal:prop:*`
-when you only need one-way DOM property updates.
-
-Named class toggles use their own top-level namespace:
-
-```html
-<button
-  class="button"
-  class:selected="selected"
->
-  Add
-</button>
-```
-
-Aggregate class binding uses `signal:class`. It reads the current signal value
-and accepts strings, objects, and arrays:
+`Async` is the app hub singleton. It stores declarations, materializes fresh
+runtime registries on startup, exposes inspection APIs, and queues loader work
+that runs before a root attaches.
 
 ```js
 Async.use({
-  signal: {
-    buttonClasses: createSignal([
-      "button-primary",
-      { selected: true, disabled: false },
-      ["compact"]
-    ])
+  signal: { count: createSignal(0) },
+  handler: {
+    increment() {
+      this.signals.update("count", (count) => count + 1);
+    }
   }
 });
+
+Async.start({ root: document });
 ```
 
-```html
-<button signal:class="buttonClasses">Add</button>
-```
+Guide: [docs/runtime/app-hub.md](./docs/runtime/app-hub.md) · Contract:
+[specs/framework/02-runtime-kernel.md](./specs/framework/02-runtime-kernel.md)
 
-Inside `html` templates, `signal:class` can also receive objects or arrays
-directly. Signal refs inside the object or array are tracked:
+### Components
+
+Components are scoped fragment functions. They return strings or `html`
+templates; Loader inserts and scans the result, and scoped signals, handlers,
+effects, and lifecycle cleanup follow the fragment.
 
 ```js
-const selected = this.signal("selected", false);
-const tone = this.signal("tone", "primary");
+const Toggle = component(function Toggle() {
+  const selected = this.signal(false);
 
-return html`
-  <article signal:class="${["card", tone, { selected }]}"}>
-    ...
-  </article>
-`;
-```
-
-For component-local state that does not need a stable public id, omit the name.
-The signal is still registered under the component scope:
-
-```js
-const selected = this.signal(false);
-const tone = this.signal("primary");
-
-return html`
-  <article signal:class="${["card", selected, tone]}">
-    ...
-  </article>
-`;
-```
-
-`value="${signalRef}"` in an `html` template is equivalent to adding
-`signal:value` for that signal. It writes back on input/change:
-
-```js
-const productId = this.signal("productId", "sku-1");
-
-return html`<input value="${productId}">`;
-```
-
-`signal:class:selected="selected"` remains supported as a compatibility alias,
-but new examples should use `class:selected`. The parser-safe top-level
-aggregate form `class:="buttonClasses"` also remains supported.
-
-### Command Events
-
-`on:*` works with any native DOM event name. `on:attach` and `on:visible` are
-reserved component lifecycle pseudo-events with cleanup support. `on:mount` was
-removed; stale markup warns and does not run.
-When an `on:attach` handler installs listeners, observers, timers, or DOM
-helpers, return a cleanup function. Boundary swaps destroy the old subtree and
-run returned cleanup functions before inserting the next fragment.
-
-Command chains use semicolons and are awaited sequentially:
-
-```html
-<form on:submit="preventDefault; server.products.save(productId, $form)">
-  <input name="title">
-  <button>Save</button>
-</form>
-```
-
-Plain commands resolve through the handler registry. Built-ins are registered by
-default:
-
-```txt
-prevent
-preventDefault
-stopPropagation
-stopImmediatePropagation
-```
-
-`server.<id>(...)` resolves through the server registry or client proxy. Bare
-arguments read signals. `$*` arguments read event locals:
-
-| Argument | Value |
-| --- | --- |
-| `productId` | `signals.get("productId")` |
-| `cart.quantity` | `signals.get("cart.quantity")` |
-| `$value` | Current element value |
-| `$checked` | Current element checked state |
-| `$form` | Current form as a plain object |
-| `$dataset` | Current element dataset as a plain object |
-| `$event` | Raw DOM event, client-only |
-| `$el` | Current element, client-only |
-
-`$event` and `$el` are intentionally not serializable and cannot be passed to
-`server.*(...)` commands.
-
-Inline commands are not JavaScript. There is no `eval`, assignment, branching,
-arithmetic, or inline `await`. Complex logic belongs in a registered handler:
-
-```js
-handlers.register("addToCart", async function () {
-  const productId = this.signals.get("productId");
-  const result = await this.server.cart.add(productId);
-  this.signals.set("cart", result.cart);
+  return html`
+    <button on:click="${this.handler(() => selected.update((value) => !value))}"
+      class:selected="${selected}">
+      Toggle
+    </button>
+  `;
 });
 ```
 
-### Server Calls
+Guide: [docs/runtime/components.md](./docs/runtime/components.md) · Contract:
+[specs/framework/05-component-system.md](./specs/framework/05-component-system.md)
+
+### Server Calls & Cache
 
 Server registries run locally on the server. Browser proxies use an explicit
-transport supplied by the app, so network access is opt-in. Both expose the same
-dotted call shape.
+transport supplied by the app; responses can return values, signal patches,
+browser cache patches, boundary HTML, redirects, or errors.
 
 ```js
-import {
-  createServerRegistry
-} from "@async/framework/server";
-
-const server = createServerRegistry({
-  "cart.add"(productId, quantity) {
-    return {
-      __async_server_result__: 1,
-      value: { ok: true },
-      signals: {
-        cartCount: 3
-      }
-    };
-  }
-});
-```
-
-Client proxy:
-
-```js
-import {
-  createServerProxy
-} from "@async/framework/browser";
-
 const server = createServerProxy({
   endpoint: "/__async/server",
-  transport: httpTransport,
+  transport,
   signals,
   loader,
   router
@@ -1020,850 +197,186 @@ const server = createServerProxy({
 await server.cart.add("sku-1", 2);
 ```
 
-Proxy requests validate their `args`, default `input`, and selected signal
-values before transport runs. Supported values are `null`, booleans, strings,
-finite numbers, dense arrays, and plain objects composed from those values.
-Values that JSON would silently change or drop, such as `undefined`, functions,
-symbols, `Map`, `Set`, `Date`, sparse arrays, class instances, non-finite
-numbers, circular objects, file-like values, streams, buffers, and typed arrays
-are rejected with a path to the invalid value.
+Guide: [docs/runtime/server-calls.md](./docs/runtime/server-calls.md) ·
+Contract:
+[specs/framework/06-server-and-data-system.md](./specs/framework/06-server-and-data-system.md)
 
-Server responses can include `value`, `signals`, `boundary`, `html`, `redirect`,
-or `error`. Signal patches are applied before boundary swaps and redirects.
-Namespace calls such as `server.cart.add(...)` return the unwrapped `value`.
+### Router & Partials
 
-When an async signal calls a server namespace function, the framework passes the
-active abort signal through proxy calls. Returned server effects such as
-`signals`, `cache.browser`, `boundary/html`, and `redirect` are applied before
-the async signal stores the unwrapped `value`.
-
-### Router And Partials
-
-Async includes a built-in router behind the `@async/framework/router` browser
-subpath. Use it for URL matching, route params, hash-based static-host routes,
-same-origin link and GET form interception, route partial swaps, and route-only
-`router.*` state.
-
-```js
-import { Async, defineRoute } from "@async/framework/router";
-```
-
-For app code, register routes and partials through the app registry:
-
-- `Async.use({ route, partial })` plus `Async.start({ mode, boundary })` for app
-  hub setup.
-
-Most apps should start at that level and only move down when they need a more
-specific routing shape:
-
-| If the app is doing this | Use this pattern |
-| --- | --- |
-| Client-rendered route pages | `Async.use({ route, partial })` and `Async.start({ mode: "csr" })` |
-| Static-host routes | Add `urlMode: "hash"` and link to `#/path` routes |
-| Existing SSR or static HTML should stay visible until navigation | Use `mode: "spa"` |
-| Buttons, handlers, redirects, or preloads need routing | Use `Async.router.navigate(...)` or `Async.router.prefetch(...)` |
-| A dashboard renders from URL state | Use `mode: "signals"` with `Async.router.loader.swap(...)` |
-| Several route-driven boundaries refresh independently | Use `Async.router.loader.defineRefreshPlan(...)` and `refresh(...)` |
-| Code needs the router object itself | Await `Async.router.ready()` |
-| Navigation belongs to the server or separate documents | Use `mode: "ssr"` or `mode: "mpa"` |
-| A custom runtime already owns materialized registries | Use `createRouter(...)` directly |
-
-`createRouter(...)` is lower-level custom runtime wiring for already-materialized
-runtime registries. It is not a second registration API, and it starts
-immediately when called.
-
-Router pieces:
-
-| Piece | Purpose |
-| --- | --- |
-| `Async.use({ route, partial })` | Registers URL patterns and fragment renderers |
-| `defineRoute(...)` | Creates route records that point to partials or metadata |
-| `Async.start({ mode, boundary })` | Materializes the runtime router from app declarations |
-| `Async.router` | Queues or runs navigation, history handling, matching, and prefetch |
-| `async:boundary="route"` | Receives rendered route partial HTML in `csr` and `spa` modes |
-| `router.*` signals | Publish path, params, query, matched route, pending state, and errors |
-
-Partials are server-rendered fragment functions. They return HTML, `html`
-templates, DOM fragments, or a response envelope.
+The router lives behind `@async/framework/router`. It handles URL matching,
+route params, hash-based static-host routes, same-origin link and GET form
+interception, route partial swaps, and route-only `router.*` state.
 
 ```js
 Async.use({
+  route: {
+    "/products/:id": defineRoute("product.page")
+  },
   partial: {
-    "product.page": async function ({ id }) {
-      const product = await this.server.products.get(id);
-      return html`<h1>${product.title}</h1>`;
-    }
-  }
-});
-```
-
-The router swaps route partials into a boundary. `csr` starts from an empty
-route boundary, renders the current route partial locally, then keeps future
-navigation local too:
-
-```js
-Async.use({
-  partial: {
-    home() {
-      return html`<h1>Home</h1>`;
-    },
     "product.page"({ id }) {
       return html`<h1>Product ${id}</h1>`;
     }
-  },
-  route: {
-    "/": defineRoute("home"),
-    "/products/:id": defineRoute("product.page")
-  }
-});
-
-Async.start({
-  mode: "csr",
-  boundary: "route",
-  root: document
-});
-```
-
-`route(...)` remains a compatibility alias for `defineRoute(...)`.
-
-Route patterns support static paths, params, and wildcard fallback:
-
-```js
-Async.use({
-  route: {
-    "/": defineRoute("home.page"),
-    "/products/:id": defineRoute("product.page"),
-    "/docs/:section/:page": defineRoute("docs.page"),
-    "*": defineRoute("notFound.page")
   }
 });
 ```
 
-The router publishes params and query strings through signals:
+Guide: [docs/runtime/router-partials.md](./docs/runtime/router-partials.md) ·
+Contract:
+[specs/framework/07-routing-and-partials.md](./specs/framework/07-routing-and-partials.md)
 
-```txt
-/products/sku-1?tab=reviews
-router.path   -> "/products/sku-1"
-router.params -> { id: "sku-1" }
-router.query  -> { tab: "reviews" }
-```
+### SSR & Activation
 
-Routes that only drive URL-backed state can use route metadata without a
-partial. Use `mode: "signals"` for dashboards or app shells that already render
-from state:
+SSR uses related app definitions: a server runtime renders HTML plus snapshots,
+and the browser runtime activates the existing document. Activation scans and
+attaches; it does not hydrate, diff, patch, rerender, or fetch route fragments.
 
 ```js
-Async.use({
-  route: {
-    "/pbi": defineRoute({ render: "none", meta: { page: "pbi" } }),
-    "/fy26": defineRoute({ render: "none", meta: { page: "fy26" } })
-  }
-});
-
-Async.start({
-  mode: "signals",
-  urlMode: "hash"
-});
-```
-
-Router modes:
-
-| Mode | Initial route | Later navigation | Use when |
-| --- | --- | --- | --- |
-| `csr` | Client renders local partial into boundary | Client renders local partial and swaps | A no-build page owns route content on the client |
-| `spa` | Existing HTML may already contain route | Client renders local partial and swaps | SSR or static HTML should stay visible until navigation |
-| `signals` | Existing HTML stays attached | Updates `router.*` signals and history only | A shell renderer reacts to URL state itself |
-| `ssr` | Server-rendered document plus snapshot activation | Browser navigates normally | Navigation belongs to the server |
-| `mpa` | Any document source | Browser navigates normally | Traditional multi-page navigation |
-
-In `signals` mode, route changes update `router.url`, `router.path`,
-`router.params`, `router.query`, `router.route`, `router.pending`, and
-`router.error` without rendering partials or swapping boundaries.
-
-Client navigation modes intercept same-origin links, GET forms, browser
-back/forward, and route hashes such as `#/products/sku-1`. They do not intercept
-external links, downloads, modified clicks, non-GET forms, or plain section
-anchors such as `#quickstart`.
-
-CSR startup can use an empty route boundary:
-
-```html
-<main async:container>
-  <nav>
-    <a href="/">Home</a>
-    <a href="/products/sku-1">Product</a>
-  </nav>
-
-  <section async:boundary="route"></section>
-</main>
-```
-
-Router state lives under `router.*` signals:
-
-```txt
-router.url
-router.path
-router.params
-router.query
-router.route
-router.pending
-router.error
-```
-
-Programmatic navigation uses the same matcher and history handling:
-
-```js
-await Async.router.navigate("/products/sku-1");
-await Async.router.navigate("/products/sku-2", { replace: true });
-await Async.router.prefetch("/products/sku-3");
-```
-
-When a partial envelope owns an `html` key with `undefined`, the router treats
-it as no route HTML replacement and leaves the active boundary intact. Use
-`html: ""` to intentionally clear the route boundary.
-
-The full router guide lives in `docs/runtime/router-partials.md` and the
-runnable example is `examples/router`.
-
-### Cache
-
-Cache declarations are split by runtime target:
-
-```js
-Async.use({
-  cache: {
-    browser: {
-      product: defineCache({ ttl: 60_000 })
-    },
-    server: {
-      "products.get": defineCache({ ttl: 30_000 })
-    }
-  },
-  server: {
-    async "products.get"(id) {
-      return this.cache.getOrSet(`products:${id}`, () => db.products.get(id));
-    }
-  }
-});
-```
-
-Browser handlers and browser async signals receive `runtime.browser.cache`.
-Server functions and server partials receive `runtime.server.cache`. Server
-cache config and contents are never serialized to the browser. Browser cache is
-seeded only by explicit SSR response data.
-
-Runtime cache registries support:
-
-```js
-cache.register("product", defineCache({ ttl: 60_000 }));
-cache.get("product:sku-1");
-cache.set("product:sku-1", product);
-await cache.getOrSet("product:sku-1", () => loadProduct());
-cache.delete("product:sku-1");
-cache.clear("product:");
-```
-
-### SSR Flow
-
-SSR uses related app definitions: a server runtime with server functions,
-server cache, partials, and route rendering; and a browser runtime with DOM
-handlers, browser cache, signals, and usually a server proxy.
-
-```js
-const serverRuntime = createApp(serverApp, {
+const response = await createApp(serverApp, {
   target: "server",
   request
-});
-
-const response = await serverRuntime.render("/products/123");
+}).render("/products/123");
 ```
 
-`runtime.render(url)` returns:
+Guide: [docs/runtime/ssr-activation.md](./docs/runtime/ssr-activation.md) ·
+Contract:
+[specs/framework/08-resume-and-streaming.md](./specs/framework/08-resume-and-streaming.md)
+
+### Streaming & Boundaries
+
+Boundary swaps replace named regions and rescan inserted content by default.
+`createBoundaryReceiver(...)` adds per-boundary sequence tracking, signal/cache
+effects, and stale patch suppression for independently arriving patches.
 
 ```js
-{
-  html,
-  status,
-  signals,
-  cache: {
-    browser: {}
-  }
-}
-```
-
-The returned HTML includes a route boundary plus a JSON snapshot:
-
-```html
-<section async:boundary="route">
-  <!-- server-rendered route partial -->
-</section>
-<script type="application/json" async:snapshot>{}</script>
-```
-
-Browser activation scans the existing HTML and attaches events. It does not
-hydrate, diff, patch, rerender, or fetch route fragments:
-
-```js
-createApp(browserApp, {
-  root: document
-}).start();
-```
-
-If browser handlers or async signals need server commands, pass a server proxy
-with an explicit transport:
-
-```js
-createApp(browserApp, {
-  root: document,
-  server: createServerProxy({
-    endpoint: "/__async/server",
-    transport: httpTransport
-  })
-}).start();
-```
-
-If an `async:snapshot` script is present under the root or document,
-`createApp(...)` reads it automatically. You can also inspect it directly:
-
-```js
-const snapshot = readSnapshot(document);
-```
-
-## Loader Bootstrap Queue
-
-`Async.loader` is a promise-returning facade for script-friendly loader work
-that may run before the app has attached a root. Calls to `scan`, `swap`, and
-`attach` queue until `Async.start({ root })` or `Async.attachRoot(root)` creates
-the concrete runtime loader:
-
-```js
-Async.use("handler", {
-  selectProduct() {
-    this.signals.set("selected", true);
-  }
-});
-
-const swapped = Async.loader.swap(
-  "route",
-  `<button type="button" on:click="selectProduct">Select</button>`
-);
-
-Async.start({ root: document, router: false });
-await swapped;
-```
-
-`Async.loader.ready()` resolves with the concrete `runtime.loader`.
-`Async.loader.inspect()` reports whether a loader is ready and how many loader
-operations are still pending. The concrete `runtime.loader` remains
-synchronous for routers, boundary receivers, and server-result application.
-
-## Components
-
-Components are scoped fragment functions. They return strings or `html`
-templates; Loader inserts and scans the result. There is no virtual node
-type and no rerender loop.
-
-```js
-const Toggle = component(function Toggle() {
-  const selected = this.signal(false);
-  const attach = this.handler("attach", function ({ element }) {
-    element.dataset.attached = "true";
-  });
-  const visible = this.handler("visible", function ({ element }) {
-    element.dataset.visible = "true";
-  });
-
-  return html`
-    <button
-      type="button"
-      on:attach="${attach}"
-      on:visible="${visible}"
-      on:click="${this.handler(function () {
-        selected.update((value) => !value);
-      })}"
-      class:selected="${selected}"
-      signal:class="${["toggle", { active: selected }]}"
-      signal:attr:aria-pressed="${selected}"
-    >
-      Toggle
-    </button>
-  `;
-});
-
-const loader = Loader({ root: document });
-loader.attach(document.querySelector("#app"), Toggle);
-```
-
-Component helpers:
-
-| Helper | Behavior |
-| --- | --- |
-| `this.signal(name, initial)` | Scoped named get-or-create signal |
-| `this.signal(initial)` | Generated scoped local signal |
-| `this.computed(name, fn)` | Scoped computed signal |
-| `this.asyncSignal(name, fn)` | Scoped async signal |
-| `this.effect(fn)` | Scoped effect with cleanup |
-| `this.handler(name, fn)` | Scoped named handler registry entry |
-| `this.handler(fn)` | Generated scoped handler registry entry |
-| `this.render(Component, props, children?)` | Child fragment rendering with optional default children |
-| `this.slot(Component, propsOrFn)` | Child component outlet using an `on:attach` target |
-| `this.suspense(signalRef, views)` | Async boundary template helper |
-| `this.on(event, fn)` | Fragment lifecycle fallback for `attach`, `visible`, and `destroy` |
-| `this.onAttach(fn)` | Fragment attach lifecycle fallback |
-| `this.onVisible(fn)` | Compatibility alias for `this.on("visible", fn)` |
-| `this.on("intersect", options?, fn)` | Continuous intersection lifecycle for the attached component scope |
-| `this.intersect(element, options?, fn)` | Component-owned continuous intersection observer for a direct element |
-
-`this.suspense(...)` is sugar for Loader boundaries:
-`asyncSignal + async:boundary + async:* templates`. It emits only templates. The
-caller owns the boundary element, and the loader chooses the loading, ready, or
-error template from the async signal status.
-
-```js
-const Product = component(function Product() {
-  const product = this.asyncSignal("product", async function () {
-    return this.server.products.get("sku-1");
-  });
-
-  return html`
-    <article async:boundary="${product.id}">
-      ${this.suspense(product, {
-        loading() {
-          return html`<p>Loading...</p>`;
-        },
-        ready(product) {
-          return html`<h1 signal:text="${product.id}.title"></h1>`;
-        },
-        error(product) {
-          return html`<p signal:text="${product.id}.$error.message"></p>`;
-        }
-      })}
-    </article>
-  `;
-});
-```
-
-The shorthand form treats the callback as the ready template:
-
-```js
-this.suspense(product, (product) => html`
-  <h1 signal:text="${product.id}.title"></h1>
-`);
-```
-
-`this.suspense(...)` is not React Suspense. It does not throw promises,
-hydrate, diff, rerender a component tree, or emit a wrapper element.
-
-Default children are a scoped fragment owned by the framework. Pass them as the
-third `this.render(...)` argument, then interpolate `children` in the child
-component:
-
-```js
-const Card = component(function Card({ title, children }) {
-  return html`
-    <article>
-      <h2>${title}</h2>
-      ${children}
-    </article>
-  `;
-});
-
-const Page = component(function Page() {
-  return html`
-    ${this.render(Card, { title: "Status" }, html`
-      <p>Ready</p>
-    `)}
-  `;
-});
-```
-
-Children can also be lazy when the caller supplies a factory. The factory runs
-only if the child component interpolates `children`, and any nested components
-or handlers created while rendering the fragment are cleaned up with the
-consuming component fragment:
-
-```js
-this.render(Card, { title: "Status" }, function children() {
-  return html`<p>${this.render(Badge, { label: "Live" })}</p>`;
-});
-```
-
-No-build HTML component hosts use an explicit inert template for default
-children:
-
-```html
-<section async:component="Card">
-  <template async:children>
-    <p>Ready</p>
-  </template>
-</section>
-```
-
-The loader captures only a direct child `<template async:children>` before
-attaching the registered component. Ordinary host content is not implicitly
-captured, and the template content is inserted and scanned only if the
-component interpolates `children`.
-
-Do not pass `children` in the props object when also using the third argument.
-Default children are consumed once by interpolation; use `this.slot(...)` for
-post-attach replacement and use ordinary props when the child needs data from the
-caller.
-
-Component-scoped signals and handlers are unregistered when the attached
-fragment is destroyed. `loader.swap(...)` cleans up old DOM bindings and attached
-component fragments under the swapped boundary before inserting the new HTML.
-
-Lifecycle fallbacks are scoped to the component fragment that registered them.
-A component attached directly with `loader.attach(target, Component)` receives the
-attach target. A child rendered through `this.render(Child)` receives its own
-single element root when one exists. If the child returns text or multiple root
-nodes, the fallback target is the nearest containing element. `this.onVisible`
-and `this.on("intersect", ...)` observe the same scoped target.
-
-Put component lifecycle on the component root element when there is one:
-
-```js
-const attach = this.handler("attach", function ({ element }) {
-  element.dataset.attached = "true";
-});
-const visible = this.handler("visible", function ({ element }) {
-  element.dataset.visible = "true";
-});
-
-return html`<article on:attach="${attach}" on:visible="${visible}">...</article>`;
-```
-
-If a component returns text or multiple root nodes, use the scoped fallback:
-
-```js
-this.on("attach", (target) => {
-  target.dataset.attached = "true";
-});
-
-this.on("destroy", () => {
-  // Clean up fragment-scoped resources.
-});
-```
-
-`on:visible` is defined as a component lifecycle pseudo-event. It runs once when
-the component root first becomes visible. Lifecycle events do not drive
-component rerenders.
-
-Use `on:intersect` when markup should receive continuous intersection updates
-through a registered handler:
-
-```html
-<section
-  on:intersect="trackSection"
-  intersect:threshold="0,0.25,0.5,0.75,1"
-  intersect:root-margin="-20% 0px -55% 0px"
->
-  ...
-</section>
-```
-
-The handler receives `element`, `entry`, `entries`, `observer`,
-`isIntersecting`, `intersectionRatio`, and `unsupported`. Custom roots are not
-selector-based; use `this.intersect(...)` with a direct root element when a
-custom observer root is needed.
-
-Use `this.on("intersect", ...)` when a component needs continuous visibility
-state:
-
-```js
-const Card = component(function Card() {
-  const visible = this.signal(false);
-
-  this.on("intersect", { threshold: 0.5 }, ({ isIntersecting }) => {
-    visible.set(isIntersecting);
-  });
-
-  return html`<article class:visible="${visible}">...</article>`;
-});
-```
-
-Use `this.intersect(...)` with a direct element when a parent owns scroll-spy or
-active-section state:
-
-```js
-const Section = component(function Section({ id, observeSection }) {
-  const attach = this.handler("attach", function ({ element }) {
-    return observeSection(id, element);
-  });
-
-  return html`<section on:attach="${attach}"><h2>${id}</h2></section>`;
-});
-
-const Page = component(function Page() {
-  const active = this.signal("intro");
-  const ratios = new Map();
-  const options = {
-    rootMargin: "-20% 0px -55% 0px",
-    threshold: [0, 0.25, 0.5, 0.75, 1]
-  };
-
-  const observeSection = (id, element) => this.intersect(element, options, ({ entry }) => {
-    ratios.set(id, entry.isIntersecting ? entry.intersectionRatio : 0);
-    const best = [...ratios.entries()].sort((a, b) => b[1] - a[1])[0];
-    active.set(best?.[0] ?? id);
-  });
-
-  return html`
-    <nav signal:text="${active}"></nav>
-    ${this.render(Section, { id: "intro", observeSection })}
-    ${this.render(Section, { id: "runtime", observeSection })}
-  `;
-});
-```
-
-## Streaming
-
-Out-of-order HTML can target a boundary and keep delegated handlers working:
-
-```js
-loader.swap(
-  "product",
-  `
-    <article>
-      <h1 signal:text="product.title"></h1>
-      <button type="button" on:click="selectProduct">Select</button>
-    </article>
-  `
-);
-```
-
-`swap(boundaryId, fragmentOrTemplate, options?)` replaces the boundary contents
-and rescans inserted content by default. For large stable shells that refresh
-from local state, pass `strategy: "morph"` to preserve matching DOM nodes while
-updating changed text, attributes, and children.
-
-Use config-first `swap(...)` for the advanced variants:
-
-```js
-loader.swap({ boundary: "view", html });
-loader.swap({ type: "ifChanged", boundary: "view", html: renderView });
-loader.swap({ type: "many", updates: { filters, timeline }, scan: "once" });
-loader.swap({ type: "many", ifChanged: true, updates, scan: "once" });
-```
-
-`type: "ifChanged"` skips cleanup, DOM replacement, and rescanning when the
-next rendered HTML matches the previous swap for that boundary. The render
-function form receives `{ boundary, boundaryId, loader, signals, handlers,
-server, router, cache, scheduler }`.
-
-`type: "many"` applies several boundary replacements before activation.
-`updates` can be an object, `Map`, or iterable of `[boundaryId, html]` entries.
-Each entry may also be `{ html, strategy, attach }` for per-boundary morph or
-attach behavior. Pass `ifChanged: true` to skip unchanged entries inside the
-batch. `scan: "once"` defers scanning until every update has been inserted, which
-avoids interleaving cleanup/scan work across multiple same-tick refreshes.
-
-Use `loader.defineRefreshPlan(...)` and `loader.refresh(scope)` for declarative
-scope-to-boundary orchestration in signal-router dashboards:
-
-```js
-loader.defineRefreshPlan({
-  timeline: {
-    boundaries: ["view-timeline"],
-    render({ signals }) {
-      return {
-        "view-timeline": { html: buildTimeline(signals), strategy: "morph" }
-      };
-    }
-  },
-  chrome: ["app-chrome", "view-filters"]
-});
-
-loader.refresh("timeline");
-loader.refresh("chrome", { "app-chrome": chromeHtml, "view-filters": filtersHtml });
-```
-
-Use `type: "bind"` when local signal state owns a large region. The render
-function runs once, tracks signal reads made while rendering, and schedules one
-unchanged-aware refresh for same-tick signal changes. Pass `deps: [...]` to
-subscribe only to explicit signal paths instead of every read inside `render`.
-It returns a cleanup function.
-
-```js
-const stopTimeline = loader.swap({
-  type: "bind",
-  boundary: "view-timeline",
-  deps: ["demoState.settings.rangeMode"],
-  render({ signals }) {
-    const view = buildTimelineView(signals.get("timeline.filters"));
-    return html`<section>${view.items.map(renderTimelineItem)}</section>`;
-  },
-  strategy: "morph"
-});
-```
-
-The `strategy` option controls how the boundary changes:
-
-| Option | Behavior |
-| --- | --- |
-| `replace` | Default. Clean up all existing children, replace them, and activate the inserted subtree. |
-| `morph` | Reconcile matching children by tag and stable identity, preserving unchanged nodes and cleaning up removed or replaced nodes. |
-
-The `attach` option applies to morph swaps:
-
-| Option | Behavior |
-| --- | --- |
-| `preserve` | Default. Preserved `on:attach` nodes keep their attach handlers across morph. |
-| `rebind` | Preserved `on:attach` nodes rerun attach handlers after morph. |
-
-Morph matching uses `async:key`, `data-key`, or `id` when present. Without a
-stable identity it falls back to sibling order and tag name.
-
-The `scan` option controls activation:
-
-| Option | Behavior |
-| --- | --- |
-| `auto` | Default. For replacement, scan inserted roots. For morphing, scan changed or inserted roots. |
-| `full` | Scan the boundary element and its subtree. |
-| `none` | Do not scan inserted content; call `loader.scan(...)` later if needed. |
-
-`type: "many"` also accepts `scan: "once"` as a batched `auto` scan after all
-updates are applied.
-
-When boundary patches can arrive independently, use `createBoundaryReceiver`.
-It keeps per-boundary sequence state, applies signal/cache effects before the
-HTML swap, flushes scheduled bindings, and ignores stale child patches after a
-parent scope is destroyed.
-
-```js
-import { createBoundaryReceiver } from "@async/framework/browser";
-
-const receiver = createBoundaryReceiver({
-  loader: runtime.loader,
-  signals: runtime.signals,
-  cache: runtime.browser.cache,
-  scheduler: runtime.scheduler,
-  router: runtime.router
-});
-
 await receiver.apply({
   boundary: "product",
   seq: 1,
-  signals: {
-    product: { title: "Keyboard" }
-  },
-  cache: {
-    browser: {
-      "product:sku-1": { title: "Keyboard" }
-    }
-  },
-  html: `
-    <article>
-      <h1 signal:text="product.title"></h1>
-      <button type="button" on:click="server.cart.add(productId)">Add</button>
-    </article>
-  `
+  signals: { product: { title: "Keyboard" } },
+  html: `<h1 signal:text="product.title"></h1>`
 });
 ```
 
-Sequence numbers are tracked per boundary: `hero` patch `10` can apply before
-`reviews` patch `2`, while a later `hero` patch `9` is ignored. The receiver
-does not add transport management, a transaction log, hydration, or component
-rerendering.
+Guide: [docs/runtime/streaming.md](./docs/runtime/streaming.md) · Contract:
+[specs/framework/08-resume-and-streaming.md](./specs/framework/08-resume-and-streaming.md)
+
+## Install & Load
+
+Install from npm:
+
+```bash
+pnpm add @async/framework
+```
+
+Load directly from a CDN for no-build prototypes:
+
+```html
+<script type="module">
+  import { Async, createSignal } from "https://unpkg.com/@async/framework@latest/browser.js";
+</script>
+```
+
+Use `@async/framework/vite` when a Vite app needs the Hono development server
+lane, a browser client build lane, or JSX optimizer reports.
+
+Guide: [docs/start/install.md](./docs/start/install.md) · Build guide:
+[docs/build/vite-hono.md](./docs/build/vite-hono.md)
 
 ## Examples
 
-See [`examples/README.md`](./examples/README.md) for start commands and a short
+See [examples/README.md](./examples/README.md) for start commands and a short
 description of every example.
 
 | Example | Shows |
 | --- | --- |
-| [`examples/counter`](./examples/counter) | Signal text binding and delegated handlers |
-| [`examples/product`](./examples/product) | Async signal loading, ready, and error boundaries |
-| [`examples/components`](./examples/components) | Scoped fragment components and lifecycle hooks |
-| [`examples/streaming`](./examples/streaming) | Boundary swaps with rescanned handlers |
-| [`examples/server-call`](./examples/server-call) | Command events calling server functions |
-| [`examples/router`](./examples/router) | CSR first render and local route boundary swaps |
-| [`examples/partials`](./examples/partials) | Server-rendered partial fragments |
-| [`examples/cache`](./examples/cache) | Browser/server cache declarations |
-| [`examples/ssr`](./examples/ssr) | Server render output and browser activation snapshot |
-| [`examples/vite-hono`](./examples/vite-hono) | Hono-backed Vite dev server plus client asset build |
-| [`examples/vite-jsx-streaming`](./examples/vite-jsx-streaming) | JSX optimizer bootstrap with stream runtime slice selection |
-| [`examples/size`](./examples/size) | Scenario-size fixtures for bundle and runtime slices |
+| [examples/counter](./examples/counter) | Signal text binding and delegated handlers |
+| [examples/product](./examples/product) | Async signal loading, ready, and error boundaries |
+| [examples/components](./examples/components) | Scoped fragment components and lifecycle hooks |
+| [examples/streaming](./examples/streaming) | Boundary swaps with rescanned handlers |
+| [examples/server-call](./examples/server-call) | Command events calling server functions |
+| [examples/hateoas-actions](./examples/hateoas-actions) | Hono-rendered HATEOAS links and forms enhanced into partial swaps |
+| [examples/router](./examples/router) | CSR first render and local route boundary swaps |
+| [examples/partials](./examples/partials) | Server-rendered partial fragments |
+| [examples/cache](./examples/cache) | Browser/server cache declarations |
+| [examples/ssr](./examples/ssr) | Server render output and browser activation snapshot |
+| [examples/vite-hono](./examples/vite-hono) | Hono-backed Vite dev server plus client asset build |
+| [examples/vite-jsx-streaming](./examples/vite-jsx-streaming) | JSX optimizer bootstrap with stream runtime slice selection |
+| [examples/size](./examples/size) | Scenario-size fixtures for bundle and runtime slices |
 
-## Pipeline
+## Async And htmx
 
-`@async/pipeline` owns GitHub Actions, Pages, and release lifecycle automation.
-Edit [`pipeline.ts`](./pipeline.ts), then regenerate:
+Async and htmx are both HTML-first and avoid a virtual DOM, but they optimize
+for different boundaries. In layer model terms, htmx-style hypermedia is the L0
+Enhance layer, and in Async it stays available at every layer above.
 
-```bash
-pnpm run pipeline:sync:generate
-pnpm run pipeline:sync:check
-pnpm run pipeline:github:check
-```
+| Area | htmx | Async |
+| --- | --- | --- |
+| Primary model | HTML attributes issue HTTP requests and swap server responses. | Server-generated HTML can stay primary; Async attributes add behavior, state, actions, and boundaries. |
+| State | Server-owned hypermedia state; browser state is intentionally minimal. | Server-led HTML can stay server-owned; browser signals are available when a view needs local state. |
+| Server interaction | DOM attributes describe HTTP verbs, targets, and swaps. | Native `method`/`action` flows can submit to any backend; partial responses can return HTML or envelopes for boundary swaps. |
+| Routing | Usually server navigation or htmx-boosted navigation. | MPA and SSR keep navigation server-led; CSR, SPA, and signals modes opt into client-owned routing. |
+| Components | Server-rendered HTML fragments. | Scoped fragment functions today; the compiler layers add JSX/TSRX authoring. |
+| Build story | No build by default. | Layers L0-L3 and L5 are no-build/CDN; the compiler layers (L4, L6, L7) add build or compiler steps. |
 
-Useful commands:
+Async supports server-led views: any backend can render HTML strings for full
+documents or fragments, native forms can post through ordinary `method` and
+`action` attributes, and browser navigation can stay native in MPA/SSR modes.
+Add Async attributes only where a fragment needs local signals, command
+handlers, server functions, boundary swaps, or streamed patches. Use htmx when
+its HTTP-attribute model is the desired contract. Use Async when server-led HTML
+should share a protocol with local signals, registered browser/server handlers,
+route partials, streaming boundaries, and the compiler layers. See
+[examples/hateoas-actions](./examples/hateoas-actions) for a Hono-rendered
+HATEOAS flow using links, forms, verbs, and partial swaps.
 
-```bash
-pnpm run bundle
-pnpm run bundle:clean
-pnpm run pipeline:verify
-pnpm run pipeline:pages
-pnpm run registry:lint
-pnpm run pipeline:release:doctor
-pnpm run release:check
-```
-
-Release artifacts such as `browser.js`, `browser.min.js`,
-`browser.umd.min.js`, `browser.ts`, `browser.d.ts`, `framework.ts`,
-`framework.d.ts`, and `server.js` are generated into `dist/`. The generated
-`dist/` directory is the package root for `npm pack` and release publishing, so
-the published package and CDN surface still expose those files at package root
-rather than under `dist/`. The source `package.json` stays private and owns the
-minimal public export spec, while omitting legacy `main`/`module`/`browser`
-entry fields and generated package file lists. `scripts/build-framework-bundle.js`
-derives the generated `dist/package.json` and staged artifact names from that
-spec. Feature branches should edit source files and let `pnpm run bundle`,
-`pnpm test`, or the generated release workflow materialize the publish tree.
-Use `pnpm run bundle:clean` to remove local generated artifacts after
-inspection.
-
-`registry:lint` scans package source and examples for declared registry ids
-such as signals, handlers, server functions, partials, routes, and components.
-It writes `.async/registry-manifest.json` plus a per-file cache at
-`.async/registry-lint-cache.json`, skips generated root bundles such as
-`browser.umd.min.js`, and fails only when the same registry type and id are
-declared with different normalized content. Duplicate declarations with the
-same content are reported as dedupe candidates, not errors.
-
-GitHub Pages builds through the generated `pages` job. This private repository
-needs GitHub Pages support enabled before the generated job can deploy.
-
-Stable releases use the generated `publish` job: it verifies the package,
-creates or verifies the tag and GitHub Release, publishes npm with provenance,
-then runs release doctor.
+Guide: [docs/start/why-async.md](./docs/start/why-async.md) · Contract:
+[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md)
 
 ## Status
 
 The core runtime is intentionally small. Build-required JSX (L4) has optimizer
 artifacts for event, signal, stream, and children-fragment lowering, while full
 compiler emission, lazy chunk manifests, TSRX lowering, server resource
-compilation, and higher-level resumability metadata remain compiler-rung work
-(L6 and L7). See
-`specs/framework/12-composition-patterns.md` for composition pattern guidance
-and planned source forms.
+compilation, and higher-level resumability metadata remain compiler-layer work
+(L6 and L7).
 
-## Async And htmx
+Contracts: [specs/framework/12-composition-patterns.md](./specs/framework/12-composition-patterns.md) ·
+[specs/framework/15-abstraction-layers.md](./specs/framework/15-abstraction-layers.md) ·
+[specs/framework/16-whole-program-compiler.md](./specs/framework/16-whole-program-compiler.md)
 
-Async and htmx are both HTML-first and avoid a virtual DOM, but they optimize
-for different boundaries. In ladder terms, htmx-style hypermedia is the L0
-Enhance rung — and in Async it stays available at every rung above.
+## Documentation Map
 
-| Area | htmx | Async |
-| --- | --- | --- |
-| Primary model | HTML attributes issue HTTP requests and swap server responses. | HTML attributes bind signals, command events, server calls, and route boundaries. |
-| State | Server-owned hypermedia state; browser state is intentionally minimal. | Browser signal registry plus server signal patches and cache snapshots. |
-| Server interaction | DOM attributes describe HTTP verbs, targets, and swaps. | `server.*(...)` commands call registered server functions and apply returned effects. |
-| Routing | Usually server navigation or htmx-boosted navigation. | CSR, SPA, SSR, SSR-SPA, and MPA router modes built around partial boundaries. |
-| Components | Server-rendered HTML fragments. | Scoped fragment functions today; the compiler rungs add JSX/TSRX authoring. |
-| Build story | No build by default. | Rungs L0-L3 and L5 are no-build/CDN; the compiler rungs (L4, L6, L7) add build or compiler steps. |
+| Page | Question it answers |
+| --- | --- |
+| [Getting Started](./docs/start/getting-started.md) | What is the smallest running app? |
+| [Install & Load](./docs/start/install.md) | How do npm, CDN, UMD, and import-map loading work? |
+| [Why Async](./docs/start/why-async.md) | What does Async keep and avoid? |
+| [Core Concepts](./docs/start/core-concepts.md) | Which runtime pieces make up an app? |
+| [Layers](./docs/start/layers.md) | How do L0-L7 fit together? |
+| [Runtime Overview](./docs/runtime/overview.md) | What happens when a root starts? |
+| [App Hub & Registries](./docs/runtime/app-hub.md) | How are declarations registered, inspected, and materialized? |
+| [HTML Protocol](./docs/runtime/html-protocol.md) | Which attributes connect HTML to runtime behavior? |
+| [Signals & Async Signals](./docs/runtime/signals.md) | How does state update and async work refresh? |
+| [Components](./docs/runtime/components.md) | How do scoped fragments, children, lifecycle, and intersection work? |
+| [Router & Partials](./docs/runtime/router-partials.md) | How do routes, partials, modes, and boundaries work? |
+| [Server Calls & Cache](./docs/runtime/server-calls.md) | How do server functions, envelopes, and cache split work? |
+| [SSR & Activation](./docs/runtime/ssr-activation.md) | How does server-rendered HTML start in the browser? |
+| [Streaming & Boundaries](./docs/runtime/streaming.md) | How do swaps, refresh plans, morphing, and patch ordering work? |
+| [Build Profile](./docs/build/profile.md) | What does the compiler-layer profile promise? |
+| [Vite & Hono](./docs/build/vite-hono.md) | How does the Vite plugin wire a Hono dev server and client build? |
+| [Entrypoints](./docs/reference/entrypoints.md) | Which package subpaths expose which surfaces? |
+| [Examples](./docs/reference/examples.md) | Which runnable example demonstrates each surface? |
 
-Use htmx when the server should own most interaction through hypermedia and
-HTTP swaps. Use Async when you want an HTML-first runtime that also has local
-signals, async resources, registered browser/server handlers, route partials,
-and a path up the compiler rungs without changing the protocol.
+## Contributing & Release
+
+Common checks:
+
+```bash
+pnpm run pipeline:pages
+pnpm run registry:lint
+git diff --check
+```
+
+Pipeline and release automation are generated from `pipeline.ts`; update that
+source and run the sync checks before changing generated workflow output.
+
+Guide: [CONTRIBUTING.md](./CONTRIBUTING.md)

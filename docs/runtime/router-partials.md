@@ -4,10 +4,11 @@ Async includes a built-in router. Use it for URL state, link/form interception,
 route params, hash routing, route partials, and route-only shells before writing
 custom click, `popstate`, or `hashchange` listeners.
 
-The router is part of L1.5. It is not a file-system router and it does not fetch
-hidden pages. You register route patterns in JavaScript, choose a navigation
-mode, and decide whether a route renders a partial into an `async:boundary` or
-only updates `router.*` signals.
+The router belongs to the L2 Bundle capability set, but it can still be loaded
+directly from the browser router subpath. It is not a file-system router and it
+does not fetch hidden pages. You register route patterns in JavaScript, choose a
+navigation mode, and decide whether a route renders a partial into an
+`async:boundary` or only updates `router.*` signals.
 
 ## What The Router Owns
 
@@ -66,7 +67,7 @@ Use the next layer down only when the app needs a more specific routing shape:
 | Dashboards or shells render from URL state instead of route partials | Use `mode: "signals"` and bind views with `Async.router.loader.swap(...)` |
 | Several route-driven boundaries refresh at different rates | Register refresh scopes with `Async.router.loader.defineRefreshPlan(...)` |
 | Code needs the router object itself, not just navigation | Await `Async.router.ready()` |
-| Navigation belongs to the server or separate documents | Use `mode: "ssr"` or `mode: "mpa"` and let browser navigation stay native |
+| Navigation belongs to the server or separate documents | Use `mode: "ssr"` or `mode: "mpa"` and let browser navigation stay server-led and native |
 | A custom runtime already owns materialized registries and a loader | Use `createRouter(...)` directly |
 
 ## Minimal CSR Router
@@ -316,7 +317,15 @@ re-renders. Back/forward navigation replays the same plans.
 | `mpa` | Any document source | Browser navigation stays native | Traditional multi-page navigation |
 
 `csr`, `spa`, and `signals` intercept same-origin links, GET forms, back/forward
-events, and hash route changes. `ssr` and `mpa` leave browser navigation alone.
+events, and hash route changes. `ssr` and `mpa` leave browser navigation
+server-led and native.
+
+Native non-GET forms are the L0 server-led action path. A form with ordinary
+`method` and `action` attributes can post to any backend language, and the
+server can return the next full document or an explicitly handled fragment
+response. The router does not hide those POST/action verbs behind implicit
+client interception; partial POST flows should use an explicit server envelope,
+command handler, or app transport.
 
 ## Route-Only Shells
 
@@ -439,7 +448,8 @@ The router does not intercept:
 - links with `target` other than the current browsing context;
 - downloads;
 - modified clicks such as command-click or control-click;
-- non-GET forms;
+- non-GET forms, which remain native server-led actions unless the app wires an
+  explicit command or transport;
 - plain section hashes in hash mode.
 
 Use `Async.router.navigate(url)` for programmatic navigation:
@@ -564,5 +574,11 @@ the need:
 - URL-backed dashboard state: `mode: "signals"`.
 - High-frequency state refreshes: nested boundaries with `swap(...)` config
   types for bound, unchanged-aware, or batched updates.
-- Server-owned navigation: `mode: "ssr"` or `mode: "mpa"`.
+- Server-led navigation: `mode: "ssr"` or `mode: "mpa"`.
 - Route state in DOM or handlers: `router.*` signals.
+
+## Related
+
+- Server calls: [Server Calls & Cache](#/runtime/server-calls)
+- Streaming boundaries: [Streaming & Boundaries](#/runtime/streaming)
+- Contract: [07-routing-and-partials.md](../../specs/framework/07-routing-and-partials.md)

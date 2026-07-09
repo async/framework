@@ -1,7 +1,7 @@
 # Whole-Program Compiler
 
 Reference file for [Async Framework](../framework.md). This file owns the
-deferred L7 Optimize rung of the abstraction ladder defined in
+deferred L7 Optimize layer of the abstraction layers defined in
 [15-abstraction-layers.md](./15-abstraction-layers.md): a whole-program
 compiler profile in the style of the React Compiler / TSRX era.
 
@@ -65,7 +65,7 @@ deliberate spec changes here first, and it is constrained in advance:
 - Output must remain meaningful without source maps or original component
   source, matching [01-authoring-model.md](./01-authoring-model.md).
 - A compiled app must interoperate in one document with regions authored at
-  any lower rung.
+  any lower layer.
 
 ## Protocol Contract
 
@@ -96,7 +96,7 @@ deliberate spec changes here first, and it is constrained in advance:
 - No implicit browser fetch introduced by compilation.
 - Runtime primitives stay useful without the compiler; L7 remains optional
   forever.
-- Compiled output must be expressible as records a lower-rung app could
+- Compiled output must be expressible as records a lower-layer app could
   author by hand, however impractical that authoring would be.
 - Memoization and scheduling decisions must not change observable protocol
   semantics.

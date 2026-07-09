@@ -187,7 +187,7 @@ declarations, conventions, and private plans at the points where runtime
 ownership needs them. A JSX component, route file, or server action does not
 need to become a public module container. Its output can lower into the same
 `Async.use(...)`, registry, convention, and start/resolve path used by apps
-on the no-compiler rungs.
+on the no-compiler layers.
 
 ## Invariants
 

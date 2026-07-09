@@ -16,7 +16,8 @@ root workspace `AGENTS.md` still applies.
 - Main source lives in `src/`; tests live in `tests/<suite>/*.test.js`,
   categorized by suite (`unit`, `runtime`, `router`, `server`, `timing`,
   `performance`, `build`, `examples` — see `tests/README.md`); examples live
-  in `examples/`; docs and system contracts live in `README.md` and `specs/`.
+  in `examples/`; docs and system contracts live in `README.md`, `docs/`, and
+  `specs/`.
 
 ## Design Sources And Invariants
 
@@ -27,8 +28,8 @@ root workspace `AGENTS.md` still applies.
 - Preserve the core runtime contract: no VDOM, no hidden hydration/diff/rerender
   path, no implicit fetches during startup, and no server-only state or cache
   contents leaking into browser snapshots.
-- Keep the no-compiler rungs (L0-L3, L5) understandable without future
-  compiler layers. Compiler-rung work (L4, L6, L7) must compile down to the
+- Keep the no-compiler layers (L0-L3, L5) understandable without future
+  compiler layers. Compiler-layer work (L4, L6, L7) must compile down to the
   same HTML, registry, snapshot, server-envelope, route-partial, cache, and
   boundary protocol.
 
@@ -36,9 +37,9 @@ root workspace `AGENTS.md` still applies.
 
 Use these abbreviations in ADRs, issues, review notes, and Codex prompts:
 
-The layer model is the L0-L7 abstraction ladder owned by
-`specs/framework/15-abstraction-layers.md`. Rungs are authoring abstractions;
-capabilities are protocol properties available from the lowest rung the
+The layer model is the L0-L7 abstraction layers owned by
+`specs/framework/15-abstraction-layers.md`. Layers are authoring abstractions;
+capabilities are protocol properties available from the lowest layer the
 protocol allows.
 
 - `L0` Enhance: behavior references on server-owned HTML. Protocol attributes
@@ -51,27 +52,27 @@ protocol allows.
   Bundling must not change protocol semantics; the build stays optional here.
 - `L3` SSR: server-rendered component functions with browser activation from
   snapshots. No hydration, no rerender. (Not "Resume": resume is the
-  protocol-wide contract, not a rung.)
+  protocol-wide contract, not a layer.)
 - `L4` Transform: JSX/TSX source transforms lowering onto the same protocol,
-  plus co-located server functions extracted at build time. First rung where
-  a build is required.
+  mainly JSX/TSX lowering to protocol records. First layer where a build is
+  required.
 - `L5` Stream: progressive documents; boundary fallback and settling; reveal
   ordering; async signals settling server-side. No compiler required.
-- `L6` Reorder: out-of-order settling automated by the Optimizer: chunks,
-  lazy descriptors, generated plans, runtime slices. The OOS protocol itself
-  is L5-available.
+- `L6` Reorder: out-of-order settling automated by the Optimizer: Qwik-style
+  `server$`, co-located server-function extraction, chunks, lazy descriptors,
+  generated plans, runtime slices. The OOS protocol itself is L5-available.
 - `L7` Optimize: whole-program compiler
   (`specs/framework/16-whole-program-compiler.md`). Specification only.
-- Legacy mapping: pre-2026-07 notes use `L1` for rungs L0-L1, `L1.5` for the
+- Legacy mapping: pre-2026-07 notes use `L1` for layers L0-L1, `L1.5` for the
   server/streaming capability set (now spread across L3 and L5), and `L2` for
-  the compiler rungs (L4, L6, L7). See the legacy table in
+  the compiler layers (L4, L6, L7). See the legacy table in
   `specs/framework/15-abstraction-layers.md`.
-- `NB`: no-build profile, covering rungs L0-L3 and L5. Author HTML and
+- `NB`: no-build profile, covering layers L0-L3 and L5. Author HTML and
   JavaScript run directly with `Async.start(...)`, default shorthand
   attributes, and no compiler.
-- `BR`: build-required profile, covering rungs L4, L6, and L7. Author JSX/TSX
+- `BR`: build-required profile, covering layers L4, L6, and L7. Author JSX/TSX
   uses imports such as `@async/framework/jsx`; the compiler/optimizer emits
-  protocol-compatible output the no-compiler rungs can speak.
+  protocol-compatible output the no-compiler layers can speak.
 - `OOS`: out-of-order streaming/rendering. Chunks may become ready in a
   different order than source order.
 - `Suspense`: async boundary ownership for fallback and final content.

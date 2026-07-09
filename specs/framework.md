@@ -70,31 +70,33 @@ artifacts rather than inventing a separate hidden runtime model.
 
 ## Layers
 
-Async's layer model is an abstraction ladder owned by
-[15-abstraction-layers.md](./framework/15-abstraction-layers.md). Each rung is
+Async's L0-L7 abstraction layers are owned by
+[15-abstraction-layers.md](./framework/15-abstraction-layers.md). Each layer is
 anchored to an era of framework history and named by the abstraction it adds
 between the author and the runtime protocol:
 
-1. L0 Enhance: behavior references on server-owned HTML.
+1. L0 Enhance: server-led HTML, native forms/actions, and behavior references
+   on server-owned views.
 2. L1 Interpret: the runtime-interpreted app model, no build.
 3. L2 Bundle: build as delivery, client routing, and an app server.
 4. L3 SSR: server-rendered component functions with browser activation.
-5. L4 Transform: JSX/TSX source transforms and co-located server functions.
+5. L4 Transform: JSX/TSX source transforms that lower to protocol records.
 6. L5 Stream: progressive documents with boundary reveal ordering.
-7. L6 Reorder: out-of-order settling automated by the Optimizer.
+7. L6 Reorder: out-of-order settling, co-located server-function extraction,
+   chunks, and plans automated by the Optimizer.
 8. L7 Optimize: whole-program compilation, currently specification only.
 
-Rungs are authoring abstractions; capabilities are protocol properties. A
-capability lands at the lowest rung the protocol allows, rungs compose within
-one document, and industry patterns such as islands are rung combinations,
-not rungs.
+Layers are authoring abstractions; capabilities are protocol properties. A
+capability lands at the lowest layer the protocol allows, layers compose within
+one document, and industry patterns such as islands are layer combinations,
+not layers.
 
-The two app classes remain, redefined by rungs. System 1 apps use the
-no-compiler rungs (L0-L3, L5): smaller, platform-close apps authored through
+The two app classes remain, redefined by layers. System 1 apps use the
+no-compiler layers (L0-L3, L5): smaller, platform-close apps authored through
 HTML, browser modules, explicit registries, and simple server integration.
-System 2 apps use the compiler rungs (L4, L6, L7), where abstractions improve
+System 2 apps use the compiler layers (L4, L6, L7), where abstractions improve
 DX and reduce the mental model required to understand which runtime systems a
-change affects. The current framework focus is System 1. Compiler-rung work
+change affects. The current framework focus is System 1. Compiler-layer work
 is deferred and must compile down to the same protocol instead of replacing
 it with a private component tree or hidden hydration model.
 
@@ -126,7 +128,7 @@ it with a private component tree or hidden hydration model.
   package entrypoints, CDN artifacts, generated bundles, examples, and release
   expectations.
 - [10-deferred-systems.md](./framework/10-deferred-systems.md) - deferred
-  compiler-rung systems, lazy chunks, deeper resumability metadata, and future
+  compiler-layer systems, lazy chunks, deeper resumability metadata, and future
   decisions.
 - [11-runtime-slice-entrypoints.md](./framework/11-runtime-slice-entrypoints.md)
   - optimized built-mode runtime entrypoints, generated plan contracts, slice
@@ -141,8 +143,8 @@ it with a private component tree or hidden hydration model.
   - `Async.use(...)` declarations, convention routing, duplicate policies,
   system identity, materialization timing, and queued capability facades.
 - [15-abstraction-layers.md](./framework/15-abstraction-layers.md) - the
-  L0-L7 abstraction ladder, rung contracts, capability availability,
-  cross-rung pattern composition, legacy layer mapping, and build-config
+  L0-L7 abstraction layers, layer contracts, capability availability,
+  cross-layer pattern composition, legacy layer mapping, and build-config
   direction.
 - [16-whole-program-compiler.md](./framework/16-whole-program-compiler.md) -
   the deferred L7 whole-program compiler profile, ownership boundaries,

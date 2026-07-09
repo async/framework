@@ -4,20 +4,20 @@ Async has a small set of runtime concepts that compose across no-build pages, se
 
 ## Layers
 
-Async's layer model is an abstraction ladder: rungs are authoring abstractions, capabilities are protocol properties available from the lowest rung the protocol allows.
+Async uses L0-L7 abstraction layers: layers describe the authoring surface, and capabilities are protocol properties available from the lowest layer the protocol allows.
 
-| Rung | Name | Adds | Requires |
+| Layer | Name | Adds | Requires |
 | --- | --- | --- | --- |
-| L0 | Enhance | Behavior references on server-owned HTML | Script tag |
+| L0 | Enhance | Server-led HTML, native forms/actions, and behavior references on server-owned views | Script tag |
 | L1 | Interpret | Runtime app model: registries, components, lifecycle | No build |
 | L2 | Bundle | Build as delivery, client routing, app server | Build optional |
 | L3 | SSR | Server-rendered components with activation | Server |
-| L4 | Transform | JSX/TSX lowering, co-located server functions | Build |
+| L4 | Transform | JSX/TSX lowering to protocol records | Build |
 | L5 | Stream | Progressive documents, reveal ordering | Streaming server |
-| L6 | Reorder | Optimizer-generated plans, chunks, runtime slices | Optimizer |
+| L6 | Reorder | Co-located server-function extraction, plans, chunks, runtime slices | Optimizer |
 | L7 | Optimize | Whole-program compiler | Spec only |
 
-The no-compiler rungs (L0-L3, L5) are useful without the compiler rungs (L4, L6, L7); compiler output lowers onto the same runtime contracts. See the [Layers guide](#/docs/layers) for the full ladder.
+The no-compiler layers (L0-L3, L5) are useful without the compiler layers (L4, L6, L7); compiler output lowers onto the same runtime contracts. See the [Layers guide](#/docs/layers) for the full layer model.
 
 ## Registries
 

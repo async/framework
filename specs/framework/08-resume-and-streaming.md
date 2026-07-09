@@ -10,9 +10,9 @@ Async should make already-rendered HTML continue as a live app through protocol
 records. Streaming extends that model by applying later boundary patches without
 breaking event delegation, signal bindings, cache state, or route ownership.
 These are no-compiler protocol capabilities in the
-[15-abstraction-layers.md](./15-abstraction-layers.md) ladder: activation is
-available from rung L0 up, and streamed boundary patches (including
-out-of-order settling) from rung L5. They may use a simple web server and
+[15-abstraction-layers.md](./15-abstraction-layers.md) layer model: activation is
+available from layer L0 up, and streamed boundary patches (including
+out-of-order settling) from layer L5. They may use a simple web server and
 streamed protocol records, but they must not require a build-required app
 compiler.
 

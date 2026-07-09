@@ -1,7 +1,7 @@
 # Deferred Systems
 
 Reference file for [Async Framework](../framework.md). This file captures
-deferred compiler-rung work (System 2: rungs L4, L6, and L7 of
+deferred compiler-layer work (System 2: layers L4, L6, and L7 of
 [15-abstraction-layers.md](./15-abstraction-layers.md)) that should not
 distort the released runtime protocol. The L7 whole-program compiler has its
 own reference file,
@@ -12,15 +12,15 @@ own reference file,
 Async needs room for compiler layers, lazy module metadata, deeper
 resumability, richer authoring systems, and a no-bundler module-cache delivery
 model. These future systems are primarily for build-required apps on the
-compiler rungs, where abstractions improve DX and reduce the mental model
+compiler layers, where abstractions improve DX and reduce the mental model
 required to understand which runtime systems a change affects. They must
-extend the protocol the no-compiler rungs speak rather than replace it.
+extend the protocol the no-compiler layers speak rather than replace it.
 
 ## Responsibilities
 
 - Name future systems explicitly so current specs do not imply they already
   exist.
-- Preserve no-compiler rung behavior (L0-L3, L5) while compiler-rung systems
+- Preserve no-compiler layer behavior (L0-L3, L5) while compiler-layer systems
   are designed.
 - Define constraints future compiler output must respect.
 - Keep deferred work from leaking into current public promises prematurely.
@@ -57,11 +57,11 @@ invalid.
 - Diagnostics own failure messages when future authoring forms cannot lower
   safely.
 - Build-required systems may improve DX, but they must not invent a separate
-  hidden runtime model that apps on the no-compiler rungs cannot speak.
+  hidden runtime model that apps on the no-compiler layers cannot speak.
 
 ## Protocol Contract
 
-Compiler-rung systems must lower into explicit protocol records:
+Compiler-layer systems must lower into explicit protocol records:
 
 - Generated HTML must remain scannable.
 - Generated registries must use stable IDs and declaration types.
@@ -85,7 +85,7 @@ Compiler-rung systems must lower into explicit protocol records:
 
 ## Resume Contract
 
-Compiler-rung resume work should improve startup and interaction costs
+Compiler-layer resume work should improve startup and interaction costs
 without changing the core model:
 
 - Component bodies should not need to execute on browser resume for HTML that
@@ -133,7 +133,7 @@ without changing the core model:
 - A future no-bundler example can prove the browser requests only the modules
   needed by active protocol records and invalidates stale code correctly.
 - A no-build app, an L3/L5 server and streaming app, and a compiler-generated
-  app from the compiler rungs can share the same loader, signals, server,
+  app from the compiler layers can share the same loader, signals, server,
   router, cache, and boundary systems.
 - Deferred decisions are reopened in specs before implementation commits to a
   public behavior.

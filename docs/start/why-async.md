@@ -6,6 +6,8 @@ Async is for apps that want direct HTML, explicit state, and server-friendly fra
 
 - Native HTML remains the document contract.
 - ESM modules register behavior explicitly.
+- Server-led documents and fragments remain valid Async views, even when a
+  non-JavaScript backend renders the HTML string.
 - Signals are the state boundary.
 - Server calls and route partials return simple response envelopes.
 - Boundary swaps rescan the inserted HTML for `on:`, `signal:`, `class:`, `intersect:`, and component protocol.
@@ -20,9 +22,9 @@ Async is for apps that want direct HTML, explicit state, and server-friendly fra
 
 ## Who it fits
 
-Async fits pages that need progressive reactive islands, server-backed actions, route fragments, streamed HTML, or a small runtime surface that can be understood from the markup.
+Async fits pages that need server-led views, progressive reactive islands, server-backed actions, route fragments, streamed HTML, or a small runtime surface that can be understood from the markup.
 
-It is also the base of an abstraction ladder anchored to eras of framework history — from htmx-style enhancement (L0) up through JSX transforms (L4) and a future whole-program compiler (L7). Build-required JSX and compiler tooling lower to the same HTML protocol, registries, route partials, and boundary patches, and capabilities land at the lowest rung the protocol allows: out-of-order streaming works from a no-build script tag. See the [Layers guide](#/docs/layers).
+It is also the base of L0-L7 abstraction layers, from htmx-style enhancement (L0) up through JSX transforms (L4) and a future whole-program compiler (L7). Build-required JSX and compiler tooling lower to the same HTML protocol, registries, route partials, and boundary patches, and capabilities land at the lowest layer the protocol allows: out-of-order streaming works from a no-build script tag. See the [Layers guide](#/docs/layers).
 
 ## Useful tradeoff
 

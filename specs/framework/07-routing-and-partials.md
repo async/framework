@@ -144,8 +144,11 @@ router state and browser history without rendering a partial unless the route
 declares a `subBoundary`, in which case the nested boundary re-renders.
 Signals mode updates router state without rendering partials or swapping
 boundaries. SSR and MPA modes preserve native document navigation and must not
-perform hidden route-fragment fetches. Server route-fragment fetches happen
-only for routes explicitly marked `server: true` in client navigation modes.
+perform hidden route-fragment fetches. Native non-GET forms are server-led
+actions: ordinary `method`/`action` submissions can target any backend and
+return a full document or an explicitly handled fragment response. Server
+route-fragment fetches happen only for routes explicitly marked `server: true`
+in client navigation modes.
 Client navigations that swapped content scroll to the top or to the URL hash
 target unless the router is created with `scroll: false`.
 
@@ -211,7 +214,7 @@ Routing resume behavior:
   state without invoking partial rendering.
 - SPA navigation swaps a route boundary and rescans inserted handlers.
 - Wildcard fallback routes handle unmatched paths.
-- SSR and MPA modes do not intercept link clicks.
+- SSR and MPA modes do not intercept link clicks or native form actions.
 - Prefetch returns rendered partial content or errors without DOM mutation.
 
 ## Open Or Deferred Decisions

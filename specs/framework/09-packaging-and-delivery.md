@@ -145,7 +145,7 @@ Published artifacts must support resume and streaming:
 - Moving `asyncFramework(...)` to the needs-based config defined in the Build
   Config Direction of
   [15-abstraction-layers.md](./15-abstraction-layers.md): entries declare
-  render targets, named flags declare transforms, the derived rung is
+  render targets, named flags declare transforms, the derived layer is
   reported rather than declared, and the numeric `layer` option is deprecated
   with a shim. Final option names get a small ADR with the implementation
   change.

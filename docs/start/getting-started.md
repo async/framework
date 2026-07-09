@@ -17,7 +17,8 @@ pnpm add @async/framework
 - [Core Concepts](#/docs/core-concepts) explains the runtime pieces.
 - [HTML Protocol](#/runtime/html-protocol) lists the author-facing attributes.
 - [Router Guide](#/runtime/router-partials) covers the built-in router, hash routing, route-only shells, route boundaries, and fragment swaps.
-- [Server & Streaming](#/runtime/server-streaming) shows server calls and streamed boundary patches.
+- [Server Calls & Cache](#/runtime/server-calls) shows server functions, envelopes, and browser/server cache split.
+- [Streaming & Boundaries](#/runtime/streaming) shows boundary swaps, refresh plans, and streamed patches.
 
 ## Runtime shape
 

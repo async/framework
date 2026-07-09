@@ -25,6 +25,12 @@ The scheduler batches binding work by phase:
 - effects and async signal refreshes.
 - post-flush work after DOM changes settle.
 
+Signal writes are synchronous. Browser runtimes use a microtask scheduler by
+default, while server runtimes use a manual scheduler and drain it during
+`runtime.render(...)`. Most apps do not need to call the scheduler directly;
+tests, custom runtimes, streaming receivers, and compiler-layer integrations can
+provide explicit flush boundaries.
+
 ## Runtime inspection
 
 The public runtime object exposes the active loader, signal registry, handler registry, router, cache, scheduler, and registered app declarations.
@@ -40,3 +46,10 @@ runtime.loader.swap("route", "<h1>Next route</h1>");
 ## Browser and server split
 
 Browser code owns DOM scanning, signals, events, route swaps, and browser cache entries. Server code owns request context, server cache entries, server functions, render output, and streamed patches.
+
+## Related
+
+- App hub: [App Hub & Registries](#/runtime/app-hub)
+- Signals: [Signals & Async Signals](#/runtime/signals)
+- Contract: [02-runtime-kernel.md](../../specs/framework/02-runtime-kernel.md)
+- Scheduler contract: [13-scheduler-and-commit-phase.md](../../specs/framework/13-scheduler-and-commit-phase.md)

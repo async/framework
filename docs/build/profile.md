@@ -1,6 +1,6 @@
 # Build Profile
 
-The build-required profile covers the compiler rungs of the abstraction ladder: L4 Transform (JSX, TypeScript) and L6 Reorder (optimizer reports, framework plans, runtime slices). It preserves the no-compiler runtime contracts (rungs L0-L3, L5) — see the [Layers guide](#/docs/layers).
+The build-required profile covers the compiler layers: L4 Transform (JSX, TypeScript) and L6 Reorder (optimizer reports, framework plans, runtime slices). It preserves the no-compiler runtime contracts (layers L0-L3, L5) — see the [Layers guide](#/docs/layers).
 
 ## JSX entrypoints
 
@@ -43,7 +43,7 @@ Each selected runtime slice carries a `status`: `available` slices (`signals`, `
 
 ## Vite plugin config
 
-`asyncFramework(...)` declares needs, not ladder positions:
+`asyncFramework(...)` declares needs, not layer numbers:
 
 - `server.entry` selects the server lane. The plugin composes the Hono dev server; the app owns the HTML shell, SSR, and streaming.
 - `client.entry` selects the browser build lane.
@@ -52,4 +52,4 @@ Each selected runtime slice carries a `status`: `available` slices (`signals`, `
 
 ## Current boundary
 
-The package includes the runtime, server bridge, JSX profile types, and Vite profile helpers. The optimizer consumes a fixture profile (`asyncFramework({ fixture })`); source-derived profile generation, full compiler emission, lazy chunk manifests, TSRX lowering, boundary activation for `planned` slices, and higher-level resume metadata remain later compiler-rung work (L6, and L7 per `specs/framework/16-whole-program-compiler.md`).
+The package includes the runtime, server bridge, JSX profile types, and Vite profile helpers. The optimizer consumes a fixture profile (`asyncFramework({ fixture })`); source-derived profile generation, full compiler emission, lazy chunk manifests, TSRX lowering, boundary activation for `planned` slices, and higher-level resume metadata remain later compiler-layer work (L6, and L7 per `specs/framework/16-whole-program-compiler.md`).

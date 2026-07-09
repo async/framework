@@ -15,6 +15,7 @@
       "title": "Start",
       "pages": [
         { "title": "Getting Started", "route": "/docs/getting-started", "source": "start/getting-started.md" },
+        { "title": "Install", "route": "/docs/install", "source": "start/install.md" },
         { "title": "Why Async", "route": "/docs/why-async", "source": "start/why-async.md" },
         { "title": "Core Concepts", "route": "/docs/core-concepts", "source": "start/core-concepts.md" },
         { "title": "Layers", "route": "/docs/layers", "source": "start/layers.md" }
@@ -24,6 +25,7 @@
       "title": "Runtime",
       "pages": [
         { "title": "Overview", "route": "/runtime/overview", "source": "runtime/overview.md" },
+        { "title": "App Hub", "route": "/runtime/app-hub", "source": "runtime/app-hub.md" },
         { "title": "HTML Protocol", "route": "/runtime/html-protocol", "source": "runtime/html-protocol.md" },
         { "title": "Signals", "route": "/runtime/signals", "source": "runtime/signals.md" },
         { "title": "Components", "route": "/runtime/components", "source": "runtime/components.md" }
@@ -38,18 +40,22 @@
     {
       "title": "Server & Streaming",
       "pages": [
-        { "title": "Server & Streaming", "route": "/runtime/server-streaming", "source": "runtime/server-streaming.md" }
+        { "title": "Server Calls & Cache", "route": "/runtime/server-calls", "source": "runtime/server-calls.md" },
+        { "title": "SSR & Activation", "route": "/runtime/ssr-activation", "source": "runtime/ssr-activation.md" },
+        { "title": "Streaming & Boundaries", "route": "/runtime/streaming", "source": "runtime/streaming.md" }
       ]
     },
     {
       "title": "Build Profile",
       "pages": [
-        { "title": "Build Profile", "route": "/build/profile", "source": "build/profile.md" }
+        { "title": "Build Profile", "route": "/build/profile", "source": "build/profile.md" },
+        { "title": "Vite & Hono", "route": "/build/vite-hono", "source": "build/vite-hono.md" }
       ]
     },
     {
       "title": "Reference",
       "pages": [
+        { "title": "Entrypoints", "route": "/reference/entrypoints", "source": "reference/entrypoints.md" },
         { "title": "API Reference", "route": "/reference/api", "source": "reference/api.md" },
         { "title": "Examples", "route": "/reference/examples", "source": "reference/examples.md" }
       ]
