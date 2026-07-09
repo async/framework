@@ -3,14 +3,14 @@ import {
   defineApp as defineBaseApp,
   readSnapshot
 } from "./app.js";
-import { mountFlowRegistrations } from "./flow.js";
+import { attachFlowRegistrations } from "./flow.js";
 import { createRouteRegistry, createRouter } from "./router.js";
 import { createServerRegistry } from "./server-registry.js";
 export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 
 const serverFeatures = {
   flow: {
-    mountRegistrations: mountFlowRegistrations
+    attachRegistrations: attachFlowRegistrations
   },
   router: {
     createRouteRegistry,

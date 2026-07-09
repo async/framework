@@ -19,7 +19,7 @@ import {
   signal
 } from "../../src/index.js";
 
-test("app.use(\"flow\", entries) mounts Flow signals and handlers into normal registries", async () => {
+test("app.use(\"flow\", entries) attaches Flow signals and handlers into normal registries", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -98,7 +98,7 @@ test("Async.use module shape and framework writes bridge to writable Flow refs",
   runtime.destroy();
 });
 
-test("mounted Flow signals use the framework scheduler for DOM binding work", async () => {
+test("attached Flow signals use the framework scheduler for DOM binding work", async () => {
   const window = new Window();
   const { document } = window;
   const scheduler = createScheduler({ strategy: "manual" });
@@ -171,7 +171,7 @@ test("snapshot restore writes Flow writable refs and recomputes computed refs", 
   runtime.destroy();
 });
 
-test("Flow asyncSignal helper paths mount as value loading error and ready signals", async () => {
+test("Flow asyncSignal helper paths attach as value loading error and ready signals", async () => {
   const app = defineApp({
     flow: {
       product: flow({
@@ -198,7 +198,7 @@ test("Flow asyncSignal helper paths mount as value loading error and ready signa
   runtime.destroy();
 });
 
-test("failed Flow mounts roll back concrete signal and handler bridge entries", () => {
+test("failed Flow attaches roll back concrete signal and handler bridge entries", () => {
   const app = defineApp({
     signal: {
       "cart.details.loading": signal(false)
@@ -500,7 +500,7 @@ test("the Flow scheduler bridge enqueues keyless binding jobs and no notificatio
   runtime.destroy();
 });
 
-test("async signal metadata bridge paths are read-only and flowSignal declarations mount writable", async () => {
+test("async signal metadata bridge paths are read-only and flowSignal declarations attach writable", async () => {
   const app = defineApp({
     flow: {
       product: flow({

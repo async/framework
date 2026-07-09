@@ -1733,7 +1733,7 @@ test("server route prefetch returns the envelope without applying it", async () 
   assert.equal(preview.html, "<h1>preview</h1>");
   assert.equal(document.querySelector("#page-title").textContent, "home");
   assert.equal(window.location.href, "http://app.test/");
-  // Router state still describes the mounted route, not the prefetched one.
+  // Router state still describes the attached route, not the prefetched one.
   assert.equal(router.signals.get("router.path"), "/");
 
   router.destroy();

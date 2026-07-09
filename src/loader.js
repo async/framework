@@ -18,7 +18,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   const cleanups = new Set();
   const eventBindings = new WeakMap();
   const signalBindings = new WeakMap();
-  const mountedElements = new WeakSet();
+  const attachedElements = new WeakSet();
   const visibleElements = new WeakSet();
   const intersectionBindings = new WeakMap();
   const boundaryState = new WeakMap();
@@ -38,7 +38,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   let inlineBindingCounter = 0;
   let boundaryBindingCounter = 0;
   let destroyed = false;
-  let mountPseudoEventWarned = false;
+  let removedMountPseudoEventWarned = false;
 
   const api = {
     root: rootNode,
@@ -105,7 +105,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       });
     },
 
-    mount(target, Component, props = {}) {
+    attach(target, Component, props = {}) {
       assertActive();
       const rendered = renderComponent(Component, props, {
         signals: signalRegistry,
@@ -121,7 +121,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       cleanupChildren(target);
       target.replaceChildren(toFragment(rendered.html, target.ownerDocument));
       api.scan(target);
-      rendered.mount(target);
+      rendered.attach(target);
       rendered.visible(target, api._observeVisible);
       rendered.intersection(target, api._observeIntersection);
       addCleanup(rendered.cleanup, target, "children");
@@ -503,9 +503,9 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     // Collect the scope's elements once with a single TreeWalk and share the
     // list across every pass — revive, signals, classes, events, boundaries,
     // component hosts, and pseudo-events. Children added by component
-    // mounting do not need a fresh walk here: api.mount(...) runs a nested
+    // attachment does not need a fresh walk here: api.attach(...) runs a nested
     // api.scan(host) over its rendered subtree (including pseudo-events)
-    // before this pass reaches them, and mounted/visible bookkeeping dedupes
+    // before this pass reaches them, and attached/visible bookkeeping dedupes
     // re-visits. This replaces ~8 querySelectorAll traversals with 1 walk.
     const elements = elementsIn(scope, scanOptions);
     const shared = { ...scanOptions, elements };
@@ -528,7 +528,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
         if (!eventName) {
           continue;
         }
-        if (eventName === "attach" || eventName === "mount" || eventName === "visible" || eventName === "intersect") {
+        if (eventName === "attach" || eventName === "visible" || eventName === "intersect") {
           continue;
         }
         bindEvent(element, eventName, element.getAttribute(name));
@@ -765,7 +765,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
         continue;
       }
       if (!components?.resolve) {
-        throw new Error(`Component "${id}" cannot be mounted because no component registry is available.`);
+        throw new Error(`Component "${id}" cannot be attached because no component registry is available.`);
       }
       const Component = components.resolve(id);
       if (!Component) {
@@ -774,7 +774,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       const props = componentHostProps(element, attributeConfig);
       componentBindings.add(element);
       try {
-        api.mount(element, Component, props);
+        api.attach(element, Component, props);
       } catch (error) {
         componentBindings.delete(element);
         throw error;
@@ -910,7 +910,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
   }
 
   function elementHasAttachPseudo(element) {
-    return readPseudoRefs(element, ["attach", "mount"]).length > 0;
+    return readPseudoRefs(element, ["attach"]).length > 0;
   }
 
   function nodeHadEventBindings(node) {
@@ -933,7 +933,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
       return;
     }
     runScopedCleanups(element, "self");
-    mountedElements.delete(element);
+    attachedElements.delete(element);
   }
 
   let morphAttachDescendantsWarned = false;
@@ -998,7 +998,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     runScopedCleanups(element, "self");
     eventBindings.delete(element);
     signalBindings.delete(element);
-    mountedElements.delete(element);
+    attachedElements.delete(element);
     visibleElements.delete(element);
     intersectionBindings.delete(element);
     boundaryState.delete(element);
@@ -1105,11 +1105,11 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     // to the previous separate passes.
     for (const element of elementsIn(scope, scanOptions)) {
       if (readAttribute(element, attributeConfig, "on", "mount") != null) {
-        warnMountPseudoEventAlias();
+        warnRemovedMountPseudoEvent();
       }
-      const attachRefs = readPseudoRefs(element, ["attach", "mount"]);
-      if (attachRefs.length > 0 && !mountedElements.has(element)) {
-        mountedElements.add(element);
+      const attachRefs = readPseudoRefs(element, ["attach"]);
+      if (attachRefs.length > 0 && !attachedElements.has(element)) {
+        attachedElements.add(element);
         for (const ref of attachRefs) {
           scheduleLifecycle(element, () => runPseudo(element, ref), `attach:${ref}`);
         }
@@ -1149,12 +1149,12 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     return refs;
   }
 
-  function warnMountPseudoEventAlias() {
-    if (mountPseudoEventWarned) {
+  function warnRemovedMountPseudoEvent() {
+    if (removedMountPseudoEventWarned) {
       return;
     }
-    mountPseudoEventWarned = true;
-    console.warn?.('on:mount has been renamed to on:attach. The old name remains as a compatibility alias.');
+    removedMountPseudoEventWarned = true;
+    console.warn?.("on:mount was removed and no longer runs. Rename it to on:attach.");
   }
 
   async function runPseudo(element, ref, context = {}) {

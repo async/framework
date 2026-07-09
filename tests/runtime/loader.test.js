@@ -379,44 +379,35 @@ function serverEnvelope(fields = {}) {
   };
 }
 
-test("Loader treats on:attach as the attach pseudo-event and on:mount as an alias", async () => {
+test("Loader runs on:attach and refuses removed on:mount markup with a warning", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
     <section id="attach" on:attach="attach"></section>
-    <section id="mount" on:mount="mount"></section>
+    <section id="stale" on:mount="attach"></section>
   `;
-
   const events = [];
   const warnings = [];
   const originalWarn = console.warn;
   console.warn = (message) => warnings.push(message);
   try {
     const loader = Loader({
-      root: document.body,
+      root: document,
       handlers: createHandlerRegistry({
         attach({ element }) {
           events.push(`attach:${element.id}`);
           return () => events.push("attach-cleanup");
-        },
-        mount({ element }) {
-          events.push(`mount:${element.id}`);
-          return () => events.push("mount-cleanup");
         }
       })
-    }).start();
+    });
+    loader.start();
     await delay(0);
 
-    loader.scan(document.body);
-    await delay(0);
-
-    assert.deepEqual(events, ["attach:attach", "mount:mount"]);
-    assert.deepEqual(warnings, [
-      "on:mount has been renamed to on:attach. The old name remains as a compatibility alias."
-    ]);
+    assert.deepEqual(events, ["attach:attach"], "on:mount must not bind");
+    assert.deepEqual(warnings, ["on:mount was removed and no longer runs. Rename it to on:attach."]);
 
     loader.destroy();
-    assert.deepEqual(events, ["attach:attach", "mount:mount", "attach-cleanup", "mount-cleanup"]);
+    assert.deepEqual(events, ["attach:attach", "attach-cleanup"]);
   } finally {
     console.warn = originalWarn;
   }

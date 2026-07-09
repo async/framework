@@ -418,8 +418,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
       app.loader._rejectPending(new Error("Async loader queue was cleared because the runtime was destroyed."));
       app.router._rejectPending(new Error("Async router queue was cleared because the runtime was destroyed."));
       signals.destroy?.();
-      for (const mounted of flows.values()) {
-        mounted.instance.destroy?.();
+      for (const attached of flows.values()) {
+        attached.instance.destroy?.();
       }
       flows.clear();
       if (ownsScheduler) {
@@ -456,7 +456,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
   installDeclarationRegistryResolver(registry, app._declarations, () => createDeclarationContext(app, registry, runtime));
   server.cache = serverCache;
   runtime.server.cache = serverCache;
-  mountRuntimeFlowRegistrations(runtime, registry.rawSnapshot().flow);
+  attachRuntimeFlowRegistrations(runtime, registry.rawSnapshot().flow);
   runtime.applySnapshot(initialSnapshot, { strict: options.strictSnapshots ?? true });
   detach = app._attach(runtime);
 
@@ -575,8 +575,8 @@ function createLoaderFacade() {
       return enqueue("refresh", [scope, updates, options]);
     },
 
-    mount(target, Component, props) {
-      return enqueue("mount", [target, Component, props]);
+    attach(target, Component, props) {
+      return enqueue("attach", [target, Component, props]);
     },
 
     inspect() {
@@ -790,8 +790,8 @@ function createRouterLoaderFacade(getRouter) {
       return enqueue("refresh", [scope, updates, options]);
     },
 
-    mount(target, Component, props) {
-      return enqueue("mount", [target, Component, props]);
+    attach(target, Component, props) {
+      return enqueue("attach", [target, Component, props]);
     },
 
     inspect() {
@@ -895,7 +895,7 @@ export function readSnapshot(root = globalThis.document, { attributes } = {}) {
 
 function applyUseToRuntime(runtime, normalized) {
   applyRegistryStoreUse(runtime.registry, "flow", normalized.flow);
-  mountRuntimeFlowRegistrations(runtime, normalized.flow);
+  attachRuntimeFlowRegistrations(runtime, normalized.flow);
   applyRegistryUse(runtime.signals, runtime.registry, normalized.signal);
   applyRegistryUse(runtime.handlers, runtime.registry, normalized.handler);
   applyRegistryUse(runtime.server, runtime.registry, normalized.server);
@@ -907,15 +907,15 @@ function applyUseToRuntime(runtime, normalized) {
   applyRegistryUse(runtime.server.cache, runtime.registry, normalized.cache.server);
 }
 
-function mountRuntimeFlowRegistrations(runtime, entries = {}) {
+function attachRuntimeFlowRegistrations(runtime, entries = {}) {
   if (!entries || Object.keys(entries).length === 0) {
     return runtime;
   }
-  const mountRegistrations = runtime._features?.flow?.mountRegistrations;
-  if (!mountRegistrations) {
+  const attachRegistrations = runtime._features?.flow?.attachRegistrations;
+  if (!attachRegistrations) {
     throw new Error("Flow usage requires the @async/framework/flow entrypoint.");
   }
-  return mountRegistrations(runtime, entries);
+  return attachRegistrations(runtime, entries);
 }
 
 function createFeatureRouteRegistry(features, initialMap, options) {

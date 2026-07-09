@@ -377,7 +377,7 @@ test("app loader queued failures reject without blocking later loader work", asy
   runtime.destroy();
 });
 
-test("app loader queues mount and scan until a rootless runtime attaches", async () => {
+test("app loader queues attach and scan until a rootless runtime attaches", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -397,7 +397,7 @@ test("app loader queues mount and scan until a rootless runtime attaches", async
   assert.equal(app.inspectRuntime().loader.ready, false);
 
   const runtime = app.start({ router: false });
-  const mounted = app.loader.mount(document.querySelector("#app"), Widget);
+  const attached = app.loader.attach(document.querySelector("#app"), Widget);
   const scanned = app.loader.scan(document.querySelector("#late"));
 
   assert.equal(app.inspectRuntime().active, true);
@@ -408,7 +408,7 @@ test("app loader queues mount and scan until a rootless runtime attaches", async
   assert.equal(document.querySelector("#late").textContent, "");
 
   runtime.attachRoot(document.body);
-  await mounted;
+  await attached;
   await scanned;
 
   assert.equal(app.inspectRuntime().roots.count, 1);
@@ -926,7 +926,7 @@ test("SSR render serializes signals and browser cache, never server cache", asyn
   runtime.destroy();
 });
 
-test("SSR signal patches update exact mounted Flow signal paths", async () => {
+test("SSR signal patches update exact attached Flow signal paths", async () => {
   const app = defineApp({
     flow: {
       cart: flow({

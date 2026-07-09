@@ -88,7 +88,7 @@ export function isFrameworkFlowDefinition(value) {
   return Boolean(value?.[frameworkFlowKind] || isFlowDefinition(value));
 }
 
-export function mountFlowRegistrations(runtime, entries = {}) {
+export function attachFlowRegistrations(runtime, entries = {}) {
   if (!entries || Object.keys(entries).length === 0) {
     return runtime;
   }
@@ -96,13 +96,13 @@ export function mountFlowRegistrations(runtime, entries = {}) {
   runtime.flows ??= new Map();
 
   for (const [namespace, declaration] of Object.entries(entries)) {
-    mountFlowRegistration(runtime, namespace, declaration);
+    attachFlowRegistration(runtime, namespace, declaration);
   }
 
   return runtime;
 }
 
-function mountFlowRegistration(runtime, namespace, declaration) {
+function attachFlowRegistration(runtime, namespace, declaration) {
   assertNamespace(namespace);
 
   if (runtime.flows.has(namespace)) {
@@ -113,7 +113,7 @@ function mountFlowRegistration(runtime, namespace, declaration) {
   const instance = createFlow(definition, {
     scheduler: createFrameworkFlowScheduler(runtime.scheduler)
   });
-  const mounted = {
+  const attached = {
     namespace,
     instance,
     handlers: [],
@@ -123,26 +123,26 @@ function mountFlowRegistration(runtime, namespace, declaration) {
   try {
     for (const [name, ref] of Object.entries(instance.refs)) {
       const path = `${namespace}.${name}`;
-      registerMountedFlowSignal(runtime, mounted, path, createFlowSignalBridge(ref, {
+      registerAttachedFlowSignal(runtime, attached, path, createFlowSignalBridge(ref, {
         path,
         writable: isWritableFlowRef(ref)
       }));
       if (isFlowAsyncSignalRef(ref)) {
-        registerFlowAsyncSignalMetadata(runtime, mounted, namespace, name, ref);
-        registerFlowAsyncSignalRefreshHandler(runtime, mounted, namespace, name, ref);
+        registerFlowAsyncSignalMetadata(runtime, attached, namespace, name, ref);
+        registerFlowAsyncSignalRefreshHandler(runtime, attached, namespace, name, ref);
       }
     }
 
     for (const name of Object.keys(instance.handlers)) {
       const path = `${namespace}.${name}`;
-      registerMountedFlowHandler(runtime, mounted, path, function runMountedFlowHandler(context = {}) {
+      registerAttachedFlowHandler(runtime, attached, path, function runAttachedFlowHandler(context = {}) {
         return instance.dispatch(name, context.input);
       });
     }
 
-    runtime.flows.set(namespace, mounted);
+    runtime.flows.set(namespace, attached);
   } catch (error) {
-    rollbackMountedFlow(runtime, mounted);
+    rollbackAttachedFlow(runtime, attached);
     throw error;
   }
 }
@@ -282,37 +282,37 @@ function createFrameworkFlowScheduler(scheduler) {
   };
 }
 
-function registerMountedFlowSignal(runtime, mounted, path, signalLike) {
+function registerAttachedFlowSignal(runtime, attached, path, signalLike) {
   if (runtime.signals.has(path)) {
     throw new Error(`Signal "${path}" is already registered.`);
   }
   runtime.signals.register(path, signalLike);
-  mounted.signals.push(path);
+  attached.signals.push(path);
 }
 
-function registerMountedFlowHandler(runtime, mounted, path, handler) {
+function registerAttachedFlowHandler(runtime, attached, path, handler) {
   if (runtime.handlers.resolve(path)) {
     throw new Error(`Handler "${path}" is already registered.`);
   }
   runtime.handlers.register(path, handler);
-  mounted.handlers.push(path);
+  attached.handlers.push(path);
 }
 
-function rollbackMountedFlow(runtime, mounted) {
-  runtime.flows?.delete(mounted.namespace);
+function rollbackAttachedFlow(runtime, attached) {
+  runtime.flows?.delete(attached.namespace);
 
-  for (const path of [...mounted.handlers].reverse()) {
+  for (const path of [...attached.handlers].reverse()) {
     runtime.handlers.unregister?.(path);
   }
 
-  for (const path of [...mounted.signals].reverse()) {
+  for (const path of [...attached.signals].reverse()) {
     runtime.signals.unregister?.(path);
   }
 
-  mounted.instance.destroy?.();
+  attached.instance.destroy?.();
 }
 
-function registerFlowAsyncSignalMetadata(runtime, mounted, namespace, name, ref) {
+function registerFlowAsyncSignalMetadata(runtime, attached, namespace, name, ref) {
   for (const [metadata, read] of Object.entries({
     loading: () => ref.loading ?? false,
     error: () => ref.error ?? null,
@@ -321,13 +321,13 @@ function registerFlowAsyncSignalMetadata(runtime, mounted, namespace, name, ref)
     version: () => ref.version ?? 0
   })) {
     const path = `${namespace}.${name}.${metadata}`;
-    registerMountedFlowSignal(runtime, mounted, path, createFlowReadonlyBridge(ref, { path, read }));
+    registerAttachedFlowSignal(runtime, attached, path, createFlowReadonlyBridge(ref, { path, read }));
   }
 }
 
-function registerFlowAsyncSignalRefreshHandler(runtime, mounted, namespace, name, ref) {
+function registerFlowAsyncSignalRefreshHandler(runtime, attached, namespace, name, ref) {
   const path = `${namespace}.refresh${capitalizeIdentifier(name)}`;
-  registerMountedFlowHandler(runtime, mounted, path, function refreshMountedFlowAsyncSignal(context = {}) {
+  registerAttachedFlowHandler(runtime, attached, path, function refreshAttachedFlowAsyncSignal(context = {}) {
     const input = normalizeRefreshInput(context);
     return ref.reload?.(...input) ?? ref.load?.(...input);
   });

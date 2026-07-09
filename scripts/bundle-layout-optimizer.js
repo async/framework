@@ -654,7 +654,7 @@ function flowSubpathGuardSource() {
   return [
     "const frameworkFlowKind = Symbol.for(\"@async/framework.flow\");",
     "",
-    "export function mountFlowRegistrations(runtime, entries = {}) {",
+    "export function attachFlowRegistrations(runtime, entries = {}) {",
     "  if (!entries || Object.keys(entries).length === 0) {",
     "    return runtime;",
     "  }",
@@ -672,7 +672,7 @@ function flowDynamicGuardSource() {
   return [
     "const frameworkFlowKind = Symbol.for(\"@async/framework.flow\");",
     "",
-    "export function mountFlowRegistrations(runtime, entries = {}) {",
+    "export function attachFlowRegistrations(runtime, entries = {}) {",
     "  if (!entries || Object.keys(entries).length === 0) {",
     "    return runtime;",
     "  }",
@@ -780,7 +780,7 @@ function publicReservedNames() {
     "swap",
     "defineRefreshPlan",
     "refresh",
-    "mount",
+    "attach",
     "inspect",
     "use",
     "start",

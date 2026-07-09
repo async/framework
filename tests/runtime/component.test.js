@@ -10,7 +10,7 @@ test("component helpers create scoped signals, handlers, effects, children, and 
   document.body.innerHTML = `<main id="app"></main>`;
 
   const seen = [];
-  let mounted = 0;
+  let attached = 0;
   let visible = 0;
   let cleaned = 0;
   const server = createServerRegistry({
@@ -30,7 +30,7 @@ test("component helpers create scoped signals, handlers, effects, children, and 
       selected.set(await this.server.toggle.next(selected.value));
     });
     const attach = this.handler("attach", function ({ element }) {
-      mounted += 1;
+      attached += 1;
       element.dataset.attached = "true";
       return () => {
         cleaned += 1;
@@ -57,10 +57,10 @@ test("component helpers create scoped signals, handlers, effects, children, and 
   });
 
   const loader = Loader({ root: document, server });
-  loader.mount(document.querySelector("#app"), Parent);
+  loader.attach(document.querySelector("#app"), Parent);
   await delay(0);
 
-  assert.equal(mounted, 1);
+  assert.equal(attached, 1);
   assert.equal(visible, 1);
   assert.equal(document.querySelector("section").dataset.attached, "true");
   assert.equal(document.querySelector("section").dataset.visible, "true");
@@ -187,7 +187,7 @@ test("component this.on supports rootless fragment lifecycle fallback", async ()
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), Rootless);
+  loader.attach(document.querySelector("#app"), Rootless);
   await delay(0);
 
   assert.deepEqual(events, ["attach:app", "visible:app"]);
@@ -196,38 +196,30 @@ test("component this.on supports rootless fragment lifecycle fallback", async ()
   assert.deepEqual(events, ["attach:app", "visible:app", "destroy", "attach-cleanup"]);
 });
 
-test("component mount lifecycle aliases warn and attach", async () => {
+test("component mount lifecycle names are removed, not aliased", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<main id="app"></main>`;
-  const events = [];
-  const warnings = [];
-  const originalWarn = console.warn;
-  console.warn = (message) => warnings.push(message);
-  try {
-    const AliasLifecycle = component(function AliasLifecycle() {
-      this.on("mount", (target) => {
-        events.push(`on:${target.id}`);
-      });
-      this.onMount((target) => {
-        events.push(`helper:${target.id}`);
-      });
-      return html`alias lifecycle`;
-    });
 
-    const loader = Loader({ root: document });
-    loader.mount(document.querySelector("#app"), AliasLifecycle);
-    await delay(0);
-    loader.destroy();
+  const OnMountAlias = component(function OnMountAlias() {
+    this.on("mount", () => {});
+    return html`never`;
+  });
+  const HelperAlias = component(function HelperAlias() {
+    this.onMount(() => {});
+    return html`never`;
+  });
 
-    assert.deepEqual(events, ["on:app", "helper:app"]);
-    assert.deepEqual(warnings, [
-      'this.on("mount", ...) has been renamed to this.on("attach", ...). The old name remains as a compatibility alias.',
-      "this.onMount(...) has been renamed to this.onAttach(...). The old name remains as a compatibility alias."
-    ]);
-  } finally {
-    console.warn = originalWarn;
-  }
+  const loader = Loader({ root: document });
+  assert.throws(
+    () => loader.attach(document.querySelector("#app"), OnMountAlias),
+    /Component lifecycle "mount" was removed; use this\.on\("attach", \.\.\.\)/
+  );
+  assert.throws(
+    () => loader.attach(document.querySelector("#app"), HelperAlias),
+    /this\.onMount is not a function/
+  );
+  loader.destroy();
 });
 
 test("component identical attach callbacks both run", async () => {
@@ -252,7 +244,7 @@ test("component identical attach callbacks both run", async () => {
   });
 
   const loader = Loader({ root: document, scheduler });
-  loader.mount(document.querySelector("#app"), ReusedHook);
+  loader.attach(document.querySelector("#app"), ReusedHook);
   await scheduler.flush();
 
   assert.deepEqual(events, ["attach", "attach"]);
@@ -283,7 +275,7 @@ test("component identical visible callbacks both run", async () => {
   });
 
   const loader = Loader({ root: document, scheduler });
-  loader.mount(document.querySelector("#app"), ReusedVisibleHook);
+  loader.attach(document.querySelector("#app"), ReusedVisibleHook);
   await scheduler.flush();
 
   assert.deepEqual(events, ["visible", "visible"]);
@@ -316,7 +308,7 @@ test("component this.intersect observes repeated entries with normalized options
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), Tracker);
+  loader.attach(document.querySelector("#app"), Tracker);
   await delay(0);
 
   const section = document.querySelector("#tracked");
@@ -358,7 +350,7 @@ test("component this.intersect cancels queued callbacks on destroy", async () =>
   });
 
   const loader = Loader({ root: document, scheduler });
-  loader.mount(document.querySelector("#app"), Tracker);
+  loader.attach(document.querySelector("#app"), Tracker);
   await scheduler.flush();
 
   observers[0].trigger({ target: document.querySelector("#tracked"), isIntersecting: true, intersectionRatio: 1 });
@@ -392,7 +384,7 @@ test("component this.intersect fallback reports unsupported once", async () => {
   });
 
   const loader = Loader({ root: document, scheduler });
-  loader.mount(document.querySelector("#app"), Tracker);
+  loader.attach(document.querySelector("#app"), Tracker);
   await scheduler.flush();
 
   assert.deepEqual(events, [{
@@ -405,7 +397,7 @@ test("component this.intersect fallback reports unsupported once", async () => {
   loader.destroy();
 });
 
-test("component this.on(\"intersect\") observes the mounted component scope", async () => {
+test("component this.on(\"intersect\") observes the attached component scope", async () => {
   const window = new Window();
   const { document } = window;
   const observers = installMockIntersectionObserver(window);
@@ -421,7 +413,7 @@ test("component this.on(\"intersect\") observes the mounted component scope", as
 
   const loader = Loader({ root: document });
   const app = document.querySelector("#app");
-  loader.mount(app, Card);
+  loader.attach(app, Card);
   await delay(0);
 
   assert.equal(observers.length, 1);
@@ -449,7 +441,7 @@ test("component returned intersection cleanup disconnects when boundary children
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("[async\\:boundary='route']"), Tracker);
+  loader.attach(document.querySelector("[async\\:boundary='route']"), Tracker);
   await delay(0);
 
   assert.equal(observers.length, 1);
@@ -478,7 +470,7 @@ test("component visible hook remains one-shot with IntersectionObserver", async 
 
   const loader = Loader({ root: document });
   const app = document.querySelector("#app");
-  loader.mount(app, Visible);
+  loader.attach(app, Visible);
   await delay(0);
 
   observers[0].trigger({ target: app, isIntersecting: false, intersectionRatio: 0 });
@@ -616,7 +608,7 @@ test("component child render attach hooks do not dedupe each other", async () =>
   });
 
   const loader = Loader({ root: document, scheduler });
-  loader.mount(document.querySelector("#app"), Parent);
+  loader.attach(document.querySelector("#app"), Parent);
   await scheduler.flush();
 
   assert.deepEqual(events, ["child", "child"]);
@@ -629,11 +621,11 @@ test("nested component onAttach targets the child render root", async () => {
   document.body.innerHTML = `<main id="app"></main>`;
   const scheduler = createScheduler({ strategy: "manual" });
 
-  let mountedTarget;
+  let attachedTarget;
   const Child = component(function Child() {
     this.onAttach((target) => {
-      mountedTarget = target;
-      target.classList.add("child-mounted-on");
+      attachedTarget = target;
+      target.classList.add("child-attached-on");
     });
     return html`<div data-child-root>child</div>`;
   });
@@ -649,13 +641,13 @@ test("nested component onAttach targets the child render root", async () => {
   const loader = Loader({ root: document, scheduler });
   try {
     const app = document.querySelector("#app");
-    loader.mount(app, Parent);
+    loader.attach(app, Parent);
     await scheduler.flush();
 
     const childRoot = document.querySelector("[data-child-root]");
-    assert.equal(targetLabel(mountedTarget), "child");
-    assert.equal(childRoot.classList.contains("child-mounted-on"), true);
-    assert.equal(app.classList.contains("child-mounted-on"), false);
+    assert.equal(targetLabel(attachedTarget), "child");
+    assert.equal(childRoot.classList.contains("child-attached-on"), true);
+    assert.equal(app.classList.contains("child-attached-on"), false);
   } finally {
     loader.destroy();
   }
@@ -703,7 +695,7 @@ test("deeply nested render lifecycle hooks resolve each component root", async (
 
   const loader = Loader({ root: document, scheduler });
   try {
-    loader.mount(document.querySelector("#app"), App);
+    loader.attach(document.querySelector("#app"), App);
     await scheduler.flush();
 
     assert.deepEqual(events, ["page", "child", "grandchild"]);
@@ -736,7 +728,7 @@ test("nested visible and intersect hooks observe the child render root", async (
 
   const loader = Loader({ root: document });
   try {
-    loader.mount(document.querySelector("#app"), Parent);
+    loader.attach(document.querySelector("#app"), Parent);
     await delay(0);
 
     const childRoot = document.querySelector("[data-child-root]");
@@ -786,7 +778,7 @@ test("nested rootless and multi-root lifecycle hooks target the containing eleme
 
   const loader = Loader({ root: document, scheduler });
   try {
-    loader.mount(document.querySelector("#app"), Parent);
+    loader.attach(document.querySelector("#app"), Parent);
     await scheduler.flush();
 
     assert.deepEqual(events, ["rootless:container", "multi:container"]);
@@ -829,7 +821,7 @@ test("nested onAttach scroll wrappers do not mutate ancestor async boundaries", 
 
   const loader = Loader({ root: document, scheduler });
   try {
-    loader.mount(document.querySelector("#app"), App);
+    loader.attach(document.querySelector("#app"), App);
     await scheduler.flush();
 
     const appShell = document.querySelector("[async\\:boundary='app-shell']");
@@ -862,7 +854,7 @@ test("component render passes static children as a scoped fragment", () => {
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), App);
+  loader.attach(document.querySelector("#app"), App);
 
   assert.equal(document.querySelector("h2").textContent, "Status");
   assert.equal(document.querySelector("p").textContent, "Ready");
@@ -896,7 +888,7 @@ test("component children factories are lazy and can render nested components", (
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), App);
+  loader.attach(document.querySelector("#app"), App);
 
   assert.equal(evaluated, 1);
   assert.equal(document.querySelector("strong").textContent, "Live");
@@ -916,7 +908,7 @@ test("component children escape strings by default", () => {
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), App);
+  loader.attach(document.querySelector("#app"), App);
 
   assert.equal(document.querySelector("article").textContent, `<script>alert("x")</script>`);
   assert.equal(document.querySelector("script"), null);
@@ -943,11 +935,11 @@ test("component render rejects duplicate children sources and double consumption
 
   const loader = Loader({ root: document });
   assert.throws(
-    () => loader.mount(document.querySelector("#app"), DuplicateSources),
+    () => loader.attach(document.querySelector("#app"), DuplicateSources),
     /cannot receive both props\.children and a children argument/
   );
   assert.throws(
-    () => loader.mount(document.querySelector("#app"), DoubleConsume),
+    () => loader.attach(document.querySelector("#app"), DoubleConsume),
     /children fragments can only be consumed once/
   );
   loader.destroy();
@@ -986,7 +978,7 @@ test("component children cleanup releases nested scoped handlers and signals", a
   });
 
   const loader = Loader({ root: document.body }).start();
-  loader.mount(document.querySelector("#slot"), App);
+  loader.attach(document.querySelector("#slot"), App);
   await delay(0);
 
   const action = document.querySelector("#action");
@@ -1010,7 +1002,7 @@ test("component children cleanup releases nested scoped handlers and signals", a
   loader.destroy();
 });
 
-test("Loader mounts registered components from async:component attributes", async () => {
+test("Loader attaches registered components from async:component attributes", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<main async:component="Greeting"></main>`;
@@ -1037,7 +1029,7 @@ test("Loader mounts registered components from async:component attributes", asyn
   loader.destroy();
 });
 
-test("component slots mount child components into attached outlets and update from signal props", async () => {
+test("component slots attach child components into attached outlets and update from signal props", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<main id="app"></main>`;
@@ -1070,7 +1062,7 @@ test("component slots mount child components into attached outlets and update fr
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), App);
+  loader.attach(document.querySelector("#app"), App);
   await delay(0);
 
   assert.equal(document.querySelectorAll("li").length, 0);
@@ -1093,14 +1085,14 @@ test("component returning a Promise throws a clear unsupported error", () => {
   const loader = Loader({ root: document });
 
   assert.throws(
-    () => loader.mount(document.querySelector("#app"), AsyncComponent),
+    () => loader.attach(document.querySelector("#app"), AsyncComponent),
     /Component "AsyncComponent" returned a Promise\. Async components are not supported/
   );
 
   loader.destroy();
 });
 
-test("lazy component descriptors mounted through Loader throw a clear unsupported error", () => {
+test("lazy component descriptors attached through Loader throw a clear unsupported error", () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<main id="app"></main>`;
@@ -1118,7 +1110,7 @@ test("lazy component descriptors mounted through Loader throw a clear unsupporte
   const loader = Loader({ root: document });
 
   assert.throws(
-    () => loader.mount(document.querySelector("#app"), components.resolve("ProductCard")),
+    () => loader.attach(document.querySelector("#app"), components.resolve("ProductCard")),
     /Component "LazyComponent" returned a Promise\. Async components are not supported/
   );
 
@@ -1147,7 +1139,7 @@ test("lazy component descriptors used through this.render throw a clear unsuppor
   const loader = Loader({ root: document });
 
   assert.throws(
-    () => loader.mount(document.querySelector("#app"), Parent),
+    () => loader.attach(document.querySelector("#app"), Parent),
     /Component "LazyComponent" returned a Promise\. Async components are not supported/
   );
 
@@ -1170,7 +1162,7 @@ test("component visible hook does not run after parent is destroyed", async () =
   });
 
   const loader = Loader({ root: document, scheduler });
-  loader.mount(document.querySelector("#app"), Visible);
+  loader.attach(document.querySelector("#app"), Visible);
   loader.destroy();
   await scheduler.flush();
 
@@ -1212,7 +1204,7 @@ test("component templates support inline handlers, signal class values, and sign
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), ProductCard, {
+  loader.attach(document.querySelector("#app"), ProductCard, {
     id: "sku-1",
     title: "Keyboard"
   });
@@ -1272,7 +1264,7 @@ test("component form input events bubble to scoped handlers", async () => {
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), OperationForm);
+  loader.attach(document.querySelector("#app"), OperationForm);
   await delay(0);
 
   const input = document.querySelector("input[name='model']");
@@ -1319,7 +1311,7 @@ test("component templates support inline signal refs for text, attributes, and p
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), FormControls);
+  loader.attach(document.querySelector("#app"), FormControls);
   await delay(0);
 
   assert.equal(document.querySelector("h1").textContent, "Keyboard");
@@ -1340,7 +1332,7 @@ test("component templates support inline signal refs for text, attributes, and p
   loader.destroy();
 });
 
-test("component scoped handlers and signals clean up when a mounted fragment is swapped out", async () => {
+test("component scoped handlers and signals clean up when an attached fragment is swapped out", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `
@@ -1380,7 +1372,7 @@ test("component scoped handlers and signals clean up when a mounted fragment is 
   });
 
   const loader = Loader({ root: document.body }).start();
-  loader.mount(document.querySelector("#slot"), Card);
+  loader.attach(document.querySelector("#slot"), Card);
   await delay(0);
 
   const oldButton = document.querySelector("#old-select");
@@ -1441,7 +1433,7 @@ test("component this.suspense emits async boundary templates without owning a wr
   });
 
   const loader = Loader({ root: document, server });
-  loader.mount(document.querySelector("#app"), Product);
+  loader.attach(document.querySelector("#app"), Product);
 
   assert.equal(document.querySelector("#product").tagName, "ARTICLE");
   assert.equal(document.querySelector(".loading").textContent, "Loading...");
@@ -1486,7 +1478,7 @@ test("component this.suspense supports shorthand ready views and configured asyn
       class: "data-class-"
     }
   });
-  loader.mount(document.querySelector("#app"), Product);
+  loader.attach(document.querySelector("#app"), Product);
   await delay(5);
 
   assert.equal(document.querySelector("#custom-product").tagName, "ARTICLE");
@@ -1518,7 +1510,7 @@ test("component this.suspense validates signal refs and view callbacks", async (
   });
 
   const loader = Loader({ root: document });
-  loader.mount(document.querySelector("#app"), Errors);
+  loader.attach(document.querySelector("#app"), Errors);
 
   assert.equal(document.querySelector("#suspense-errors-ok").textContent, "ok");
 

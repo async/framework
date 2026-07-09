@@ -3,11 +3,11 @@ import {
   defineApp as defineBaseApp,
   readSnapshot
 } from "./app.js";
-import { mountFlowRegistrations } from "./flow.js";
+import { attachFlowRegistrations } from "./flow.js";
 
 const flowFeature = {
   flow: {
-    mountRegistrations: mountFlowRegistrations
+    attachRegistrations: attachFlowRegistrations
   }
 };
 

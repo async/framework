@@ -88,7 +88,7 @@ test("same-view navigation updates state and history only", async () => {
 
   assert.equal(counts.renders, 0, "same-view navigation must not render partials");
   assert.equal(counts.pushes, 2, "same-view navigation still writes history");
-  assert.equal(document.querySelector("#t").textContent, "sku-1", "mounted DOM stays untouched");
+  assert.equal(document.querySelector("#t").textContent, "sku-1", "attached DOM stays untouched");
   router.destroy();
 });
 

@@ -46,8 +46,8 @@ test("activation scans a scope with a single tree traversal", () => {
   // Activation is exactly ONE traversal of the scope, independent of how
   // many binding kinds exist: a single shared element collection powers the
   // revive/signal/class/event/boundary/component passes AND pseudo-event
-  // dispatch (attach/visible/intersect). Component-mounted children are
-  // covered by the nested api.scan(host) inside mount. Growth here means a
+  // dispatch (attach/visible/intersect). Component-attached children are
+  // covered by the nested api.scan(host) inside attach. Growth here means a
   // pass regained its own tree walk.
   assert.equal(calls.length, 1, `expected 1 tree traversal for the activation scan, saw ${calls.length}`);
   for (const call of calls) {

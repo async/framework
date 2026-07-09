@@ -184,7 +184,7 @@ test("component cleanup cancels pending scoped effect jobs", async () => {
   });
 
   const loader = Loader({ root: document.body, scheduler });
-  loader.mount(document.querySelector("#app"), Scoped);
+  loader.attach(document.querySelector("#app"), Scoped);
 
   assert.deepEqual(seen, [false]);
 
