@@ -74,11 +74,16 @@ Compiler-layer systems must lower into explicit protocol records:
   ownership.
 - Compiler output must be explainable as protocol artifacts that the lower
   runtime systems already understand.
-- Flow declarations lower into the normal `signal` and `handler` registries.
-  Flow signal refs, computed values, async-signal helper paths, and strict state
-  helpers remain ordinary signal entries; Flow `on` handlers remain ordinary
-  handler entries. The lower runtime must not require a separate Flow registry
-  path for binding, scheduling, snapshot restore, or browser protocol records.
+- Live Flow declarations lower into the normal `signal` and `handler`
+  registries. Flow signal refs, computed values, async-signal helper paths, and
+  strict state helpers remain ordinary signal entries; Flow `on` handlers remain
+  ordinary handler entries.
+- A portable Flow machine plan is intermediate input, not a Framework runtime
+  plan. The Optimizer owns host-specific names, DOM bindings, chunks, imports,
+  and lowering into the existing generated `signals` and `events` plan sections.
+  Neither the lower runtime nor runtime slices may require a separate Flow
+  registry or compiled Flow interpreter for binding, scheduling, snapshot
+  restore, teardown, or browser protocol records.
 - Browser apps that author Flow declarations import from
   `@async/framework/flow`; the default browser entrypoint may preserve the
   registry shape without carrying Flow attachment code.

@@ -57,13 +57,17 @@ returned from `Async.start(...)` / `createApp(...).start()`.
 - The scheduler owns queued work ordering.
 - Signal and cache registries own mutable data state.
 - Server registries own privileged function execution.
+- The opt-in Flow feature owns materializing `flow` declarations into ordinary
+  signal and handler entries; the kernel owns attached-instance teardown as part
+  of runtime lifecycle.
 
 ## Protocol Contract
 
 The kernel must preserve registry shapes:
 
 - Canonical declaration keys are `signal`, `handler`, `server`, `partial`,
-  `route`, `component`, `asyncSignal`, `cache.browser`, and `cache.server`.
+  `route`, `component`, `asyncSignal`, `flow`, `cache.browser`, and
+  `cache.server`.
 - Runtime registry inspection exposes public declaration metadata without
   leaking server-only executable functions into browser contexts.
 - Late declarations are adopted by live runtimes without mutating previous

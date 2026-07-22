@@ -295,7 +295,7 @@ test("strict Flow helpers still lower through normal signal and handler registri
   runtime.destroy();
 });
 
-test("@async/framework/flow re-exports the full @async/flow helper surface", async () => {
+test("@async/framework/flow exposes the Framework Flow helper allowlist", async () => {
   const [flowEntry, coreHelpers, composeHelpers] = await Promise.all([
     import("../../src/flow-entry.js"),
     import("@async/flow/helpers/core"),

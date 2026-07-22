@@ -66,7 +66,8 @@ The browser interprets a full declarative app model at runtime with no build
 step: registries as the declaration container, `Async.use(...)` conventions,
 scoped fragment components, lifecycle pseudo-events, and scheduler-batched
 bindings. `signal:value` plus `on:input` is the two-way binding story. Flow
-authoring is an opt-in subpath.
+authoring is an opt-in subpath anchored at L1 and remains available to apps at
+higher layers without changing its semantics.
 
 - Owning references: [02-runtime-kernel.md](./02-runtime-kernel.md),
   [03-reactivity-system.md](./03-reactivity-system.md),
@@ -145,6 +146,12 @@ Optimizer owns the source analysis that extracts server-only code, emits
 explicit generated transport artifacts, and preserves the app-mounted
 transport boundary. Browser network access stays explicit; extraction must not
 introduce an implicit global fetch path.
+
+Compiled Flow is L6 automation of the same L1 authoring model, not a separate
+layer. The Optimizer may consume a portable Flow machine plan, assign
+host-specific names and bindings, and lower it into the existing generated
+signal and event plan sections. That path must not add a dedicated Flow runtime
+slice or interpreter.
 
 Out-of-order patch application is L5-available protocol; L6 adds the
 build-owned automation, not the capability. Async also does not need a
@@ -314,8 +321,6 @@ contract and must not be used as a layer name.
 
 - Additional cross-layer pattern map entries (PESPA, MPA view transitions,
   optimistic UI).
-- Whether Flow stays anchored at L1 as an authoring option available above,
-  or is described per layer.
 - Whether the layer model gets a dedicated docs-site landing page.
 - Whether `examples/layers/` complements or replaces the current flat
   examples set (current assumption: complements).

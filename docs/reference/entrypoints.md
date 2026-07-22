@@ -51,7 +51,7 @@ import { Async, defineRoute } from "@async/framework/router";
 import { flow, flowSignal, flowStatus, compose, when, transition } from "@async/framework/flow";
 ```
 
-The flow entry re-exports the complete `@async/flow` authoring surface:
+The flow entry exposes the Framework Flow authoring surface:
 declaration helpers (`flowSignal`, `flowComputed`, `flowAsyncSignal`,
 `flowStatus`), step helpers (`set`, `update`, `when`, `branch`, `guard`,
 `transition`, `dispatch`, `after`, `onError`), condition helpers (`bool`,
