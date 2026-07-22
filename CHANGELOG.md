@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.19.0 - 2026-07-21
+
+- Added structured runtime diagnostics with stable error codes, `AsyncError`,
+  `toAsyncDiagnostic(...)`, and `onError` ownership across apps, loaders, and
+  routers. Delegated and lifecycle failures now reach callbacks, cancelable
+  `async:error` events, or the platform unhandled-error path instead of
+  disappearing.
+- Published the framework-native app authoring contract as package
+  `AGENTS.md`, added declarative component and app-composition examples, and
+  added a repository gate that keeps public examples on framework-owned
+  attachment, events, bindings, and boundary updates.
+- Updated `@async/flow` to 0.10.4 and documented the Flow boundary: live Flow
+  declarations materialize into ordinary framework registries, while portable
+  machine plans remain optimizer input and do not introduce a separate runtime
+  interpreter or slice.
+- Bundle size from bundled TypeScript source: `browser.ts` raw 271,362 B (271.4 KB / 0.271 MB), gzip 52,388 B (52.4 KB / 0.052 MB), br 42,937 B (42.9 KB / 0.043 MB) -> `browser.min.js` raw 113,880 B (113.9 KB / 0.114 MB), gzip 33,597 B (33.6 KB / 0.034 MB), br 29,462 B (29.5 KB / 0.029 MB); delta raw -157,482 B (-157.5 KB / -0.157 MB), gzip -18,791 B (-18.8 KB / -0.019 MB), br -13,475 B (-13.5 KB / -0.013 MB).
+
 ## 0.18.1 - 2026-07-09
 
 - Reorganized the README into a compact guide and moved the deeper material
