@@ -21,6 +21,13 @@ python3 -m http.server 4173
 
 Open `http://127.0.0.1:4173/examples/size/stream-backpatch/`.
 
+## Imperative DOM exception
+
+This named stream adapter enumerates transport-owned patch scripts so the
+stream receiver can apply each payload. The query is limited to
+`script[async:stream-patch]`; application features do not search or render the
+document directly.
+
 Verify:
 
 ```bash

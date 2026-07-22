@@ -291,6 +291,7 @@ description of every example.
 | [examples/counter](./examples/counter) | Signal text binding and delegated handlers |
 | [examples/product](./examples/product) | Async signal loading, ready, and error boundaries |
 | [examples/components](./examples/components) | Scoped fragment components and lifecycle hooks |
+| [examples/app-patterns](./examples/app-patterns) | Framework-native app composition, derived signals, and app-level errors |
 | [examples/streaming](./examples/streaming) | Boundary swaps with rescanned handlers |
 | [examples/server-call](./examples/server-call) | Command events calling server functions |
 | [examples/hateoas-actions](./examples/hateoas-actions) | Hono-rendered HATEOAS links and forms enhanced into partial swaps |
@@ -348,6 +349,7 @@ Contracts: [specs/framework/12-composition-patterns.md](./specs/framework/12-com
 | Page | Question it answers |
 | --- | --- |
 | [Getting Started](./docs/start/getting-started.md) | What is the smallest running app? |
+| [App Authoring Contract](./docs/start/app-authoring.md) | Which framework-native patterns should applications and examples follow? |
 | [Install & Load](./docs/start/install.md) | How do npm, CDN, UMD, and import-map loading work? |
 | [Why Async](./docs/start/why-async.md) | What does Async keep and avoid? |
 | [Core Concepts](./docs/start/core-concepts.md) | Which runtime pieces make up an app? |

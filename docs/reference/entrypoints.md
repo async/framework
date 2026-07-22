@@ -78,5 +78,6 @@ event-reporting contract.
 
 ## Related
 - Guide: [Install & Load](#/docs/install)
+- Guide: [App Authoring Contract](#/docs/app-authoring)
 - Symbol reference: [API Reference](#/reference/api)
 - Contract: [09-packaging-and-delivery.md](../../specs/framework/09-packaging-and-delivery.md)

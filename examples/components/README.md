@@ -5,8 +5,9 @@ class bindings, and attribute bindings.
 
 Key files:
 
-- `index.html` provides the `#app` host element.
-- `main.js` defines and attaches the `Toggle` component.
+- `index.html` declares the `Toggle` host with `async:component`.
+- `main.js` registers the component through `Async.use` and starts the
+  document root.
 
 Start from the repo root:
 

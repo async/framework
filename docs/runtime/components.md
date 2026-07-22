@@ -4,7 +4,15 @@ Components are scoped fragment functions. They return strings or `html`
 templates; Loader inserts and scans the result. There is no virtual node
 type and no rerender loop.
 
+Declare the component host in HTML:
+
+```html
+<main async:container async:component="Toggle"></main>
+```
+
 ```js
+import { Async, component, html } from "@async/framework/browser";
+
 const Toggle = component(function Toggle() {
   const selected = this.signal(false);
   const attach = this.handler("attach", function ({ element }) {
@@ -31,9 +39,13 @@ const Toggle = component(function Toggle() {
   `;
 });
 
-const loader = Loader({ root: document });
-loader.attach(document.querySelector("#app"), Toggle);
+Async.use({ component: { Toggle } });
+Async.start({ root: document, router: false });
 ```
+
+Use `loader.attach(target, Component)` only when a named platform adapter
+already owns a direct target element. Normal app feature code should prefer
+`async:component` and registry-driven attachment.
 
 Component helpers:
 

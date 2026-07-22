@@ -100,6 +100,20 @@ protocol allows.
 - For reveal examples, prefer `async:reveal`, `async:reveal-order`, and
   `async:reveal-tail`.
 
+## Public App Examples
+
+- Treat `docs/start/app-authoring.md` as the authoritative application
+  authoring contract. Public examples must use framework-owned attachment,
+  delegated events, signal bindings, and boundary updates.
+- Do not add global selector APIs, document-level feature listeners, or
+  `innerHTML` rendering to normal example feature code.
+- Narrow platform adapters may use imperative DOM only when the adjacent
+  README includes an `Imperative DOM exception` section that names the
+  capability and ownership boundary.
+- Keep `tests/examples/authoring-contract.test.js` exact: new occurrences are
+  failures unless the example is a justified named adapter with a precise
+  count and README rationale.
+
 ## Generated Artifacts And Pipeline
 
 - Edit source, tests, examples, scripts, specs, `package.json`, and

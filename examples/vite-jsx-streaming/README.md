@@ -37,3 +37,10 @@ pnpm run build
 The checked-in config aliases framework package imports back to source files so
 the example can run from this checkout. In an app, remove the aliases and import
 from the package subpaths directly.
+
+## Imperative DOM exception
+
+The optimizer demo adapter selects one report outlet and writes the build
+profile into it. That outlet visualizes compiler metadata; it is not application
+state or feature rendering, and the framework runtime owns the application
+protocol around it.

@@ -22,6 +22,7 @@ Then open the example URL, such as
 | [counter](./counter/README.md) | Signal text binding and delegated handlers | `http://127.0.0.1:4173/examples/counter/` |
 | [product](./product/README.md) | Async signal loading, ready, and error boundaries | `http://127.0.0.1:4173/examples/product/` |
 | [components](./components/README.md) | Scoped fragment components and lifecycle hooks | `http://127.0.0.1:4173/examples/components/` |
+| [app-patterns](./app-patterns/README.md) | Framework-native app composition, derived signals, and app-level errors | `http://127.0.0.1:4173/examples/app-patterns/` |
 | [streaming](./streaming/README.md) | Boundary swaps with rescanned handlers | `http://127.0.0.1:4173/examples/streaming/` |
 | [server-call](./server-call/README.md) | Command events calling server functions | `http://127.0.0.1:4173/examples/server-call/` |
 | [hateoas-actions](./hateoas-actions/README.md) | Hono-rendered HATEOAS links and forms enhanced into partial swaps | `pnpm start` |

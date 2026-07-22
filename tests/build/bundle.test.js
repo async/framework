@@ -822,6 +822,7 @@ test("package file list only publishes generated framework artifacts", () => {
   assert.equal(publishManifest.files.includes("src"), false);
   assert.equal(publishManifest.files.includes("tests"), false);
   assert.equal(publishManifest.files.includes("examples"), false);
+  assert.ok(publishManifest.files.includes("AGENTS.md"));
   assert.ok(publishManifest.files.includes("browser.js"));
   assert.ok(publishManifest.files.includes("browser.min.js"));
   assert.ok(publishManifest.files.includes("browser.umd.js"));
@@ -879,6 +880,13 @@ test("package file list only publishes generated framework artifacts", () => {
   assert.ok(publishManifest.files.includes("runtime/events.js"));
   assert.ok(publishManifest.files.includes("runtime/events.d.ts"));
   assert.ok(publishManifest.files.includes("runtime/shared.js"));
+});
+
+test("published AGENTS.md is the byte-identical app authoring contract", () => {
+  const sourceGuide = readFileSync(join(repoRoot, "docs", "start", "app-authoring.md"), "utf8");
+  const publishedGuide = readFileSync(join(distRoot, "AGENTS.md"), "utf8");
+
+  assert.equal(publishedGuide, sourceGuide);
 });
 
 test("dist browser.ts is a bundled TypeScript entrypoint", async () => {

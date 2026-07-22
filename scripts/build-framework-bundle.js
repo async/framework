@@ -136,6 +136,7 @@ const generatedArtifacts = {
   runtimeEventsDts
 };
 const copiedArtifacts = {
+  agentGuide: { source: "docs/start/app-authoring.md", file: "AGENTS.md" },
   changelog: { source: "CHANGELOG.md", file: "CHANGELOG.md" },
   readme: { source: "README.md", file: "README.md" },
   license: { source: "LICENSE", file: "LICENSE" }

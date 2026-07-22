@@ -11,7 +11,7 @@ import streamingProfile from "../../examples/vite-jsx-streaming/src/streaming-pr
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const examplesRoot = resolve(root, "examples");
-const staticExamples = ["counter", "product", "components", "streaming", "server-call", "router", "partials", "cache", "ssr"];
+const staticExamples = ["counter", "product", "components", "app-patterns", "streaming", "server-call", "router", "partials", "cache", "ssr"];
 const serverExamples = ["hateoas-actions"];
 const viteExamples = ["vite-hono", "vite-jsx-streaming"];
 const topLevelExamples = [...staticExamples, ...serverExamples, ...viteExamples, "size"];
@@ -170,6 +170,21 @@ for (const name of staticExamples) {
 
     await import(`${pathToFileURL(jsPath).href}?example=${name}`);
     await delay(name === "product" ? 175 : 0);
+
+    if (name === "app-patterns") {
+      const buttons = [...window.document.querySelectorAll("[data-catalog-id]")];
+      assert.equal(buttons.length, 3);
+      assert.equal(window.document.querySelector("h2").textContent, "Keyboard");
+      assert.equal(window.document.querySelector("article p").textContent, "A compact mechanical keyboard.");
+
+      buttons[1].click();
+      await delay(0);
+
+      assert.equal(window.document.querySelector("h2").textContent, "Trackpad");
+      assert.equal(window.document.querySelector("article p").textContent, "A wireless multi-touch trackpad.");
+      assert.equal(buttons[0].classList.contains("selected"), false);
+      assert.equal(buttons[1].classList.contains("selected"), true);
+    }
 
     delete globalThis.window;
     delete globalThis.document;

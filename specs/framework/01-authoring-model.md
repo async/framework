@@ -27,6 +27,8 @@ Baseline authoring uses:
 - Registry IDs that appear in markup and declarations.
 - `html` templates and component functions for scoped fragments when authors
   need reusable view pieces.
+- Declarative component hosts, signal and class bindings, command events,
+  slots, partials, and boundaries for ordinary feature behavior.
 
 Inline command strings are not JavaScript. They are protocol references to
 registered commands and server calls.
@@ -70,12 +72,17 @@ The authoring model must keep resume possible:
 - Future JSX/TSRX or other authoring forms are optional layers, not required
   for runtime protocol apps.
 - Authoring sugar must lower to explicit runtime behavior.
+- Global selector-driven feature code, document-level feature listeners, and
+  `innerHTML` rendering are not the default app model. Imperative DOM work is
+  isolated to scoped lifecycle handlers or named platform adapters.
 
 ## Failure Modes
 
 - Unknown registry IDs fail when the owning subsystem resolves them.
 - Invalid inline command syntax fails before running user behavior.
 - Non-serializable server arguments fail before transport.
+- Author-facing failures expose stable diagnostic codes and correction hints
+  without serializing arbitrary application values.
 - Compiler-generated artifacts that cannot be expressed through protocol shapes
   are invalid Async output.
 
@@ -86,6 +93,8 @@ The authoring model must keep resume possible:
   the HTML attribute.
 - A component can create scoped local signals and handlers while still emitting
   protocol attributes.
+- A registered root component can start through `async:component` without a
+  global selector or imperative attach call.
 - Future compiler output can be described as generated protocol, not as a
   separate runtime architecture.
 

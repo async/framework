@@ -15,6 +15,7 @@
       "title": "Start",
       "pages": [
         { "title": "Getting Started", "route": "/docs/getting-started", "source": "start/getting-started.md" },
+        { "title": "Building Apps", "route": "/docs/app-authoring", "source": "start/app-authoring.md" },
         { "title": "Install", "route": "/docs/install", "source": "start/install.md" },
         { "title": "Why Async", "route": "/docs/why-async", "source": "start/why-async.md" },
         { "title": "Core Concepts", "route": "/docs/core-concepts", "source": "start/core-concepts.md" },

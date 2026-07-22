@@ -17,6 +17,13 @@ python3 -m http.server 4173
 
 Open `http://127.0.0.1:4173/examples/ssr/`.
 
+## Imperative DOM exception
+
+This static SSR adapter simulates the server-to-browser handoff in one page.
+It inserts the complete server render into the activation host and reads the
+adjacent snapshot script before framework startup. Application feature code
+begins after `createApp(...).start()` and remains registry driven.
+
 Verify:
 
 ```bash
