@@ -139,10 +139,41 @@ function serverEnvelope(fields = {}) {
 
 test("missing handlers fail with a useful error", async () => {
   const handlers = createHandlerRegistry();
+  const reported = [];
+  const originalReportError = globalThis.reportError;
+  globalThis.reportError = (error) => reported.push(error);
+
+  try {
+    await assert.rejects(
+      handlers.run("missing", {}),
+      (error) => {
+        assert.match(error.message, /Handler "missing" is not registered/);
+        assert.equal(error.code, "handler-not-registered");
+        assert.match(error.hint, /Async\.use/);
+        assert.deepEqual(error.context, { handler: "missing" });
+        return true;
+      }
+    );
+    assert.deepEqual(reported, [], "direct handler rejections must not be reported globally");
+  } finally {
+    if (originalReportError === undefined) {
+      delete globalThis.reportError;
+    } else {
+      globalThis.reportError = originalReportError;
+    }
+  }
+});
+
+test("invalid handler commands and unavailable server commands expose stable diagnostics", async () => {
+  const handlers = createHandlerRegistry();
 
   await assert.rejects(
-    handlers.run("missing", {}),
-    /Handler "missing" is not registered/
+    handlers.run("save(bad value)", {}),
+    (error) => error.code === "invalid-handler-command" && /Argument/.test(error.message)
+  );
+  await assert.rejects(
+    handlers.run("server.products.save()", {}),
+    (error) => error.code === "server-command-unavailable" && error.context.serverCommand === "products.save"
   );
 });
 

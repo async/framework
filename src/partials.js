@@ -1,4 +1,5 @@
 import { isTemplateResult, renderTemplate } from "./html.js";
+import { AsyncError, asyncErrorCodes } from "./errors.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
@@ -57,7 +58,11 @@ export function createPartialRegistry(initialMap = {}, options = {}) {
       assertId(id);
       const fn = registry.resolve(id);
       if (!fn) {
-        throw new Error(`Partial "${id}" is not registered.`);
+        throw new AsyncError({
+          code: asyncErrorCodes.partialNotRegistered,
+          message: `Partial "${id}" is not registered.`,
+          context: { partial: id }
+        });
       }
 
       const partialContext = {

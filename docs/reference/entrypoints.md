@@ -10,8 +10,10 @@ remain declared on the Node/server entrypoints.
 ```js
 import {
   Async,
+  AsyncError,
   Loader,
   attributeName,
+  asyncErrorCodes,
   asyncSignal,
   createApp,
   createCacheRegistry,
@@ -34,8 +36,10 @@ import {
   delay,
   effect,
   html,
+  isAsyncError,
   readSnapshot,
-  signal
+  signal,
+  toAsyncDiagnostic
 } from "@async/framework/browser";
 ```
 
@@ -66,6 +70,11 @@ import {
 
 `Loader` is the canonical loader factory. `AsyncLoader` remains as a
 compatibility alias for older code.
+
+`AsyncError`, `asyncErrorCodes`, `isAsyncError`, and `toAsyncDiagnostic` are
+available from the browser, router, flow, and server entrypoints. See
+[Errors & Diagnostics](#/reference/errors) for the stable code catalogue and
+event-reporting contract.
 
 ## Related
 - Guide: [Install & Load](#/docs/install)

@@ -1,3 +1,5 @@
+import { AsyncError, asyncErrorCodes } from "./errors.js";
+
 const serverEnvelopeKind = Symbol.for("@async/framework.serverResult");
 const serverEnvelopeWireKey = "__async_server_result__";
 const serverEnvelopeWireVersion = 1;
@@ -223,13 +225,22 @@ export function createServerNamespace(run, root = {}, contextProvider = () => ({
 
 function assertTransportResponse(id, response) {
   if (!response || typeof response !== "object") {
-    throw new Error(`Server function "${id}" transport returned an invalid response: expected a fetch Response-like object.`);
+    throw invalidServerTransportResponse({
+      id,
+      message: `Server function "${id}" transport returned an invalid response: expected a fetch Response-like object.`
+    });
   }
   if (typeof response.ok !== "boolean") {
-    throw new Error(`Server function "${id}" transport returned an invalid response: missing boolean ok.`);
+    throw invalidServerTransportResponse({
+      id,
+      message: `Server function "${id}" transport returned an invalid response: missing boolean ok.`
+    });
   }
   if (!response.headers || typeof response.headers.get !== "function") {
-    throw new Error(`Server function "${id}" transport returned an invalid response: missing headers.get(name).`);
+    throw invalidServerTransportResponse({
+      id,
+      message: `Server function "${id}" transport returned an invalid response: missing headers.get(name).`
+    });
   }
 }
 
@@ -240,18 +251,26 @@ async function readServerResponse(id, response) {
   const type = response.headers.get("content-type") ?? "";
   if (type.includes("application/json")) {
     if (typeof response.json !== "function") {
-      throw new Error(`Server function "${id}" transport returned an invalid response: missing json().`);
+      throw invalidServerTransportResponse({
+        id,
+        message: `Server function "${id}" transport returned an invalid response: missing json().`
+      });
     }
     try {
       return await response.json();
     } catch (cause) {
-      throw new Error(`Server function "${id}" returned invalid JSON: ${errorMessage(cause)}`, {
+      throw invalidServerTransportResponse({
+        id,
+        message: `Server function "${id}" returned invalid JSON: ${errorMessage(cause)}`,
         cause
       });
     }
   }
   if (typeof response.text !== "function") {
-    throw new Error(`Server function "${id}" transport returned an invalid response: missing text().`);
+    throw invalidServerTransportResponse({
+      id,
+      message: `Server function "${id}" transport returned an invalid response: missing text().`
+    });
   }
   return response.text();
 }
@@ -359,39 +378,40 @@ function assertJsonTransportable(value, path = "$", stack = new Set()) {
   }
   if (type === "number") {
     if (!Number.isFinite(value)) {
-      throw new Error(`Server proxy JSON transport does not support non-finite numbers at ${path}.`);
+      throw unsupportedServerJsonValue(`Server proxy JSON transport does not support non-finite numbers at ${path}.`, path);
     }
     return;
   }
   if (type === "bigint") {
-    throw new Error(`Server proxy JSON transport does not support BigInt values at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support BigInt values at ${path}.`, path);
   }
   if (type === "undefined") {
-    throw new Error(`Server proxy JSON transport does not support undefined values at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support undefined values at ${path}.`, path);
   }
   if (type === "function" || type === "symbol") {
-    throw new Error(`Server proxy JSON transport does not support ${type} values at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support ${type} values at ${path}.`, path);
   }
   if (type !== "object") {
-    throw new Error(`Server proxy JSON transport does not support ${type} values at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support ${type} values at ${path}.`, path);
   }
 
   if (stack.has(value)) {
-    throw new Error(`Server proxy JSON transport does not support circular values at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support circular values at ${path}.`, path);
   }
   stack.add(value);
 
   const tag = Object.prototype.toString.call(value);
   if (tag === "[object File]" || tag === "[object Blob]" || tag === "[object FormData]") {
-    throw new Error(`Server proxy JSON transport does not support File, Blob, or FormData values yet at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support File, Blob, or FormData values yet at ${path}.`, path);
   }
   if (isUnsupportedJsonTransportObject(value, tag)) {
-    throw new Error(`Server proxy JSON transport does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values yet at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport does not support URLSearchParams, Headers, Request, Response, ReadableStream, ArrayBuffer, or typed array values yet at ${path}.`, path);
   }
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index += 1) {
       if (!Object.hasOwn(value, index)) {
-        throw new Error(`Server proxy JSON transport does not support sparse arrays at ${path}[${index}].`);
+        const itemPath = `${path}[${index}]`;
+        throw unsupportedServerJsonValue(`Server proxy JSON transport does not support sparse arrays at ${itemPath}.`, itemPath);
       }
       assertJsonTransportable(value[index], `${path}[${index}]`, stack);
     }
@@ -400,13 +420,30 @@ function assertJsonTransportable(value, path = "$", stack = new Set()) {
   }
 
   if (!isPlainJsonObject(value)) {
-    throw new Error(`Server proxy JSON transport only supports plain objects at ${path}.`);
+    throw unsupportedServerJsonValue(`Server proxy JSON transport only supports plain objects at ${path}.`, path);
   }
 
   for (const [key, item] of Object.entries(value)) {
     assertJsonTransportable(item, propertyPath(path, key), stack);
   }
   stack.delete(value);
+}
+
+function invalidServerTransportResponse({ id, message, cause } = {}) {
+  return new AsyncError({
+    code: asyncErrorCodes.invalidServerTransportResponse,
+    message,
+    context: { serverFunction: id },
+    ...(cause === undefined ? {} : { cause })
+  });
+}
+
+function unsupportedServerJsonValue(message, path) {
+  return new AsyncError({
+    code: asyncErrorCodes.unsupportedServerJsonValue,
+    message,
+    context: { path }
+  });
 }
 
 function isPlainJsonObject(value) {

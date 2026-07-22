@@ -85,6 +85,11 @@ test("browser ESM bundles export the public browser runtime API", () => {
   assert.equal(source.Loader, source.AsyncLoader);
   assert.equal(bundle.Loader, bundle.AsyncLoader);
   assert.equal(minBundle.Loader, minBundle.AsyncLoader);
+  assert.equal(typeof bundle.AsyncError, "function");
+  assert.equal(typeof bundle.isAsyncError, "function");
+  assert.equal(typeof bundle.toAsyncDiagnostic, "function");
+  assert.equal(bundle.asyncErrorCodes.navigationFailed, "navigation-failed");
+  assert.equal(Object.isFrozen(bundle.asyncErrorCodes), true);
   assert.equal(bundle.createServerRegistry, undefined);
   assert.equal(bundle.AsyncStream, undefined);
   assert.equal(bundle.createBoundaryReceiver, undefined);
@@ -926,8 +931,13 @@ test("browser and server declarations expose the right public APIs", () => {
   assert.match(browserDeclarations, /declare global/);
   assert.match(browserDeclarations, /export declare const Async: AppHub/);
   assert.match(browserDeclarations, /export interface RuntimeInspection/);
+  assert.match(browserDeclarations, /export interface AsyncDiagnostic/);
+  assert.match(browserDeclarations, /export interface AsyncErrorReport/);
+  assert.match(browserDeclarations, /export type AsyncErrorHandler/);
+  assert.match(browserDeclarations, /export declare class AsyncError extends Error/);
   assert.match(browserDeclarations, /export interface AsyncLoaderFacade/);
   assert.match(browserDeclarations, /export interface AsyncRouterFacade/);
+  assert.match(browserDeclarations, /routerOptions\?: RouterOptions/);
   assert.match(browserDeclarations, /loader: AsyncLoaderFacade/);
   assert.match(browserDeclarations, /export interface AsyncRouterFacade \{[\s\S]*loader: AsyncLoaderFacade/);
   assert.match(browserDeclarations, /router: AsyncRouterFacade/);

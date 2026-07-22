@@ -317,21 +317,119 @@ test("Loader treats async-suspense as boundary markup without custom element reg
   assert.equal(document.querySelector("async-suspense h1").textContent, "Keyboard");
 });
 
-test("Loader dispatches async:error for missing delegated handlers", async () => {
+test("Loader dispatches a cancelable diagnostic for missing delegated handlers", async () => {
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = `<button on:click="missing">Missing</button>`;
   let seen;
 
   document.body.addEventListener("async:error", (event) => {
-    seen = event.detail.error;
+    seen = {
+      cancelable: event.cancelable,
+      report: event.detail
+    };
+    event.preventDefault();
   });
 
   Loader({ root: document.body }).start();
   document.querySelector("button").click();
   await delay(0);
 
-  assert.match(seen.message, /Handler "missing" is not registered/);
+  assert.equal(seen.cancelable, true);
+  assert.match(seen.report.error.message, /Handler "missing" is not registered/);
+  assert.equal(seen.report.error.code, "handler-not-registered");
+  assert.deepEqual(seen.report.diagnostic, {
+    severity: "error",
+    code: "handler-not-registered",
+    message: 'Handler "missing" is not registered.',
+    hint: "Register via Async.use({ handler }).",
+    context: {
+      handler: "missing",
+      event: "click"
+    }
+  });
+});
+
+test("Loader calls onError before async:error and treats either path as handled", async () => {
+  const window = new Window();
+  const { document } = window;
+  const order = [];
+  document.body.innerHTML = `<button on:click="explode">Explode</button>`;
+  document.body.addEventListener("async:error", (event) => {
+    order.push(["event", event.detail.diagnostic.code]);
+    event.preventDefault();
+  });
+
+  Loader({
+    root: document.body,
+    handlers: createHandlerRegistry({
+      explode() {
+        throw new Error("handler exploded");
+      }
+    }),
+    onError(report) {
+      order.push(["callback", report.diagnostic.code]);
+    }
+  }).start();
+  document.querySelector("button").click();
+  await delay(0);
+
+  assert.deepEqual(order, [
+    ["callback", "handler-failed"],
+    ["event", "handler-failed"]
+  ]);
+});
+
+test("Loader reports an event failure when no app path handles it", async () => {
+  const window = new Window();
+  const { document } = window;
+  const reported = [];
+  const originalReportError = globalThis.reportError;
+  globalThis.reportError = (error) => reported.push(error);
+  try {
+    document.body.innerHTML = `<button on:click="missing">Missing</button>`;
+    Loader({ root: document.body }).start();
+    document.querySelector("button").click();
+    await delay(0);
+
+    assert.equal(reported.length, 1);
+    assert.equal(reported[0].code, "handler-not-registered");
+  } finally {
+    if (originalReportError === undefined) {
+      delete globalThis.reportError;
+    } else {
+      globalThis.reportError = originalReportError;
+    }
+  }
+});
+
+test("Loader reports callback failures while a canceled event handles the original error", async () => {
+  const window = new Window();
+  const { document } = window;
+  const reported = [];
+  const originalReportError = globalThis.reportError;
+  globalThis.reportError = (error) => reported.push(error);
+  try {
+    document.body.innerHTML = `<button on:click="missing">Missing</button>`;
+    document.body.addEventListener("async:error", (event) => event.preventDefault());
+    Loader({
+      root: document.body,
+      onError() {
+        throw new Error("callback exploded");
+      }
+    }).start();
+    document.querySelector("button").click();
+    await delay(0);
+
+    assert.equal(reported.length, 1);
+    assert.equal(reported[0].message, "callback exploded");
+  } finally {
+    if (originalReportError === undefined) {
+      delete globalThis.reportError;
+    } else {
+      globalThis.reportError = originalReportError;
+    }
+  }
 });
 
 test("Loader runs semicolon commands with server calls from DOM events", async () => {

@@ -364,6 +364,7 @@ Contracts: [specs/framework/12-composition-patterns.md](./specs/framework/12-com
 | [Build Profile](./docs/build/profile.md) | What does the compiler-layer profile promise? |
 | [Vite & Hono](./docs/build/vite-hono.md) | How does the Vite plugin wire a Hono dev server and client build? |
 | [Entrypoints](./docs/reference/entrypoints.md) | Which package subpaths expose which surfaces? |
+| [Errors & Diagnostics](./docs/reference/errors.md) | Which stable codes, hints, callbacks, and events report failures? |
 | [Examples](./docs/reference/examples.md) | Which runnable example demonstrates each surface? |
 
 ## Contributing & Release

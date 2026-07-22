@@ -19,6 +19,7 @@ export { component, createComponentRegistry, defineComponent } from "./component
 export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
+export { AsyncError, asyncErrorCodes, isAsyncError, toAsyncDiagnostic } from "./errors.js";
 export { createHandlerRegistry } from "./handlers.js";
 export { childrenFragment, html, isChildrenFragment } from "./html.js";
 export { createLazyRegistry, defineRegistrySnapshot } from "./lazy-registry.js";

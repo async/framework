@@ -1,5 +1,6 @@
 import { attributeName } from "./attributes.js";
 import { childrenFragment, escapeHtml, rawHtml, renderTemplate } from "./html.js";
+import { AsyncError, asyncErrorCodes } from "./errors.js";
 import { attachRegistryInspection, createRegistryStore } from "./registry-store.js";
 import { createLazyRegistry, isLazyDescriptor } from "./lazy-registry.js";
 
@@ -143,7 +144,12 @@ export function renderComponent(Component, props = {}, runtime, parentScope = "c
 
   const output = Component.call(context, props);
   if (output && typeof output.then === "function") {
-    throw new TypeError(`Component "${componentName(Component)}" returned a Promise. Async components are not supported by synchronous renderComponent(). Use an async partial or handler instead.`);
+    const name = componentName(Component);
+    throw new AsyncError({
+      code: asyncErrorCodes.asyncComponentUnsupported,
+      message: `Component "${name}" returned a Promise. Async components are not supported by synchronous renderComponent(). Use an async partial or handler instead.`,
+      context: { component: name }
+    });
   }
   const html = renderScopedTemplate(output);
 

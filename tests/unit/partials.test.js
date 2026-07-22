@@ -40,7 +40,13 @@ test("missing partials fail with a useful error", async () => {
 
   await assert.rejects(
     partials.render("missing"),
-    /Partial "missing" is not registered/
+    (error) => {
+      assert.match(error.message, /Partial "missing" is not registered/);
+      assert.equal(error.code, "partial-not-registered");
+      assert.match(error.hint, /Register the partial/);
+      assert.deepEqual(error.context, { partial: "missing" });
+      return true;
+    }
   );
 });
 

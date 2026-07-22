@@ -18,6 +18,7 @@ export { component, createComponentRegistry, defineComponent } from "./component
 export { createDeclarationBus, system as asyncSystem } from "./declaration-bus.js";
 export { delay } from "./delay.js";
 export { defineAsyncContainerElement, defineAsyncSuspenseElement } from "./elements.js";
+export { AsyncError, asyncErrorCodes, isAsyncError, toAsyncDiagnostic } from "./errors.js";
 export { after, asyncSignal as flowAsyncSignal, bool, branch, can, compose, computed as flowComputed, defineFrameworkFlow, dispatch, every, flow, guard, inspect, isFrameworkFlowDefinition, matches, not, onError, parallel, remember, set, signal as flowSignal, some, status as flowStatus, transition, update, when } from "./flow.js";
 export { createHandlerRegistry } from "./handlers.js";
 export { childrenFragment, html, isChildrenFragment } from "./html.js";

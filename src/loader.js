@@ -1,4 +1,5 @@
 import { renderComponent } from "./component.js";
+import { AsyncError, assertAsyncErrorHandler, asyncErrorCodes, reportAsyncError } from "./errors.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { childrenFragment, isTemplateResult, rawHtml, renderTemplate } from "./html.js";
 import { createScheduler } from "./scheduler.js";
@@ -7,7 +8,8 @@ import { matchAttribute, normalizeAttributeConfig, readAttribute } from "./attri
 
 const inlineBindingPrefix = "__async:inline:";
 
-export function Loader({ root, signals, handlers, server, router, cache, components, attributes, scheduler, commitStallWarningMs = 2000 } = {}) {
+export function Loader({ root, signals, handlers, server, router, cache, components, attributes, scheduler, onError, commitStallWarningMs = 2000 } = {}) {
+  assertAsyncErrorHandler(onError, "Loader({ onError })");
   const documentRef = root?.ownerDocument ?? root ?? globalThis.document;
   const rootNode = root ?? documentRef;
   const signalRegistry = signals ?? createSignalRegistry();
@@ -50,6 +52,7 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     components,
     scheduler: schedulerInstance,
     attributes: attributeConfig,
+    onError,
 
     start() {
       assertActive();
@@ -214,7 +217,11 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
     const boundary = findBoundary(rootNode, boundaryId, attributeConfig);
     if (!boundary) {
       boundaryElementCache.delete(key);
-      throw new Error(`Boundary "${boundaryId}" was not found.`);
+      throw new AsyncError({
+        code: asyncErrorCodes.boundaryNotFound,
+        message: `Boundary "${boundaryId}" was not found.`,
+        context: { boundary: key }
+      });
     }
     boundaryElementCache.set(key, new WeakRef(boundary));
     return boundary;
@@ -561,7 +568,13 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
           root: rootNode
         }));
       } catch (error) {
-        dispatchAsyncError(element, error);
+        reportAsyncError({
+          target: element,
+          error,
+          onError: api.onError,
+          code: asyncErrorCodes.handlerFailed,
+          context: { event: eventName, handler: ref }
+        });
       }
     };
 
@@ -765,11 +778,19 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
         continue;
       }
       if (!components?.resolve) {
-        throw new Error(`Component "${id}" cannot be attached because no component registry is available.`);
+        throw new AsyncError({
+          code: asyncErrorCodes.componentNotRegistered,
+          message: `Component "${id}" cannot be attached because no component registry is available.`,
+          context: { component: id }
+        });
       }
       const Component = components.resolve(id);
       if (!Component) {
-        throw new Error(`Component "${id}" was not found.`);
+        throw new AsyncError({
+          code: asyncErrorCodes.componentNotRegistered,
+          message: `Component "${id}" was not found.`,
+          context: { component: id }
+        });
       }
       const props = componentHostProps(element, attributeConfig);
       componentBindings.add(element);
@@ -1178,7 +1199,13 @@ export function Loader({ root, signals, handlers, server, router, cache, compone
         }
       }
     } catch (error) {
-      dispatchAsyncError(element, error);
+      reportAsyncError({
+        target: element,
+        error,
+        onError: api.onError,
+        code: asyncErrorCodes.handlerFailed,
+        context: { handler: ref, lifecycle: true }
+      });
     }
   }
 
@@ -2018,14 +2045,4 @@ function valueFromSwapConfig(config, type) {
     return config.render;
   }
   throw new TypeError('loader.swap({ html }) requires an "html" value.');
-}
-
-function dispatchAsyncError(element, error) {
-  const EventCtor = element.ownerDocument?.defaultView?.CustomEvent ?? globalThis.CustomEvent;
-  element.dispatchEvent(
-    new EventCtor("async:error", {
-      bubbles: true,
-      detail: { error }
-    })
-  );
 }

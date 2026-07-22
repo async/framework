@@ -132,9 +132,10 @@ DOM resume means existing HTML becomes live by scanning:
 
 ## Failure Modes
 
-- Missing delegated handlers dispatch an Async error event or reject through the
-  handler path.
-- Missing boundaries throw when a swap targets them.
+- Missing delegated handlers reject direct calls with
+  `handler-not-registered`; event-driven calls use the diagnostics reporting
+  contract.
+- Missing boundaries throw `boundary-not-found` when a swap targets them.
 - Missing boundaries in queued facade swaps reject that queued operation without
   blocking later queued operations.
 - Invalid command chains fail before partially running unsupported commands.
@@ -159,7 +160,8 @@ DOM resume means existing HTML becomes live by scanning:
 
 ## Open Or Deferred Decisions
 
-- Public diagnostics for malformed protocol attributes.
+- Broader build-time diagnostics for malformed protocol attributes beyond the
+  initial runtime command and registration codes.
 - Whether scoped selector helpers should be added for boundary discovery.
 - How much protocol metadata future compilers should inline into HTML.
 - Whether custom element wrappers should become part of the stable DOM

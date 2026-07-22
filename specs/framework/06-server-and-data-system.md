@@ -86,9 +86,11 @@ Server/data resume behavior:
 
 - Missing server functions fail with a clear ID-specific error.
 - Invalid server IDs fail before execution.
-- Invalid transport responses fail before result application.
+- Invalid transport responses fail before result application with
+  `invalid-server-transport-response`.
 - Invalid JSON responses fail with server-function context.
-- Unsupported transport values fail with a path to the invalid value.
+- Unsupported transport values fail with `unsupported-server-json-value` and a
+  path to the invalid value.
 - Error envelopes throw normalized errors.
 
 ## Acceptance Criteria

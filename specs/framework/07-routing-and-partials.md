@@ -185,9 +185,10 @@ Routing resume behavior:
   next navigation with a matching URL and boundary; expired or mismatched
   entries fall back to a navigation fetch.
 - Navigation failures with no caller to reject to (intercepted links, forms,
-  history events) are reported to the console in addition to `router.error`
-  and the `async:error` event; unmatched navigation without document fallback
-  warns with guidance.
+  history events) update `router.error`, invoke `onError`, dispatch a cancelable
+  `async:error` event, and reach platform error reporting only when neither app
+  path handles them. Unmatched navigation without document fallback stores a
+  `route-not-matched` error and warns with guidance.
 - Same-URL navigation skips route state writes, partial rendering, boundary
   swaps, and duplicate history writes.
 - `force: true` refreshes a stable view through the partial path in CSR and SPA
@@ -201,8 +202,9 @@ Routing resume behavior:
 ## Failure Modes
 
 - Duplicate route patterns fail during registration.
-- Missing partials fail during render with useful errors.
-- Navigation failures are caught and routed to `router.error`.
+- Missing partials fail during render with `partial-not-registered`.
+- Navigation failures are caught, normalized as `navigation-failed` when
+  necessary, and routed to `router.error` plus the reporting contract.
 - Stale partial fulfillment or rejection is ignored after newer navigation.
 - Destroyed routers abort active navigation.
 

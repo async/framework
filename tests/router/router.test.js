@@ -126,6 +126,8 @@ test("CSR router records an error when no route matches", async () => {
   assert.equal(signals.get("router.path"), "/missing");
   assert.equal(signals.get("router.route"), null);
   assert.match(signals.get("router.error").message, /No route matched \/missing/);
+  assert.equal(signals.get("router.error").code, "route-not-matched");
+  assert.match(signals.get("router.error").hint, /Register the route/);
   assert.equal(document.querySelector("[async\\:boundary='route']").innerHTML, "");
 
   router.destroy();
@@ -858,6 +860,7 @@ test("SPA router catches intercepted link navigation failures without corrupting
 
   const signals = createSignalRegistry();
   const loader = Loader({ root: document.body, signals }).start();
+  const reports = [];
   const router = createRouter({
     mode: "spa",
     root: document.body,
@@ -866,6 +869,9 @@ test("SPA router catches intercepted link navigation failures without corrupting
       "/broken": route("broken")
     }),
     loader,
+    onError(report) {
+      reports.push(report);
+    },
     partials: createPartialRegistry({
       broken() {
         throw new Error("broken route failed");
@@ -885,6 +891,8 @@ test("SPA router catches intercepted link navigation failures without corrupting
   assert.equal(signals.get("router.path"), "/broken");
   assert.equal(signals.get("router.pending"), false);
   assert.match(signals.get("router.error").message, /broken route failed/);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].diagnostic.code, "navigation-failed");
   assert.equal(document.querySelector("#route-title").textContent, "Home");
 
   router.destroy();
@@ -903,6 +911,7 @@ test("SPA router catches intercepted submit navigation failures", async () => {
 
   const signals = createSignalRegistry();
   const loader = Loader({ root: document.body, signals }).start();
+  const reports = [];
   const router = createRouter({
     mode: "spa",
     root: document.body,
@@ -911,6 +920,9 @@ test("SPA router catches intercepted submit navigation failures", async () => {
       "/search": route("search")
     }),
     loader,
+    onError(report) {
+      reports.push(report);
+    },
     partials: createPartialRegistry({
       search() {
         throw new Error("search route failed");
@@ -928,6 +940,8 @@ test("SPA router catches intercepted submit navigation failures", async () => {
   assert.deepEqual(unhandled, []);
   assert.equal(signals.get("router.pending"), false);
   assert.match(signals.get("router.error").message, /search route failed/);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].diagnostic.code, "navigation-failed");
 
   router.destroy();
   loader.destroy();
@@ -940,6 +954,7 @@ test("SPA router catches popstate navigation failures", async () => {
 
   const signals = createSignalRegistry();
   const loader = Loader({ root: document.body, signals }).start();
+  const reports = [];
   const router = createRouter({
     mode: "spa",
     root: document.body,
@@ -948,6 +963,9 @@ test("SPA router catches popstate navigation failures", async () => {
       "/broken": route("broken")
     }),
     loader,
+    onError(report) {
+      reports.push(report);
+    },
     partials: createPartialRegistry({
       broken() {
         throw new Error("popstate route failed");
@@ -965,6 +983,8 @@ test("SPA router catches popstate navigation failures", async () => {
   assert.equal(signals.get("router.path"), "/broken");
   assert.equal(signals.get("router.pending"), false);
   assert.match(signals.get("router.error").message, /popstate route failed/);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].diagnostic.code, "navigation-failed");
 
   router.destroy();
   loader.destroy();
@@ -1807,7 +1827,7 @@ test("expired prefetch entries are not consumed", async () => {
   router.destroy();
 });
 
-test("event-driven navigation failures are logged to the console", async () => {
+test("event-driven navigation failures use callback and cancelable event diagnostics", async () => {
   const window = new Window({ url: "http://app.test/" });
   const { document } = window;
   document.body.innerHTML = `
@@ -1817,38 +1837,41 @@ test("event-driven navigation failures are logged to the console", async () => {
     </main>
   `;
 
-  const logged = [];
-  const originalError = console.error;
-  console.error = (...args) => logged.push(args.map(String).join(" "));
-  try {
-    const router = createRouter({
-      mode: "spa",
-      root: document.body,
-      boundary: "route",
-      routes: createRouteRegistry({
-        "/": route("home.page"),
-        "/broken": route("broken.page")
-      }),
-      partials: createPartialRegistry({
-        "home.page": () => "<h1>home</h1>",
-        "broken.page"() {
-          throw new Error("partial exploded");
-        }
-      })
-    }).start();
+  const seen = [];
+  document.body.addEventListener("async:error", (event) => {
+    seen.push(["event", event.detail.diagnostic.code]);
+    event.preventDefault();
+  });
+  const router = createRouter({
+    mode: "spa",
+    root: document.body,
+    boundary: "route",
+    routes: createRouteRegistry({
+      "/": route("home.page"),
+      "/broken": route("broken.page")
+    }),
+    partials: createPartialRegistry({
+      "home.page": () => "<h1>home</h1>",
+      "broken.page"() {
+        throw new Error("partial exploded");
+      }
+    }),
+    onError(report) {
+      seen.push(["callback", report.diagnostic.code]);
+    }
+  }).start();
 
-    document.querySelector("#broken").click();
-    await delay(20);
+  document.querySelector("#broken").click();
+  await delay(20);
 
-    assert.ok(
-      logged.some((line) => line.includes("navigation failed") && line.includes("partial exploded")),
-      `expected a navigation failure log, saw: ${JSON.stringify(logged)}`
-    );
-    assert.match(String(router.signals.get("router.error")?.message), /partial exploded/);
-    router.destroy();
-  } finally {
-    console.error = originalError;
-  }
+  assert.deepEqual(seen, [
+    ["callback", "navigation-failed"],
+    ["event", "navigation-failed"]
+  ]);
+  assert.match(String(router.signals.get("router.error")?.message), /partial exploded/);
+  assert.equal(router.signals.get("router.error")?.code, "navigation-failed");
+  assert.equal(router.signals.get("router.error")?.cause?.message, "partial exploded");
+  router.destroy();
 });
 
 test("unmatched navigation without document fallback warns with guidance", async () => {
@@ -1873,6 +1896,7 @@ test("unmatched navigation without document fallback warns with guidance", async
       warnings.some((line) => line.includes("No route matched /nowhere") && line.includes('fallback: "document"')),
       `expected a no-route warning, saw: ${JSON.stringify(warnings)}`
     );
+    assert.equal(router.signals.get("router.error")?.code, "route-not-matched");
     router.destroy();
   } finally {
     console.warn = originalWarn;

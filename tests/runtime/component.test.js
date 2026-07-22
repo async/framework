@@ -1086,7 +1086,13 @@ test("component returning a Promise throws a clear unsupported error", () => {
 
   assert.throws(
     () => loader.attach(document.querySelector("#app"), AsyncComponent),
-    /Component "AsyncComponent" returned a Promise\. Async components are not supported/
+    (error) => {
+      assert.match(error.message, /Component "AsyncComponent" returned a Promise\. Async components are not supported/);
+      assert.equal(error.code, "async-component-unsupported");
+      assert.match(error.hint, /async signal/);
+      assert.deepEqual(error.context, { component: "AsyncComponent" });
+      return true;
+    }
   );
 
   loader.destroy();

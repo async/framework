@@ -59,6 +59,9 @@ test("async signal snapshots serialize rejected errors with stable public fields
   const signals = createSignalRegistry();
   const cause = new Error("Product unavailable");
   cause.code = "PRODUCT_UNAVAILABLE";
+  cause.hint = "Retry later";
+  cause.context = { product: "sku-1" };
+  cause.cause = new Error("transport failed");
   cause.secret = "do not serialize";
 
   const ref = signals.asyncSignal("product", async function () {
@@ -83,6 +86,10 @@ test("async signal snapshots serialize rejected errors with stable public fields
     version: 1
   });
   assert.equal(Object.hasOwn(snapshot.error, "secret"), false);
+  assert.equal(Object.hasOwn(snapshot.error, "hint"), false);
+  assert.equal(Object.hasOwn(snapshot.error, "context"), false);
+  assert.equal(Object.hasOwn(snapshot.error, "cause"), false);
+  assert.equal(Object.hasOwn(snapshot.error, "stack"), false);
 
   const restored = createSignalRegistry();
   restored.asyncSignal("product", async () => ({ title: "Client Keyboard" }));

@@ -19,6 +19,7 @@ model.
   artifacts.
 - Keep package exports aligned with runtime and type surfaces.
 - Provide examples for core protocol use cases.
+- Publish the canonical app-authoring contract as package-root `AGENTS.md`.
 - Verify package file lists, installed package resolution, bundle shape, and
   release metadata.
 - Use generated Async Pipeline workflows for verification, Pages, release, and
@@ -77,6 +78,8 @@ Delivery must preserve the protocol:
 - Generated declaration files match browser/server runtime availability.
 - Examples demonstrate registry IDs, protocol attributes, server envelopes,
   routing, cache, SSR snapshots, and streaming boundaries.
+- Public feature examples avoid global selector-driven rendering and document
+  listeners; named platform adapters require narrow, tested exceptions.
 - Build-required examples should demonstrate Vite setup through the public
   `./vite`, `./jsx`, and runtime slice subpaths without requiring the no-build
   `Async` global once source-derived profile generation is available.
@@ -128,6 +131,8 @@ Published artifacts must support resume and streaming:
 - Minified browser bundles preserve public `Async` behavior.
 - Package file lists include generated public artifacts and exclude unintended
   implementation/test files.
+- The published `AGENTS.md` is byte-identical to the canonical app-authoring
+  document.
 - `release:check` covers verification, bundle size, docs site, pipeline sync,
   and generated workflow checks.
 

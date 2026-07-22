@@ -119,7 +119,8 @@ Components must not be required to rerun to activate server-rendered DOM:
 ## Failure Modes
 
 - Non-function component definitions fail.
-- Promise-returning components fail with a clear unsupported-component error.
+- Promise-returning components fail with `async-component-unsupported` and a
+  hint to use an async signal, partial, or handler-owned boundary update.
 - Lazy component descriptors that resolve asynchronously are not valid for
   synchronous render paths unless a future async component contract defines it.
 - Invalid suspense inputs fail before emitting ambiguous boundary markup.
@@ -129,6 +130,7 @@ Components must not be required to rerun to activate server-rendered DOM:
   handler IDs or cleanup records.
 - Non-template direct `async:children` markers and multiple direct children
   templates under one `async:component` host fail before attach.
+- Missing registered component hosts fail with `component-not-registered`.
 - Observer-less environments report unsupported intersection behavior through
   the defined fallback path.
 

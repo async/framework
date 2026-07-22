@@ -10,6 +10,7 @@ import { createRegistryStore } from "./registry-store.js";
 import { attributeName, normalizeAttributeConfig } from "./attributes.js";
 import { createLazyRegistry, defineRegistrySnapshot, sameRegistryValue } from "./lazy-registry.js";
 import { createDeclarationBus, system } from "./declaration-bus.js";
+import { AsyncError, assertAsyncErrorHandler, asyncErrorCodes } from "./errors.js";
 
 const registryTypes = new Set(["signal", "handler", "server", "partial", "route", "component", "asyncSignal", "flow"]);
 
@@ -151,6 +152,11 @@ export function createApp(appOrDefinition = Async, options = {}) {
     : defineApp(appOrDefinition ?? {}, { duplicates: options.duplicates, features: options.features });
   const features = createAppFeatureSet(app._features, options.features);
   const target = options.target ?? "browser";
+  assertAsyncErrorHandler(options.onError, "createApp({ onError })");
+  assertAsyncErrorHandler(options.loader?.onError, "createApp({ loader }).onError");
+  assertAsyncErrorHandler(options.routerOptions?.onError, "createApp({ routerOptions: { onError } })");
+  const hasOnError = typeof options.onError === "function";
+  const onError = hasOnError ? options.onError : options.loader?.onError;
   const scheduler = options.scheduler ?? options.loader?.scheduler ?? createScheduler({
     strategy: target === "server" ? "manual" : "microtask"
   });
@@ -203,6 +209,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     router,
     scheduler,
     attributes,
+    onError,
 
     start() {
       assertActive();
@@ -260,7 +267,8 @@ export function createApp(appOrDefinition = Async, options = {}) {
             cache: browserCache,
             components,
             scheduler,
-            attributes
+            attributes,
+            onError
           });
       registerRootLoader(root, rootLoader);
       rootLoader.start();
@@ -471,6 +479,9 @@ export function createApp(appOrDefinition = Async, options = {}) {
     rootLoader.server = server;
     rootLoader.cache = browserCache;
     rootLoader.scheduler = scheduler;
+    if (hasOnError) {
+      rootLoader.onError = onError;
+    }
   }
 
   function startRouterFor(root) {
@@ -479,7 +490,7 @@ export function createApp(appOrDefinition = Async, options = {}) {
     }
     const createRouter = features.router?.createRouter;
     if (!router && !createRouter) {
-      throw new Error("Router usage requires the @async/framework/router entrypoint.");
+      throw entrypointRequiredError("@async/framework/router", "Router usage");
     }
     router = router ?? createRouter({
       mode: options.mode ?? "ssr",
@@ -496,8 +507,18 @@ export function createApp(appOrDefinition = Async, options = {}) {
       partials,
       scheduler,
       attributes,
+      onError,
       ...(options.routerOptions ?? {})
     });
+    if (options.router && options.router !== false) {
+      const explicitRouterOnError = options.routerOptions?.onError ?? (hasOnError ? onError : undefined);
+      if (explicitRouterOnError) {
+        router.onError = explicitRouterOnError;
+        if (router.loader) {
+          router.loader.onError = explicitRouterOnError;
+        }
+      }
+    }
     runtime.router = router;
     runtime.loader.router = router;
     configureServerContext({ cache: browserCache, router });
@@ -913,7 +934,7 @@ function attachRuntimeFlowRegistrations(runtime, entries = {}) {
   }
   const attachRegistrations = runtime._features?.flow?.attachRegistrations;
   if (!attachRegistrations) {
-    throw new Error("Flow usage requires the @async/framework/flow entrypoint.");
+    throw entrypointRequiredError("@async/framework/flow", "Flow usage");
   }
   return attachRegistrations(runtime, entries);
 }
@@ -959,7 +980,7 @@ function createRouteRegistryGuard(initialMap = {}, options = {}) {
 
     match() {
       if (entries.size > 0) {
-        throw new Error("Router usage requires the @async/framework/router entrypoint.");
+        throw entrypointRequiredError("@async/framework/router", "Router usage");
       }
       return null;
     },
@@ -988,6 +1009,14 @@ function createRouteRegistryGuard(initialMap = {}, options = {}) {
 
   registry.registerMany(initialMap);
   return registry;
+}
+
+function entrypointRequiredError(entrypoint, feature) {
+  return new AsyncError({
+    code: asyncErrorCodes.entrypointRequired,
+    message: `${feature} requires the ${entrypoint} entrypoint.`,
+    context: { entrypoint, feature }
+  });
 }
 
 function createAppFeatureSet(...featureSets) {
@@ -1539,7 +1568,11 @@ function createServerReferenceRegistry(initialMap = {}, options = {}) {
     },
 
     async run(id) {
-      throw new Error(`Server command "${id}" cannot run without a server proxy or server registry.`);
+      throw new AsyncError({
+        code: asyncErrorCodes.serverCommandUnavailable,
+        message: `Server command "${id}" cannot run without a server proxy or server registry.`,
+        context: { serverCommand: id }
+      });
     },
 
     keys() {

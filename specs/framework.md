@@ -149,3 +149,6 @@ it with a private component tree or hidden hydration model.
 - [16-whole-program-compiler.md](./framework/16-whole-program-compiler.md) -
   the deferred L7 whole-program compiler profile, ownership boundaries,
   resumability record constraints, and spec-only status.
+- [17-diagnostics-and-errors.md](./framework/17-diagnostics-and-errors.md) -
+  stable runtime error codes, diagnostic shape, event-driven reporting, and
+  snapshot safety boundaries.

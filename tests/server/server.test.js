@@ -536,7 +536,13 @@ test("server proxy transport returning undefined throws an Async-specific error"
 
   await assert.rejects(
     server.run("products.get"),
-    /transport returned an invalid response: expected a fetch Response-like object/
+    (error) => {
+      assert.match(error.message, /transport returned an invalid response: expected a fetch Response-like object/);
+      assert.equal(error.code, "invalid-server-transport-response");
+      assert.match(error.hint, /Response-like/);
+      assert.deepEqual(error.context, { serverFunction: "products.get" });
+      return true;
+    }
   );
 });
 
@@ -565,7 +571,12 @@ test("server proxy transport returning JSON content-type but invalid JSON throws
 
   await assert.rejects(
     server.run("products.get"),
-    /returned invalid JSON/
+    (error) => {
+      assert.match(error.message, /returned invalid JSON/);
+      assert.equal(error.code, "invalid-server-transport-response");
+      assert.equal(error.cause instanceof Error, true);
+      return true;
+    }
   );
 });
 
@@ -659,7 +670,13 @@ test("server proxy rejects nested file-like values before transport runs", async
 
   await assert.rejects(
     server.run("profile.upload", [{ files: [blobLike], form: formDataLike }]),
-    /does not support File, Blob, or FormData/
+    (error) => {
+      assert.match(error.message, /does not support File, Blob, or FormData/);
+      assert.equal(error.code, "unsupported-server-json-value");
+      assert.match(error.hint, /JSON-safe values/);
+      assert.deepEqual(error.context, { path: "$.args[0].files[0]" });
+      return true;
+    }
   );
 });
 

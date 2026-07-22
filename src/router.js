@@ -1,4 +1,5 @@
 import { Loader } from "./loader.js";
+import { AsyncError, assertAsyncErrorHandler, asyncErrorCodes, isAsyncError, reportAsyncError } from "./errors.js";
 import { createHandlerRegistry } from "./handlers.js";
 import { createScheduler } from "./scheduler.js";
 import { createSignalRegistry } from "./signals.js";
@@ -151,8 +152,12 @@ export function createRouter(options = {}) {
     cache,
     partials,
     attributes,
-    scheduler
+    scheduler,
+    onError: onErrorOption
   } = options;
+  assertAsyncErrorHandler(onErrorOption, "createRouter({ onError })");
+  assertAsyncErrorHandler(loader?.onError, "createRouter({ loader }).onError");
+  const onError = onErrorOption ?? loader?.onError;
   assertRouterMode(mode);
   assertRouterUrlMode(urlMode);
   assertRouterFallback(fallback);
@@ -172,8 +177,12 @@ export function createRouter(options = {}) {
       server,
       cache,
       scheduler: schedulerInstance,
-      attributes: attributeConfig
+      attributes: attributeConfig,
+      onError
     });
+  if (typeof onErrorOption === "function") {
+    loaderInstance.onError = onError;
+  }
   const ownsLoader = !loader;
   const cleanups = new Set();
   // Server-route prefetch results, keyed by resolved URL. Entries are single
@@ -202,6 +211,7 @@ export function createRouter(options = {}) {
     partials,
     scheduler: schedulerInstance,
     attributes: attributeConfig,
+    onError,
 
     start() {
       assertActive();
@@ -659,7 +669,11 @@ export function createRouter(options = {}) {
   }
 
   function setNoRouteError(url) {
-    const error = new Error(`No route matched ${url.pathname}${url.search}`);
+    const error = new AsyncError({
+      code: asyncErrorCodes.routeNotMatched,
+      message: `No route matched ${url.pathname}${url.search}`,
+      context: { path: `${url.pathname}${url.search}` }
+    });
     console.warn?.(
       `[async/router] ${error.message} — register the route, or start the router with fallback: "document" to let unmatched URLs navigate natively.`
     );
@@ -687,12 +701,23 @@ export function createRouter(options = {}) {
       // Event-driven navigation has no caller to reject to — surface the
       // failure instead of leaving a silently dead link. Programmatic
       // router.navigate(...) rejections stay with their caller.
-      console.error?.("[async/router] navigation failed:", error);
+      const navigationError = isAsyncError(error)
+        ? error
+        : new AsyncError({
+            code: asyncErrorCodes.navigationFailed,
+            message: messageForError(error),
+            context: { mode, source: "event" },
+            cause: error
+          });
       setRouterState({
         pending: false,
-        error
+        error: navigationError
       });
-      dispatchAsyncError(rootNode, error);
+      reportAsyncError({
+        target: rootNode,
+        error: navigationError,
+        onError: api.onError
+      });
     });
   }
 
@@ -1090,17 +1115,14 @@ function shouldSwapRouteResult(result) {
   );
 }
 
-function dispatchAsyncError(element, error) {
-  const EventCtor = element.ownerDocument?.defaultView?.CustomEvent ?? globalThis.CustomEvent;
-  if (typeof EventCtor !== "function") {
-    return;
+function messageForError(error) {
+  if (error instanceof Error) {
+    return error.message;
   }
-  element.dispatchEvent?.(
-    new EventCtor("async:error", {
-      bubbles: true,
-      detail: { error }
-    })
-  );
+  if (error && typeof error === "object" && typeof error.message === "string") {
+    return error.message;
+  }
+  return String(error);
 }
 
 function escapeRegExp(value) {

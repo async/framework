@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import {
   Async,
+  Loader,
   asyncSystem,
   component,
   createApp,
@@ -22,6 +23,10 @@ import {
   route,
   signal
 } from "../../src/index.js";
+import {
+  createApp as createBaseApp,
+  defineApp as defineBaseApp
+} from "../../src/app.js";
 
 const system = Async.system;
 
@@ -105,6 +110,111 @@ test("runtime.use delegates through the same app hub", async () => {
   assert.equal(document.querySelector("output").textContent, "done");
   assert.equal(Object.hasOwn(app.snapshot().handler, "fromRuntime"), true);
   runtime.destroy();
+});
+
+test("createApp propagates onError to root loaders and handles delegated failures", async () => {
+  const window = new Window();
+  const { document } = window;
+  document.body.innerHTML = `<button on:click="missing">Run</button>`;
+  const reports = [];
+  const onError = (report) => reports.push(report);
+
+  const runtime = createApp(defineApp(), {
+    root: document.body,
+    router: false,
+    onError
+  }).start();
+
+  document.querySelector("button").click();
+  await delay(0);
+
+  assert.equal(runtime.onError, onError);
+  assert.equal(runtime.loader.onError, onError);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].diagnostic.code, "handler-not-registered");
+  assert.match(reports[0].diagnostic.hint, /Register via Async\.use/);
+  runtime.destroy();
+});
+
+test("createApp preserves external loader error handling unless explicitly overridden", () => {
+  const window = new Window();
+  const { document } = window;
+  const loaderOnError = () => {};
+  const appOnError = () => {};
+
+  const externalLoader = Loader({ root: document.body, onError: loaderOnError });
+  const inherited = createApp(defineApp(), {
+    loader: externalLoader,
+    router: false
+  }).start();
+
+  assert.equal(inherited.onError, loaderOnError);
+  assert.equal(externalLoader.onError, loaderOnError);
+  inherited.destroy();
+
+  const overriddenLoader = Loader({ root: document.body, onError: loaderOnError });
+  const overridden = createApp(defineApp(), {
+    loader: overriddenLoader,
+    router: false,
+    onError: appOnError
+  }).start();
+
+  assert.equal(overridden.onError, appOnError);
+  assert.equal(overriddenLoader.onError, appOnError);
+  overridden.destroy();
+});
+
+test("routerOptions.onError overrides the app callback for router-owned failures", () => {
+  const window = new Window();
+  const { document } = window;
+  const appOnError = () => {};
+  const routerOnError = () => {};
+
+  const runtime = createApp(defineApp(), {
+    root: document.body,
+    onError: appOnError,
+    routerOptions: {
+      onError: routerOnError
+    }
+  }).start();
+
+  assert.equal(runtime.onError, appOnError);
+  assert.equal(runtime.router.onError, routerOnError);
+  assert.equal(runtime.loader.onError, routerOnError);
+  runtime.destroy();
+});
+
+test("base app entrypoint errors identify the required feature entrypoint", () => {
+  const routeRuntime = createBaseApp(defineBaseApp({
+    route: {
+      "/": route("home")
+    }
+  }), { target: "server" });
+
+  assert.throws(
+    () => routeRuntime.routes.match("/"),
+    (error) => {
+      assert.equal(error.code, "entrypoint-required");
+      assert.equal(error.context.entrypoint, "@async/framework/router");
+      assert.match(error.hint, /Import the required entrypoint/);
+      return true;
+    }
+  );
+  routeRuntime.destroy();
+
+  assert.throws(
+    () => createBaseApp(defineBaseApp({
+      flow: {
+        cart: flow({ store: { total: 0 } })
+      }
+    }), { target: "server" }),
+    (error) => {
+      assert.equal(error.code, "entrypoint-required");
+      assert.equal(error.context.entrypoint, "@async/framework/flow");
+      assert.match(error.hint, /Import the required entrypoint/);
+      return true;
+    }
+  );
 });
 
 test("Async singleton hides runtime behind inspectRuntime diagnostics", async () => {
